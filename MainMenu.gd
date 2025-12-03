@@ -1,6 +1,6 @@
 # MainMenu.gd v1.1.0
 # Main menu with authentication flow and profile display
-# https://github.com/cheddatech/CheddaBoards-SDK
+# https://github.com/cheddatech/CheddaBoards-Godot
 #
 # ============================================================
 # SETUP
