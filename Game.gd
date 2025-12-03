@@ -1,6 +1,6 @@
 # Game.gd v1.2.0
 # Main game scene with CheddaBoards integration
-# https://github.com/cheddatech/CheddaBoards-SDK
+# https://github.com/cheddatech/CheddaBoards-Godot
 #
 # ============================================================
 # SETUP
