@@ -100,13 +100,13 @@ func _print_next_steps():
 	print("")
 	print("  3. Test locally:")
 	print("     • cd to export folder")
-	print("     • python -m http.server 8000")
+	print("     • python3 -m http.server 8000")
 	print("     • Open http://localhost:8000")
 	print("")
 	print("  4. Test the login flow and gameplay!")
 	print("")
-	print("  📚 Docs: https://docs.cheddaboards.com")
-	print("  💬 Help: https://discord.gg/cheddaboards")
+	print("")
+	print("  🧀 CheddaBoards: https://cheddaboards.com")
 	print("")
 
 # ============================================================
