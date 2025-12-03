@@ -1,0 +1,41 @@
+# Godot 4+ specific ignores
+.godot/
+*.uid
+
+# Godot-specific ignores
+*.import
+export_presets.cfg
+export.cfg
+
+# Imported translations (automatically generated from CSV files)
+*.translation
+
+# Mono-specific ignores
+.mono/
+data_*/
+mono_crash.*.json
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Build outputs
+build/
+export/
+*.pck
+*.zip
+
+# Backup files
+*.bak

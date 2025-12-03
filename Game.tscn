@@ -1,0 +1,156 @@
+[gd_scene load_steps=4 format=3 uid="uid://buth8rfhfcdo6"]
+
+[ext_resource type="Script" uid="uid://b48xeoo0hrjac" path="res://Game.gd" id="1_wbfu4"]
+[ext_resource type="Texture2D" uid="uid://cwkwk5q2j7so" path="res://cheddaboards_logo_256x256_nobg.png" id="2_u44n3"]
+[ext_resource type="PackedScene" uid="uid://dt1mgh2gutj6k" path="res://AchievementNotification.tscn" id="2_xkndl"]
+
+[node name="Game" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_wbfu4")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 1)
+
+[node name="TestButton" type="Button" parent="."]
+custom_minimum_size = Vector2(300, 200)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -150.0
+offset_top = -100.0
+offset_right = 150.0
+offset_bottom = 100.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 24
+text = "Click Me! 
+(Score +100)"
+
+[node name="ScoreDisplay" type="Label" parent="."]
+layout_mode = 1
+offset_left = 36.0
+offset_top = 37.0
+offset_right = 413.0
+offset_bottom = 73.0
+theme_override_font_sizes/font_size = 34
+horizontal_alignment = 1
+
+[node name="AchievementNotification" parent="." instance=ExtResource("2_xkndl")]
+
+[node name="CountdownDisplay" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -49.5
+offset_right = 49.5
+offset_bottom = 82.0
+grow_horizontal = 2
+theme_override_font_sizes/font_size = 34
+
+[node name="CheddaBoardsLabel" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 41.0
+offset_top = -273.0
+offset_right = 297.0
+offset_bottom = -17.0
+grow_vertical = 0
+texture = ExtResource("2_u44n3")
+
+[node name="GameOverPanel" type="Panel" parent="."]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="MarginContainer" type="MarginContainer" parent="GameOverPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="GameOverPanel/MarginContainer"]
+layout_mode = 2
+
+[node name="TitleLabel" type="Label" parent="GameOverPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 34
+text = "Game Over!"
+horizontal_alignment = 1
+
+[node name="HSeparator" type="HSeparator" parent="GameOverPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="ScoreLabel" type="Label" parent="GameOverPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "Score: 0"
+horizontal_alignment = 1
+
+[node name="StreakLabel" type="Label" parent="GameOverPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "Streak: 0"
+horizontal_alignment = 1
+
+[node name="HSeparator2" type="HSeparator" parent="GameOverPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="StatusLabel" type="Label" parent="GameOverPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+horizontal_alignment = 1
+
+[node name="HSeparator3" type="HSeparator" parent="GameOverPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="ButtonsContainer" type="HBoxContainer" parent="GameOverPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="PlayAgainButton" type="Button" parent="GameOverPanel/MarginContainer/VBoxContainer/ButtonsContainer"]
+custom_minimum_size = Vector2(200, 100)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "Play Again"
+
+[node name="MainMenuButton" type="Button" parent="GameOverPanel/MarginContainer/VBoxContainer/ButtonsContainer"]
+custom_minimum_size = Vector2(200, 50)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "Main Menu"
+
+[node name="HSeparator4" type="HSeparator" parent="GameOverPanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(20, 50)
+layout_mode = 2
+
+[node name="LeaderboardButton" type="Button" parent="GameOverPanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(320, 100)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "View Leaderboard"
+
+[node name="Camera2D" type="Camera2D" parent="."]
+anchor_mode = 0
+position_smoothing_enabled = true

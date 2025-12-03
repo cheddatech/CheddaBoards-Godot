@@ -1,0 +1,980 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>My Game</title>
+
+  <!-- Godot engine bootstrap -->
+  <script src="index.js"></script>
+  
+  <!-- CheddaBoards SDK (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/cheddaboards_v1@latest/cheddaboards.min.js"></script>
+
+  <!-- Google Sign-In (optional - remove if not using) -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+  <!-- Apple Sign-In (optional - remove if not using) -->
+  <script type="text/javascript" src="https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js"></script>
+
+  <style>
+    html, body { 
+      margin: 0; 
+      height: 100%; 
+      overflow: hidden; 
+      background: #000; 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+    }
+    
+    #preload {
+      position: absolute; 
+      inset: 0;
+      display: flex; 
+      flex-direction: column; 
+      align-items: center; 
+      justify-content: center;
+      background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+      color: #FFD700; 
+      z-index: 9999; 
+      transition: opacity 0.5s ease-out;
+    }
+    
+    #preload.fade { 
+      opacity: 0; 
+      pointer-events: none; 
+    }
+    
+    .loading-text {
+      font-size: 1.2rem;
+      margin-bottom: 1rem;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+    
+    #spin {
+      width: 40px; 
+      height: 40px;
+      border: 3px solid rgba(255, 215, 0, 0.2); 
+      border-top: 3px solid #FFD700;
+      border-radius: 50%; 
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin { 
+      to { transform: rotate(360deg); } 
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+    
+    canvas { 
+      width: 100vw; 
+      height: 100vh; 
+      object-fit: contain; 
+    }
+  </style>
+</head>
+<body>
+  <!-- Preloader -->
+  <div id="preload">
+    <div class="loading-text">Loading...</div>
+    <div id="spin"></div>
+  </div>
+
+  <!-- Main canvas for Godot -->
+  <canvas id="canvas">Your browser doesn't support HTML5 canvas.</canvas>
+
+  <script type="module">
+    // ============================================================
+    // CheddaBoards Godot 4 Template v1.1.0
+    // https://github.com/cheddatech/CheddaBoards-SDK
+    // https://cheddaboards.com
+    // ============================================================
+
+    // ============================================================
+    // ⚠️ CONFIGURATION - CUSTOMIZE THESE VALUES ⚠️
+    // ============================================================
+    const CONFIG = {
+      // ─────────────────────────────────────────────────────────
+      // REQUIRED: Your Game ID from https://cheddaboards.com
+      // ─────────────────────────────────────────────────────────
+      GAME_ID: 'catch-the-cheese',  // ⬅️ CHANGE THIS
+      
+      // ─────────────────────────────────────────────────────────
+      // CheddaBoards canister (same for all games)
+      // ─────────────────────────────────────────────────────────
+      CANISTER_ID: 'fdvph-sqaaa-aaaap-qqc4a-cai',
+      
+      // ─────────────────────────────────────────────────────────
+      // OPTIONAL: Google Sign-In
+      // Get Client ID from: https://console.cloud.google.com/
+      // Leave empty '' to disable Google login
+      // ─────────────────────────────────────────────────────────
+      GOOGLE_CLIENT_ID: '',  // ⬅️ Your Google OAuth Client ID
+      
+      // ─────────────────────────────────────────────────────────
+      // OPTIONAL: Apple Sign-In
+      // Get Service ID from: https://developer.apple.com/
+      // Leave empty '' to disable Apple login
+      // ─────────────────────────────────────────────────────────
+      APPLE_SERVICE_ID: '',      // ⬅️ Your Apple Service ID
+      APPLE_REDIRECT_URI: ''     // ⬅️ https://yourdomain.com/auth/apple
+    };
+
+    // ============================================================
+    // INTERNAL STATE (don't modify)
+    // ============================================================
+    let chedda = null;
+    let godotReady = false;
+    let responseQueue = [];
+    let currentProfile = null;
+    let isAuthenticated = false;
+    let authType = '';
+    
+    // Rate limiting
+    let loginAttempts = 0;
+    let lastLoginAttempt = 0;
+    const MAX_LOGIN_ATTEMPTS = 5;
+    const LOCKOUT_DURATION = 60000; // 1 minute
+
+    // Caching
+    let cachedProfileData = null;
+    let lastProfileFetch = 0;
+    const PROFILE_CACHE_DURATION = 30000; // 30 seconds
+    const PROFILE_STORAGE_KEY = `cheddaboards_profile_${CONFIG.GAME_ID}`;
+    
+    // Timeouts
+    const LOGIN_TIMEOUT = 60000; // 60 seconds
+    
+    // Submission guards
+    let isRefreshingProfile = false;
+    let isSubmittingScore = false;
+
+    // ============================================================
+    // HELPER FUNCTIONS
+    // ============================================================
+    
+    function saveProfileToLocalStorage(profile) {
+      try {
+        localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify({
+          profile: profile,
+          timestamp: Date.now()
+        }));
+      } catch (e) {
+        console.warn('[Storage] Failed to save profile:', e);
+      }
+    }
+
+    function loadProfileFromLocalStorage() {
+      try {
+        const data = localStorage.getItem(PROFILE_STORAGE_KEY);
+        if (data) {
+          const parsed = JSON.parse(data);
+          // Cache valid for 1 hour
+          if (Date.now() - parsed.timestamp < 3600000) {
+            console.log('[Storage] ⚡ Instant profile from localStorage');
+            return parsed.profile;
+          }
+        }
+      } catch (e) {
+        console.warn('[Storage] Failed to load profile:', e);
+      }
+      return null;
+    }
+    
+    function sanitizeProfileData(profile, forceRefresh = false) {
+      if (!profile) return null;
+      
+      // Only use cache if not force refreshing and cache is still valid
+      const now = Date.now();
+      if (!forceRefresh && cachedProfileData && (now - lastProfileFetch) < PROFILE_CACHE_DURATION) {
+        console.log('[Helper] Using cached profile data');
+        return cachedProfileData;
+      }
+      
+      console.log('[Helper] Sanitizing fresh profile data:', profile);
+      
+      const sanitized = {
+        nickname: String(profile.nickname || profile.username || 'Player'),
+        score: parseInt(profile.score || profile.highScore || 0) || 0,
+        streak: parseInt(profile.streak || profile.bestStreak || 0) || 0,
+        playCount: parseInt(profile.playCount || profile.plays || 0) || 0,
+        achievements: Array.isArray(profile.achievements) ? profile.achievements : [],
+        authType: profile.authType || authType || 'unknown'
+      };
+      
+      cachedProfileData = sanitized;
+      lastProfileFetch = now;
+      
+      console.log('[Helper] Sanitized profile:', sanitized);
+      return sanitized;
+    }
+    
+    function checkRateLimit() {
+      const now = Date.now();
+      
+      // Reset counter if lockout expired
+      if (now - lastLoginAttempt > LOCKOUT_DURATION) {
+        loginAttempts = 0;
+      }
+      
+      // Check if locked out
+      if (loginAttempts >= MAX_LOGIN_ATTEMPTS) {
+        const timeLeft = Math.ceil((LOCKOUT_DURATION - (now - lastLoginAttempt)) / 1000);
+        throw new Error(`Too many login attempts. Please wait ${timeLeft} seconds.`);
+      }
+      
+      loginAttempts++;
+      lastLoginAttempt = now;
+      console.log(`[RateLimit] Login attempt ${loginAttempts}/${MAX_LOGIN_ATTEMPTS}`);
+    }
+
+    function handleLoginSuccess(type, profile) {
+      console.log('[Helper] Login success:', type, profile);
+      isAuthenticated = true;
+      authType = type;
+      
+      // Clear cache and use fresh profile from login
+      cachedProfileData = null;
+      lastProfileFetch = 0;
+      currentProfile = sanitizeProfileData(profile, true);  // Force fresh
+      
+      // Map auth type to action name for Godot
+      let actionName = 'login';
+      switch(type) {
+        case 'cheddaId':
+        case 'internetIdentity':
+          actionName = 'loginInternetIdentity';
+          break;
+        case 'google':
+          actionName = 'loginGoogle';
+          break;
+        case 'apple':
+          actionName = 'loginApple';
+          break;
+        case 'anonymous':
+          actionName = 'loginAnonymous';
+          break;
+      }
+      
+      responseQueue.push({
+        action: actionName,
+        success: true,
+        profile: currentProfile,
+        authType: type
+      });
+      
+      saveProfileToLocalStorage(currentProfile);
+      console.log('[Helper] Login response queued');
+    }
+    
+    function handleLoginError(error) {
+      console.error('[Helper] Login error:', error);
+      responseQueue.push({
+        action: 'login',
+        success: false,
+        error: error.message || 'Login failed'
+      });
+    }
+    
+    // ============================================================
+    // GODOT BRIDGE FUNCTIONS
+    // Called from GDScript via JavaScriptBridge
+    // ============================================================
+    
+    /**
+     * Get next response from queue (polled by Godot)
+     */
+    window.chedda_get_response = function() {
+      if (responseQueue.length > 0) {
+        const response = responseQueue.shift();
+        console.log('[Bridge] Sending response to Godot:', response);
+        return JSON.stringify(response);
+      }
+      return null;
+    };
+    
+    /**
+     * Check if user is authenticated
+     */
+    window.chedda_is_auth = function() {
+      return chedda && chedda.isAuthenticated();
+    };
+    
+    /**
+     * Get cached profile (instant, no network)
+     */
+    window.chedda_get_profile = function() {
+      if (currentProfile) {
+        return JSON.stringify(currentProfile);
+      }
+      return null;
+    };
+
+    /**
+     * Login with Internet Identity (CheddaID)
+     * This is the primary passwordless login method
+     */
+    window.chedda_login_ii = async function(nickname) {
+      let timeoutId = null;
+      
+      try {
+        checkRateLimit();
+        console.log('[Bridge] Internet Identity login requested');
+
+        // Set timeout
+        timeoutId = setTimeout(() => {
+          handleLoginError(new Error('Login timeout - please try again'));
+        }, LOGIN_TIMEOUT);
+
+        // Try to restore existing session
+        if (!chedda.isAuthenticated()) {
+          console.log('[Login] Attempting to restore session...');
+          await chedda.restoreSession?.().catch(() => {});
+        }
+
+        // Check for cached profile
+        const cached = loadProfileFromLocalStorage();
+        if (cached && chedda.isAuthenticated()) {
+          console.log('[Login] ⚡ Using cached profile');
+          clearTimeout(timeoutId);
+          handleLoginSuccess('cheddaId', cached);
+          
+          // Refresh in background
+          chedda.getProfile().then(profile => {
+            if (profile) {
+              const freshProfile = sanitizeProfileData(profile);
+              currentProfile = freshProfile;
+              saveProfileToLocalStorage(freshProfile);
+              responseQueue.push({
+                action: 'getProfile',
+                success: true,
+                profile: freshProfile
+              });
+            }
+          }).catch(console.error);
+          return;
+        }
+
+        // New login
+        console.log('[Login] Initiating Internet Identity login...');
+        const profile = await chedda.login.chedda(nickname);
+        console.log('[Login] ✅ Login complete:', profile);
+        
+        clearTimeout(timeoutId);
+        handleLoginSuccess('cheddaId', profile);
+
+      } catch (error) {
+        if (timeoutId) clearTimeout(timeoutId);
+        console.error('[Login] ❌ Login failed:', error);
+        handleLoginError(error);
+      }
+    };
+
+    /**
+     * Login with Google
+     */
+    window.chedda_login_google = function() {
+      try {
+        checkRateLimit();
+        console.log('[Bridge] Google login requested');
+        
+        if (!window.google?.accounts) {
+          handleLoginError({ message: 'Google Sign-In not available. Check GOOGLE_CLIENT_ID in config.' });
+          return;
+        }
+
+        // Set timeout
+        const timeoutId = setTimeout(() => {
+          console.log('[Google] Login timeout');
+          handleLoginError({ message: 'Google login timeout - popup may have been blocked or closed' });
+        }, LOGIN_TIMEOUT);
+
+        window._googleLoginTimeout = timeoutId;
+        
+        // Trigger Google prompt
+        google.accounts.id.prompt((notification) => {
+          clearTimeout(window._googleLoginTimeout);
+          
+          if (notification.isNotDisplayed()) {
+            console.log('[Google] Popup not displayed:', notification.getNotDisplayedReason());
+            handleLoginError({ 
+              message: 'Google Sign-In popup blocked. Please allow popups and try again.' 
+            });
+          } else if (notification.isSkippedMoment()) {
+            console.log('[Google] User closed the popup');
+            handleLoginError({ message: 'Google Sign-In cancelled' });
+          }
+        });
+        
+      } catch (error) {
+        if (window._googleLoginTimeout) {
+          clearTimeout(window._googleLoginTimeout);
+        }
+        handleLoginError(error);
+      }
+    };
+
+    /**
+     * Login with Apple
+     */
+    window.chedda_login_apple = async function() {
+      let timeoutId = null;
+      
+      try {
+        checkRateLimit();
+        console.log('[Bridge] Apple login requested');
+        
+        if (!window.AppleID?.auth) {
+          handleLoginError({ message: 'Apple Sign-In not available. Check APPLE_SERVICE_ID in config.' });
+          return;
+        }
+
+        // Set timeout
+        timeoutId = setTimeout(() => {
+          handleLoginError(new Error('Apple login timeout - popup may have been blocked or closed'));
+        }, LOGIN_TIMEOUT);
+        
+        window._appleLoginTimeout = timeoutId;
+
+        await AppleID.auth.signIn();
+
+      } catch (error) {
+        if (timeoutId) clearTimeout(timeoutId);
+        console.error('[Apple] Login error:', error);
+        
+        if (error.error !== 'popup_closed_by_user') {
+          handleLoginError({ 
+            message: error.message || 'Apple Sign-In failed. Please try again.' 
+          });
+        } else {
+          console.log('[Apple] User cancelled login');
+          handleLoginError({ message: 'Apple Sign-In cancelled' });
+        }
+      }
+    };
+
+    /**
+     * Logout current user
+     */
+    window.chedda_logout = async function() {
+      try {
+        if (!chedda || !chedda.isAuthenticated()) {
+          responseQueue.push({
+            action: 'logout',
+            success: false,
+            error: 'Not authenticated'
+          });
+          return;
+        }
+        
+        await chedda.logout();
+        isAuthenticated = false;
+        authType = '';
+        currentProfile = null;
+        cachedProfileData = null;
+        
+        localStorage.removeItem(PROFILE_STORAGE_KEY);
+        
+        responseQueue.push({
+          action: 'logout',
+          success: true
+        });
+      } catch (error) {
+        responseQueue.push({
+          action: 'logout',
+          success: false,
+          error: error.message
+        });
+      }
+    };
+
+    /**
+     * Refresh profile from server
+     */
+    window.chedda_refresh_profile = async function() {
+      if (isRefreshingProfile) {
+        console.log('[Bridge] Profile refresh already in progress');
+        return;
+      }
+      
+      try {
+        if (!chedda || !chedda.isAuthenticated()) {
+          responseQueue.push({
+            action: 'getProfile',
+            success: false,
+            error: 'Not authenticated'
+          });
+          return;
+        }
+        
+        isRefreshingProfile = true;
+        
+        // IMPORTANT: Invalidate cache to force fresh fetch from backend
+        cachedProfileData = null;
+        lastProfileFetch = 0;  // Also reset timestamp
+        console.log('[Bridge] Profile refresh requested (cache invalidated)');
+        
+        // Try to force refresh - some SDKs accept a boolean parameter
+        const profile = await chedda.getProfile(true);
+        console.log('[Bridge] Profile received from backend:', profile);
+        
+        if (profile) {
+          // Force refresh - don't use cached data
+          currentProfile = sanitizeProfileData(profile, true);
+          saveProfileToLocalStorage(currentProfile);
+          responseQueue.push({
+            action: 'getProfile',
+            success: true,
+            profile: currentProfile
+          });
+        } else {
+          responseQueue.push({
+            action: 'getProfile',
+            success: false,
+            error: 'No profile data'
+          });
+        }
+      } catch (error) {
+        responseQueue.push({
+          action: 'getProfile',
+          success: false,
+          error: error.message
+        });
+      } finally {
+        isRefreshingProfile = false;
+      }
+    };
+
+    /**
+     * Submit score to leaderboard
+     */
+    window.chedda_submit_score = async function(score, streak) {
+      if (isSubmittingScore) {
+        console.log('[Bridge] Score submission already in progress');
+        return;
+      }
+      
+      try {
+        if (!chedda || !chedda.isAuthenticated()) {
+          responseQueue.push({
+            action: 'submitScore',
+            success: false,
+            error: 'Not authenticated'
+          });
+          return;
+        }
+        
+        isSubmittingScore = true;
+        console.log('[Bridge] Score submission:', score, streak);
+        
+        const result = await chedda.submitScore(score, streak);
+        console.log('[Bridge] Score submission result:', result);
+        console.log('[Bridge] Result type:', typeof result);
+        console.log('[Bridge] Result.ok:', result?.ok);
+        console.log('[Bridge] Result.success:', result?.success);
+        console.log('[Bridge] Result.err:', result?.err);
+        
+        // Check if submission succeeded
+        // SDK may return: {ok: '...'}, {success: true, ...}, or truthy value
+        const success = result && (
+          result.ok !== undefined || 
+          result.success === true || 
+          (typeof result === 'object' && !result.err && !result.error)
+        );
+        
+        console.log('[Bridge] Success check result:', success);
+        
+        if (success) {
+          console.log('[Bridge] Score submitted successfully');
+          
+          // Queue success response IMMEDIATELY (don't wait for profile refresh)
+          responseQueue.push({
+            action: 'submitScore',
+            success: true,
+            score: score,
+            streak: streak,
+            profile: currentProfile  // Use current cached profile
+          });
+          
+          // Refresh profile in background (non-blocking)
+          cachedProfileData = null;
+          lastProfileFetch = 0;
+          chedda.getProfile().then(profile => {
+            if (profile) {
+              currentProfile = sanitizeProfileData(profile, true);  // Force fresh
+              saveProfileToLocalStorage(currentProfile);
+              console.log('[Bridge] Profile refreshed after score submission:', currentProfile);
+            }
+          }).catch(err => {
+            console.warn('[Bridge] Profile refresh failed (non-critical):', err);
+          });
+          
+        } else {
+          const errorMsg = result?.err || result?.error || 'Score submission failed';
+          console.error('[Bridge] Score submission failed:', errorMsg);
+          responseQueue.push({
+            action: 'submitScore',
+            success: false,
+            error: errorMsg
+          });
+        }
+      } catch (error) {
+        console.error('[Bridge] Score submission error:', error);
+        responseQueue.push({
+          action: 'submitScore',
+          success: false,
+          error: error.message
+        });
+      } finally {
+        isSubmittingScore = false;
+      }
+    };
+
+    /**
+     * Get leaderboard entries
+     */
+    window.chedda_get_leaderboard = async function(sortBy = 'score', limit = 100) {
+      try {
+        if (!chedda || !chedda.isAuthenticated()) {
+          responseQueue.push({
+            action: 'getLeaderboard',
+            success: false,
+            error: 'Not authenticated'
+          });
+          return;
+        }
+        
+        console.log('[Bridge] Leaderboard requested:', sortBy, limit);
+        const leaderboard = await chedda.getLeaderboard(sortBy, limit);
+        
+        if (leaderboard) {
+          responseQueue.push({
+            action: 'getLeaderboard',
+            success: true,
+            leaderboard: leaderboard
+          });
+        } else {
+          responseQueue.push({
+            action: 'getLeaderboard',
+            success: false,
+            error: 'No leaderboard data'
+          });
+        }
+      } catch (error) {
+        responseQueue.push({
+          action: 'getLeaderboard',
+          success: false,
+          error: error.message
+        });
+      }
+    };
+
+    /**
+     * Get current player's rank
+     */
+    window.chedda_get_player_rank = async function(sortBy = 'score') {
+      try {
+        if (!chedda || !chedda.isAuthenticated()) {
+          responseQueue.push({
+            action: 'getPlayerRank',
+            success: false,
+            error: 'Not authenticated'
+          });
+          return;
+        }
+        
+        console.log('[Bridge] Player rank requested:', sortBy);
+        const rank = await chedda.getPlayerRank(sortBy);
+        
+        if (rank) {
+          responseQueue.push({
+            action: 'getPlayerRank',
+            success: true,
+            rank: rank.rank,
+            score: rank.score,
+            streak: rank.streak,
+            totalPlayers: rank.totalPlayers
+          });
+        } else {
+          responseQueue.push({
+            action: 'getPlayerRank',
+            success: false,
+            error: 'No rank data found'
+          });
+        }
+      } catch (error) {
+        responseQueue.push({
+          action: 'getPlayerRank',
+          success: false,
+          error: error.message
+        });
+      }
+    };
+
+    /**
+     * Open nickname change prompt
+     */
+    window.chedda_change_nickname_prompt = async function() {
+      try {
+        if (!chedda || !chedda.isAuthenticated()) {
+          responseQueue.push({
+            action: 'changeNickname',
+            success: false,
+            error: 'Not authenticated'
+          });
+          return;
+        }
+        
+        const result = await chedda.changeNicknameWithPrompt();
+        
+        if (result.cancelled) {
+          responseQueue.push({
+            action: 'changeNickname',
+            success: false,
+            cancelled: true
+          });
+        } else if (result.success) {
+          // Invalidate cache
+          cachedProfileData = null;
+          lastProfileFetch = 0;
+          
+          const profile = await chedda.getProfile();
+          currentProfile = sanitizeProfileData(profile);
+          saveProfileToLocalStorage(currentProfile);
+          
+          responseQueue.push({
+            action: 'changeNickname',
+            success: true,
+            nickname: currentProfile.nickname,
+            profile: currentProfile
+          });
+        } else {
+          responseQueue.push({
+            action: 'changeNickname',
+            success: false,
+            error: result.error
+          });
+        }
+      } catch (error) {
+        responseQueue.push({
+          action: 'changeNickname',
+          success: false,
+          error: error.message
+        });
+      }
+    };
+    
+    // ============================================================
+    // INITIALIZATION
+    // ============================================================
+    window.addEventListener('load', async () => {
+      console.log('[Init] CheddaBoards Template v1.1.0');
+      console.log('[Init] Game ID:', CONFIG.GAME_ID);
+
+      // Validation
+      if (CONFIG.GAME_ID === 'YOUR-GAME-ID') {
+        console.error('[Init] ❌ ERROR: You must set your GAME_ID in the CONFIG section!');
+        console.error('[Init] Register your game at https://cheddaboards.com');
+        document.querySelector('.loading-text').textContent = 'Error: Game not configured';
+        return;
+      }
+
+      try {
+        // Wait for CheddaBoards SDK to load
+        let attempts = 0;
+        while (!window.CheddaBoards && attempts < 50) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+          attempts++;
+        }
+
+        if (!window.CheddaBoards) {
+          throw new Error('CheddaBoards SDK not loaded. Check your internet connection.');
+        }
+
+        // Initialize SDK (simple - just gameId!)
+        console.log('[Init] Initializing CheddaBoards...');
+        chedda = await window.CheddaBoards.init(CONFIG.CANISTER_ID, {
+          gameId: CONFIG.GAME_ID,
+          host: 'https://icp-api.io'
+        });
+
+        window.chedda = chedda;
+        console.log('[Init] ✅ CheddaBoards initialized');
+
+        // Check existing authentication
+        if (chedda.isAuthenticated()) {
+          console.log('[Init] User is authenticated');
+          isAuthenticated = true;
+          authType = chedda.getAuthType ? chedda.getAuthType() : 'unknown';
+
+          // Try to load cached profile instantly
+          const cachedProfile = loadProfileFromLocalStorage();
+          if (cachedProfile) {
+            currentProfile = cachedProfile;
+            console.log('[Init] ⚡ Instant profile from localStorage');
+            responseQueue.push({
+              action: 'init',
+              success: true,
+              authenticated: true,
+              authType,
+              profile: currentProfile
+            });
+          } else {
+            responseQueue.push({
+              action: 'init',
+              success: true,
+              authenticated: true,
+              authType,
+              profile: null
+            });
+          }
+
+          // Refresh profile in background
+          chedda.getProfile().then(profile => {
+            if (profile) {
+              currentProfile = sanitizeProfileData(profile);
+              saveProfileToLocalStorage(currentProfile);
+              responseQueue.push({
+                action: 'getProfile',
+                success: true,
+                profile: currentProfile
+              });
+            }
+          }).catch(console.error);
+        } else {
+          responseQueue.push({
+            action: 'init',
+            success: true,
+            authenticated: false
+          });
+        }
+
+        // Initialize Google Sign-In (if configured)
+        if (CONFIG.GOOGLE_CLIENT_ID && window.google?.accounts) {
+          google.accounts.id.initialize({
+            client_id: CONFIG.GOOGLE_CLIENT_ID,
+            callback: async (response) => {
+              if (window._googleLoginTimeout) {
+                clearTimeout(window._googleLoginTimeout);
+              }
+              
+              try {
+                const profile = await chedda.login.google(response.credential);
+                handleLoginSuccess('google', profile);
+              } catch (error) {
+                handleLoginError(error);
+              }
+            },
+            auto_select: false,
+            cancel_on_tap_outside: true
+          });
+          
+          console.log('[Init] ✅ Google Sign-In initialized');
+        } else if (CONFIG.GOOGLE_CLIENT_ID) {
+          console.warn('[Init] ⚠️ Google Sign-In library not loaded');
+        }
+
+        // Initialize Apple Sign-In (if configured)
+        if (CONFIG.APPLE_SERVICE_ID && CONFIG.APPLE_REDIRECT_URI && window.AppleID?.auth) {
+          AppleID.auth.init({
+            clientId: CONFIG.APPLE_SERVICE_ID,
+            scope: 'name email',
+            redirectURI: CONFIG.APPLE_REDIRECT_URI,
+            state: 'signin',
+            usePopup: true
+          });
+
+          document.addEventListener('AppleIDSignInOnSuccess', async (event) => {
+            if (window._appleLoginTimeout) {
+              clearTimeout(window._appleLoginTimeout);
+              window._appleLoginTimeout = null;
+            }
+
+            try {
+              const auth = event.detail?.authorization;
+              console.log('[Apple] Auth response received');
+
+              if (!auth?.id_token) throw new Error("Missing id_token");
+
+              const profile = await chedda.login.apple(auth);
+              handleLoginSuccess('apple', profile);
+            } catch (error) {
+              console.error('[Apple] Sign-In Error:', error);
+              handleLoginError(error);
+            }
+          });
+
+          document.addEventListener('AppleIDSignInOnFailure', (event) => {
+            if (window._appleLoginTimeout) {
+              clearTimeout(window._appleLoginTimeout);
+              window._appleLoginTimeout = null;
+            }
+
+            console.warn('[Apple] Sign-In Failed:', event);
+            handleLoginError({ message: 'Apple Sign-In failed or cancelled' });
+          });
+
+          console.log('[Init] ✅ Apple Sign-In initialized');
+        } else if (CONFIG.APPLE_SERVICE_ID) {
+          console.warn('[Init] ⚠️ Apple Sign-In library not loaded or missing REDIRECT_URI');
+        }
+
+        // Initialize Godot engine
+        const engine = new Engine({
+          canvasResizePolicy: 2,
+          executable: 'index',
+          fileSizes: { 'index.pck': 0, 'index.wasm': 0 },
+          focusCanvas: true,
+          canvas: document.getElementById('canvas')
+        });
+
+        await engine.startGame();
+        window.godot = engine;
+        godotReady = true;
+        console.log('[Init] ✅ Godot engine started');
+
+        // Hide preloader with fade
+        setTimeout(() => {
+          const preload = document.getElementById('preload');
+          preload?.classList.add('fade');
+          setTimeout(() => preload?.remove(), 500);
+        }, 500);
+
+        console.log('[Init] ✅ All systems ready!');
+        
+      } catch (error) {
+        console.error('[Init] ❌ Initialization failed:', error);
+        document.querySelector('.loading-text').textContent = 'Error: ' + error.message;
+      }
+    });
+
+    // ============================================================
+    // DEBUG HELPER
+    // Call from browser console: debugChedda()
+    // ============================================================
+    window.debugChedda = () => {
+      console.log('═══════════════════════════════════════');
+      console.log('🧀 CheddaBoards Debug Info');
+      console.log('═══════════════════════════════════════');
+      console.log('Template Version: 1.1.0');
+      console.log('Game ID:', CONFIG.GAME_ID);
+      console.log('Canister:', CONFIG.CANISTER_ID);
+      console.log('───────────────────────────────────────');
+      console.log('SDK Instance:', chedda ? '✅ Loaded' : '❌ Not loaded');
+      console.log('Authenticated:', isAuthenticated ? '✅ Yes' : '❌ No');
+      console.log('Auth Type:', authType || 'None');
+      console.log('───────────────────────────────────────');
+      console.log('Profile:', currentProfile);
+      console.log('Response Queue:', responseQueue.length, 'items');
+      console.log('Godot Ready:', godotReady ? '✅ Yes' : '❌ No');
+      console.log('───────────────────────────────────────');
+      console.log('Google:', CONFIG.GOOGLE_CLIENT_ID ? '✅ Configured' : '⚪ Disabled');
+      console.log('Apple:', CONFIG.APPLE_SERVICE_ID ? '✅ Configured' : '⚪ Disabled');
+      console.log('═══════════════════════════════════════');
+      return { chedda, currentProfile, responseQueue, CONFIG };
+    };
+  </script>
+</body>
+</html>
