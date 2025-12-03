@@ -13,7 +13,6 @@ A complete, production-ready template for integrating [CheddaBoards](https://che
 - ✅ Apple Sign-In  
 - ✅ Internet Identity (passwordless)
 - ✅ Session persistence across page reloads
-- ✅ Automatic profile syncing
 
 ### Leaderboards
 - ✅ Global leaderboard with rankings
