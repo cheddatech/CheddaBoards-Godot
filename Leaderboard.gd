@@ -1,6 +1,6 @@
 # Leaderboard.gd v1.1.0
 # Leaderboard display with sorting options
-# https://github.com/cheddatech/CheddaBoards-SDK
+# https://github.com/cheddatech/CheddaBoards-Godot
 #
 # ============================================================
 # SETUP
