@@ -1,6 +1,6 @@
 # GameOver.gd v1.1.0
 # Game over screen with score submission and achievements
-# https://github.com/cheddatech/CheddaBoards-SDK
+# https://github.com/cheddatech/CheddaBoards-Godot
 #
 # ============================================================
 # USAGE
