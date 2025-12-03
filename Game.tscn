@@ -1,7 +1,7 @@
 [gd_scene load_steps=4 format=3 uid="uid://buth8rfhfcdo6"]
 
 [ext_resource type="Script" uid="uid://b48xeoo0hrjac" path="res://Game.gd" id="1_wbfu4"]
-[ext_resource type="Texture2D" uid="uid://cwkwk5q2j7so" path="res://cheddaboards_logo_256x256_nobg.png" id="2_u44n3"]
+[ext_resource type="Texture2D" uid="uid://cwkwk5q2j7so" path="res://addons/cheddaboards/icon.png" id="2_u44n3"]
 [ext_resource type="PackedScene" uid="uid://dt1mgh2gutj6k" path="res://AchievementNotification.tscn" id="2_xkndl"]
 
 [node name="Game" type="Control"]
