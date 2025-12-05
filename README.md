@@ -32,7 +32,7 @@ A complete, production-ready template for integrating [CheddaBoards](https://che
 - ✅ High score tracking
 - ✅ Best streak tracking
 - ✅ Games played count (playCount)
-- ✅ Cross-game player profiles (social only)
+- ✅ Cross-game player profiles
 
 ### Technical
 - ✅ Godot 4.x compatible
@@ -114,8 +114,6 @@ python3 -m http.server 8000
 
 # Open: http://localhost:8000
 ```
-
-**Common error:** "Engine is not defined" = You exported with wrong filename. Must be `index.html`.
 
 ---
 
@@ -483,7 +481,7 @@ Run the Setup Wizard to verify all of these automatically!
 - [ ] CheddaBoards in Autoload (exact name)
 - [ ] Achievements in Autoload (exact name)
 - [ ] Custom HTML Shell set to `res://template.html`
-- [ ] **Export filename is `index.html`** ⚠️
+- [ ] **Export filename is `index.html`**
 - [ ] Tested locally with `python3 -m http.server 8000`
 - [ ] All login methods working
 - [ ] Score submission working
