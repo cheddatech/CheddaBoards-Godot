@@ -87,19 +87,20 @@
 
   <script type="module">
     // ============================================================
-    // CheddaBoards Godot 4 Template v1.1.0
-    // https://github.com/cheddatech/CheddaBoards-Godot
+    // CheddaBoards Godot 4 Template v1.2.0
+    // WITH DEVICE ID / ANONYMOUS PLAY SUPPORT
+    // https://github.com/cheddatech/CheddaBoards-SDK
     // https://cheddaboards.com
     // ============================================================
 
     // ============================================================
-    // ⚠️ CONFIGURATION - CUSTOMIZE THESE VALUES ⚠️
+    // CONFIGURATION - CUSTOMIZE THESE VALUES
     // ============================================================
     const CONFIG = {
       // ─────────────────────────────────────────────────────────
       // REQUIRED: Your Game ID from https://cheddaboards.com
       // ─────────────────────────────────────────────────────────
-      GAME_ID: 'catch-the-cheese',  // ⬅️ CHANGE THIS
+      GAME_ID: 'best-game',  // CHANGE THIS
       
       // ─────────────────────────────────────────────────────────
       // CheddaBoards canister (same for all games)
@@ -111,15 +112,20 @@
       // Get Client ID from: https://console.cloud.google.com/
       // Leave empty '' to disable Google login
       // ─────────────────────────────────────────────────────────
-      GOOGLE_CLIENT_ID: '',  // ⬅️ Your Google OAuth Client ID
+      GOOGLE_CLIENT_ID: '',  // Your Google OAuth Client ID
       
       // ─────────────────────────────────────────────────────────
       // OPTIONAL: Apple Sign-In
       // Get Service ID from: https://developer.apple.com/
       // Leave empty '' to disable Apple login
       // ─────────────────────────────────────────────────────────
-      APPLE_SERVICE_ID: '',      // ⬅️ Your Apple Service ID
-      APPLE_REDIRECT_URI: ''     // ⬅️ https://yourdomain.com/auth/apple
+      APPLE_SERVICE_ID: '',      // Your Apple Service ID
+      APPLE_REDIRECT_URI: '',    // https://yourdomain.com/auth/apple
+      
+      // ─────────────────────────────────────────────────────────
+      // ANONYMOUS PLAY: Allow scores without login
+      // ─────────────────────────────────────────────────────────
+      ALLOW_ANONYMOUS_PLAY: true,  // Set to false to require login
     };
 
     // ============================================================
@@ -131,6 +137,10 @@
     let currentProfile = null;
     let isAuthenticated = false;
     let authType = '';
+    
+    // Device ID for anonymous play
+    let deviceId = null;
+    const DEVICE_ID_KEY = `cheddaboards_device_${CONFIG.GAME_ID}`;
     
     // Rate limiting
     let loginAttempts = 0;
@@ -150,6 +160,42 @@
     // Submission guards
     let isRefreshingProfile = false;
     let isSubmittingScore = false;
+
+    // ============================================================
+    // DEVICE ID MANAGEMENT
+    // ============================================================
+    
+    function generateDeviceId() {
+      // Generate a unique device ID using crypto API
+      const array = new Uint8Array(16);
+      crypto.getRandomValues(array);
+      return 'dev_' + Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+    }
+    
+    function getOrCreateDeviceId() {
+      if (deviceId) return deviceId;
+      
+      try {
+        // Try to load existing device ID
+        const stored = localStorage.getItem(DEVICE_ID_KEY);
+        if (stored) {
+          deviceId = stored;
+          console.log('[Device] Loaded device ID:', deviceId.substring(0, 12) + '...');
+          return deviceId;
+        }
+        
+        // Generate new device ID
+        deviceId = generateDeviceId();
+        localStorage.setItem(DEVICE_ID_KEY, deviceId);
+        console.log('[Device] Generated new device ID:', deviceId.substring(0, 12) + '...');
+        return deviceId;
+      } catch (e) {
+        // Fallback if localStorage unavailable
+        deviceId = generateDeviceId();
+        console.warn('[Device] localStorage unavailable, using temporary ID');
+        return deviceId;
+      }
+    }
 
     // ============================================================
     // HELPER FUNCTIONS
@@ -173,7 +219,7 @@
           const parsed = JSON.parse(data);
           // Cache valid for 1 hour
           if (Date.now() - parsed.timestamp < 3600000) {
-            console.log('[Storage] ⚡ Instant profile from localStorage');
+            console.log('[Storage] Instant profile from localStorage');
             return parsed.profile;
           }
         }
@@ -254,6 +300,7 @@
           actionName = 'loginApple';
           break;
         case 'anonymous':
+        case 'device':
           actionName = 'loginAnonymous';
           break;
       }
@@ -296,10 +343,25 @@
     };
     
     /**
-     * Check if user is authenticated
+     * Check if user is authenticated (includes anonymous/device auth)
      */
     window.chedda_is_auth = function() {
-      return chedda && chedda.isAuthenticated();
+      // Check SDK auth first
+      if (chedda && chedda.isAuthenticated()) {
+        return true;
+      }
+      // Also consider device ID as "authenticated" for anonymous play
+      if (CONFIG.ALLOW_ANONYMOUS_PLAY && deviceId) {
+        return true;
+      }
+      return false;
+    };
+    
+    /**
+     * Get device ID for anonymous play
+     */
+    window.chedda_get_device_id = function() {
+      return getOrCreateDeviceId();
     };
     
     /**
@@ -313,8 +375,61 @@
     };
 
     /**
+     * Login anonymously with device ID
+     */
+    window.chedda_login_anonymous = async function() {
+      try {
+        console.log('[Bridge] Anonymous login requested');
+        
+        const devId = getOrCreateDeviceId();
+        
+        // Check if SDK supports anonymous login
+        if (chedda && chedda.login && chedda.login.anonymous) {
+          console.log('[Login] Using SDK anonymous login...');
+          const profile = await chedda.login.anonymous(devId);
+          handleLoginSuccess('anonymous', profile);
+        } else {
+          // Fallback: Create local anonymous profile
+          console.log('[Login] Creating local anonymous profile...');
+          isAuthenticated = true;
+          authType = 'device';
+          
+          // Load or create anonymous profile
+          let anonProfile = loadProfileFromLocalStorage();
+          if (!anonProfile) {
+            anonProfile = {
+              nickname: 'Player_' + devId.substring(4, 10),
+              score: 0,
+              streak: 0,
+              playCount: 0,
+              achievements: [],
+              authType: 'device',
+              deviceId: devId
+            };
+          }
+          anonProfile.deviceId = devId;
+          
+          currentProfile = sanitizeProfileData(anonProfile, true);
+          saveProfileToLocalStorage(currentProfile);
+          
+          responseQueue.push({
+            action: 'loginAnonymous',
+            success: true,
+            profile: currentProfile,
+            authType: 'device',
+            deviceId: devId
+          });
+          
+          console.log('[Login] Anonymous login complete:', currentProfile.nickname);
+        }
+      } catch (error) {
+        console.error('[Login] Anonymous login error:', error);
+        handleLoginError(error);
+      }
+    };
+
+    /**
      * Login with Internet Identity (CheddaID)
-     * This is the primary passwordless login method
      */
     window.chedda_login_ii = async function(nickname) {
       let timeoutId = null;
@@ -337,7 +452,7 @@
         // Check for cached profile
         const cached = loadProfileFromLocalStorage();
         if (cached && chedda.isAuthenticated()) {
-          console.log('[Login] ⚡ Using cached profile');
+          console.log('[Login] Using cached profile');
           clearTimeout(timeoutId);
           handleLoginSuccess('cheddaId', cached);
           
@@ -360,14 +475,14 @@
         // New login
         console.log('[Login] Initiating Internet Identity login...');
         const profile = await chedda.login.chedda(nickname);
-        console.log('[Login] ✅ Login complete:', profile);
+        console.log('[Login] Login complete:', profile);
         
         clearTimeout(timeoutId);
         handleLoginSuccess('cheddaId', profile);
 
       } catch (error) {
         if (timeoutId) clearTimeout(timeoutId);
-        console.error('[Login] ❌ Login failed:', error);
+        console.error('[Login] Login failed:', error);
         handleLoginError(error);
       }
     };
@@ -460,22 +575,17 @@
      */
     window.chedda_logout = async function() {
       try {
-        if (!chedda || !chedda.isAuthenticated()) {
-          responseQueue.push({
-            action: 'logout',
-            success: false,
-            error: 'Not authenticated'
-          });
-          return;
+        if (chedda && chedda.isAuthenticated()) {
+          await chedda.logout();
         }
         
-        await chedda.logout();
         isAuthenticated = false;
         authType = '';
         currentProfile = null;
         cachedProfileData = null;
         
         localStorage.removeItem(PROFILE_STORAGE_KEY);
+        // Note: We keep deviceId for future anonymous play
         
         responseQueue.push({
           action: 'logout',
@@ -500,6 +610,18 @@
       }
       
       try {
+        // For anonymous users, just return cached profile
+        if (authType === 'device' || authType === 'anonymous') {
+          if (currentProfile) {
+            responseQueue.push({
+              action: 'getProfile',
+              success: true,
+              profile: currentProfile
+            });
+          }
+          return;
+        }
+        
         if (!chedda || !chedda.isAuthenticated()) {
           responseQueue.push({
             action: 'getProfile',
@@ -511,17 +633,15 @@
         
         isRefreshingProfile = true;
         
-        // IMPORTANT: Invalidate cache to force fresh fetch from backend
+        // Invalidate cache
         cachedProfileData = null;
-        lastProfileFetch = 0;  // Also reset timestamp
-        console.log('[Bridge] Profile refresh requested (cache invalidated)');
+        lastProfileFetch = 0;
+        console.log('[Bridge] Profile refresh requested');
         
-        // Try to force refresh - some SDKs accept a boolean parameter
         const profile = await chedda.getProfile(true);
         console.log('[Bridge] Profile received from backend:', profile);
         
         if (profile) {
-          // Force refresh - don't use cached data
           currentProfile = sanitizeProfileData(profile, true);
           saveProfileToLocalStorage(currentProfile);
           responseQueue.push({
@@ -549,6 +669,7 @@
 
     /**
      * Submit score to leaderboard
+     * Supports both authenticated users and anonymous (device ID) users
      */
     window.chedda_submit_score = async function(score, streak) {
       if (isSubmittingScore) {
@@ -557,60 +678,100 @@
       }
       
       try {
-        if (!chedda || !chedda.isAuthenticated()) {
+        isSubmittingScore = true;
+        console.log('[Bridge] Score submission:', score, streak);
+        console.log('[Bridge] Auth type:', authType, 'isAuthenticated:', chedda?.isAuthenticated());
+        
+        let result = null;
+        
+        // Check if user is authenticated with SDK
+        if (chedda && chedda.isAuthenticated()) {
+          console.log('[Bridge] Submitting via authenticated session...');
+          result = await chedda.submitScore(score, streak);
+        }
+        // Check for anonymous/device play
+        else if (CONFIG.ALLOW_ANONYMOUS_PLAY) {
+          console.log('[Bridge] Submitting via device ID...');
+          
+          // Auto-login anonymously if not already
+          if (!deviceId) {
+            getOrCreateDeviceId();
+          }
+          
+          // Try SDK anonymous submit if available
+          if (chedda && chedda.submitScoreAnonymous) {
+            result = await chedda.submitScoreAnonymous(deviceId, score, streak);
+          } 
+          // Try regular submit with device ID as player identifier
+          else if (chedda && chedda.submitScore) {
+            // Some SDKs accept device ID submissions
+            try {
+              result = await chedda.submitScore(score, streak, { deviceId: deviceId });
+            } catch (e) {
+              console.log('[Bridge] SDK submit failed, using local storage');
+            }
+          }
+          
+          // Fallback: Store locally for anonymous users
+          if (!result || result.err) {
+            console.log('[Bridge] Using local score storage for anonymous user');
+            
+            // Update local profile
+            if (currentProfile) {
+              if (score > (currentProfile.score || 0)) {
+                currentProfile.score = score;
+              }
+              if (streak > (currentProfile.streak || 0)) {
+                currentProfile.streak = streak;
+              }
+              currentProfile.playCount = (currentProfile.playCount || 0) + 1;
+              saveProfileToLocalStorage(currentProfile);
+            }
+            
+            result = { ok: true, local: true };
+          }
+        } else {
           responseQueue.push({
             action: 'submitScore',
             success: false,
-            error: 'Not authenticated'
+            error: 'Not authenticated - login required'
           });
           return;
         }
         
-        isSubmittingScore = true;
-        console.log('[Bridge] Score submission:', score, streak);
-        
-        const result = await chedda.submitScore(score, streak);
         console.log('[Bridge] Score submission result:', result);
-        console.log('[Bridge] Result type:', typeof result);
-        console.log('[Bridge] Result.ok:', result?.ok);
-        console.log('[Bridge] Result.success:', result?.success);
-        console.log('[Bridge] Result.err:', result?.err);
         
         // Check if submission succeeded
-        // SDK may return: {ok: '...'}, {success: true, ...}, or truthy value
         const success = result && (
           result.ok !== undefined || 
           result.success === true || 
+          result.local === true ||
           (typeof result === 'object' && !result.err && !result.error)
         );
-        
-        console.log('[Bridge] Success check result:', success);
         
         if (success) {
           console.log('[Bridge] Score submitted successfully');
           
-          // Queue success response IMMEDIATELY (don't wait for profile refresh)
           responseQueue.push({
             action: 'submitScore',
             success: true,
             score: score,
             streak: streak,
-            profile: currentProfile  // Use current cached profile
+            profile: currentProfile,
+            local: result.local || false
           });
           
-          // Refresh profile in background (non-blocking)
-          cachedProfileData = null;
-          lastProfileFetch = 0;
-          chedda.getProfile().then(profile => {
-            if (profile) {
-              currentProfile = sanitizeProfileData(profile, true);  // Force fresh
-              saveProfileToLocalStorage(currentProfile);
-              console.log('[Bridge] Profile refreshed after score submission:', currentProfile);
-            }
-          }).catch(err => {
-            console.warn('[Bridge] Profile refresh failed (non-critical):', err);
-          });
-          
+          // Refresh profile in background if authenticated
+          if (chedda && chedda.isAuthenticated()) {
+            cachedProfileData = null;
+            lastProfileFetch = 0;
+            chedda.getProfile().then(profile => {
+              if (profile) {
+                currentProfile = sanitizeProfileData(profile, true);
+                saveProfileToLocalStorage(currentProfile);
+              }
+            }).catch(console.warn);
+          }
         } else {
           const errorMsg = result?.err || result?.error || 'Score submission failed';
           console.error('[Bridge] Score submission failed:', errorMsg);
@@ -633,36 +794,32 @@
     };
 
     /**
-     * Get leaderboard entries
+     * Get leaderboard entries (no auth required for viewing)
      */
     window.chedda_get_leaderboard = async function(sortBy = 'score', limit = 100) {
       try {
-        if (!chedda || !chedda.isAuthenticated()) {
+        console.log('[Bridge] Leaderboard requested:', sortBy, limit);
+        
+        if (!chedda) {
           responseQueue.push({
             action: 'getLeaderboard',
             success: false,
-            error: 'Not authenticated'
+            error: 'SDK not initialized'
           });
           return;
         }
         
-        console.log('[Bridge] Leaderboard requested:', sortBy, limit);
+        // Leaderboard viewing doesn't require auth
         const leaderboard = await chedda.getLeaderboard(sortBy, limit);
+        console.log('[Bridge] Leaderboard received:', leaderboard?.length || 0, 'entries');
         
-        if (leaderboard) {
-          responseQueue.push({
-            action: 'getLeaderboard',
-            success: true,
-            leaderboard: leaderboard
-          });
-        } else {
-          responseQueue.push({
-            action: 'getLeaderboard',
-            success: false,
-            error: 'No leaderboard data'
-          });
-        }
+        responseQueue.push({
+          action: 'getLeaderboard',
+          success: true,
+          entries: leaderboard || []
+        });
       } catch (error) {
+        console.error('[Bridge] Leaderboard error:', error);
         responseQueue.push({
           action: 'getLeaderboard',
           success: false,
@@ -672,11 +829,12 @@
     };
 
     /**
-     * Get current player's rank
+     * Get player rank on leaderboard
      */
     window.chedda_get_player_rank = async function(sortBy = 'score') {
       try {
         if (!chedda || !chedda.isAuthenticated()) {
+          // For anonymous users, we can't get rank from backend
           responseQueue.push({
             action: 'getPlayerRank',
             success: false,
@@ -688,23 +846,16 @@
         console.log('[Bridge] Player rank requested:', sortBy);
         const rank = await chedda.getPlayerRank(sortBy);
         
-        if (rank) {
-          responseQueue.push({
-            action: 'getPlayerRank',
-            success: true,
-            rank: rank.rank,
-            score: rank.score,
-            streak: rank.streak,
-            totalPlayers: rank.totalPlayers
-          });
-        } else {
-          responseQueue.push({
-            action: 'getPlayerRank',
-            success: false,
-            error: 'No rank data found'
-          });
-        }
+        responseQueue.push({
+          action: 'getPlayerRank',
+          success: true,
+          rank: rank.rank || 0,
+          score: rank.score || 0,
+          streak: rank.streak || 0,
+          totalPlayers: rank.totalPlayers || 0
+        });
       } catch (error) {
+        console.error('[Bridge] Rank error:', error);
         responseQueue.push({
           action: 'getPlayerRank',
           success: false,
@@ -714,10 +865,77 @@
     };
 
     /**
-     * Open nickname change prompt
+     * Unlock an achievement
+     */
+    window.chedda_unlock_achievement = async function(achievementId, name, description) {
+      try {
+        // For anonymous users, store locally
+        if (authType === 'device' || authType === 'anonymous') {
+          console.log('[Bridge] Storing achievement locally:', achievementId);
+          if (currentProfile) {
+            if (!currentProfile.achievements) currentProfile.achievements = [];
+            if (!currentProfile.achievements.find(a => a.id === achievementId)) {
+              currentProfile.achievements.push({ id: achievementId, name, description });
+              saveProfileToLocalStorage(currentProfile);
+            }
+          }
+          responseQueue.push({
+            action: 'unlockAchievement',
+            success: true,
+            achievementId: achievementId,
+            local: true
+          });
+          return;
+        }
+        
+        if (!chedda || !chedda.isAuthenticated()) {
+          responseQueue.push({
+            action: 'unlockAchievement',
+            success: false,
+            error: 'Not authenticated'
+          });
+          return;
+        }
+        
+        console.log('[Bridge] Unlocking achievement:', achievementId);
+        await chedda.unlockAchievement(achievementId, name, description);
+        
+        responseQueue.push({
+          action: 'unlockAchievement',
+          success: true,
+          achievementId: achievementId
+        });
+      } catch (error) {
+        responseQueue.push({
+          action: 'unlockAchievement',
+          success: false,
+          error: error.message
+        });
+      }
+    };
+
+    /**
+     * Change nickname (prompt)
      */
     window.chedda_change_nickname_prompt = async function() {
       try {
+        // For anonymous users, use simple prompt
+        if (authType === 'device' || authType === 'anonymous') {
+          const newNickname = prompt('Enter your nickname:', currentProfile?.nickname || 'Player');
+          if (newNickname && newNickname.trim()) {
+            if (currentProfile) {
+              currentProfile.nickname = newNickname.trim();
+              saveProfileToLocalStorage(currentProfile);
+            }
+            responseQueue.push({
+              action: 'changeNickname',
+              success: true,
+              nickname: newNickname.trim()
+            });
+          }
+          return;
+        }
+        
         if (!chedda || !chedda.isAuthenticated()) {
           responseQueue.push({
             action: 'changeNickname',
@@ -727,34 +945,19 @@
           return;
         }
         
-        const result = await chedda.changeNicknameWithPrompt();
-        
-        if (result.cancelled) {
-          responseQueue.push({
-            action: 'changeNickname',
-            success: false,
-            cancelled: true
-          });
-        } else if (result.success) {
-          // Invalidate cache
-          cachedProfileData = null;
-          lastProfileFetch = 0;
+        const newNickname = prompt('Enter your new nickname:');
+        if (newNickname && newNickname.trim()) {
+          await chedda.changeNickname(newNickname.trim());
           
-          const profile = await chedda.getProfile();
-          currentProfile = sanitizeProfileData(profile);
-          saveProfileToLocalStorage(currentProfile);
+          if (currentProfile) {
+            currentProfile.nickname = newNickname.trim();
+            saveProfileToLocalStorage(currentProfile);
+          }
           
           responseQueue.push({
             action: 'changeNickname',
             success: true,
-            nickname: currentProfile.nickname,
-            profile: currentProfile
-          });
-        } else {
-          responseQueue.push({
-            action: 'changeNickname',
-            success: false,
-            error: result.error
+            nickname: newNickname.trim()
           });
         }
       } catch (error) {
@@ -770,13 +973,16 @@
     // INITIALIZATION
     // ============================================================
     window.addEventListener('load', async () => {
-      console.log('[Init] CheddaBoards Template v1.1.0');
+      console.log('[Init] CheddaBoards Template v1.2.0 (with Device ID support)');
       console.log('[Init] Game ID:', CONFIG.GAME_ID);
+      console.log('[Init] Anonymous Play:', CONFIG.ALLOW_ANONYMOUS_PLAY ? 'Enabled' : 'Disabled');
+
+      // Initialize device ID early
+      getOrCreateDeviceId();
 
       // Validation
       if (CONFIG.GAME_ID === 'YOUR-GAME-ID') {
-        console.error('[Init] ❌ ERROR: You must set your GAME_ID in the CONFIG section!');
-        console.error('[Init] Register your game at https://cheddaboards.com');
+        console.error('[Init] ERROR: You must set your GAME_ID in the CONFIG section!');
         document.querySelector('.loading-text').textContent = 'Error: Game not configured';
         return;
       }
@@ -793,7 +999,7 @@
           throw new Error('CheddaBoards SDK not loaded. Check your internet connection.');
         }
 
-        // Initialize SDK (simple - just gameId!)
+        // Initialize SDK
         console.log('[Init] Initializing CheddaBoards...');
         chedda = await window.CheddaBoards.init(CONFIG.CANISTER_ID, {
           gameId: CONFIG.GAME_ID,
@@ -801,7 +1007,7 @@
         });
 
         window.chedda = chedda;
-        console.log('[Init] ✅ CheddaBoards initialized');
+        console.log('[Init] CheddaBoards initialized');
 
         // Check existing authentication
         if (chedda.isAuthenticated()) {
@@ -813,7 +1019,6 @@
           const cachedProfile = loadProfileFromLocalStorage();
           if (cachedProfile) {
             currentProfile = cachedProfile;
-            console.log('[Init] ⚡ Instant profile from localStorage');
             responseQueue.push({
               action: 'init',
               success: true,
@@ -843,6 +1048,22 @@
               });
             }
           }).catch(console.error);
+        } else if (CONFIG.ALLOW_ANONYMOUS_PLAY) {
+          // Auto-setup anonymous profile for anonymous play
+          console.log('[Init] Setting up anonymous play with device ID');
+          const cachedProfile = loadProfileFromLocalStorage();
+          if (cachedProfile && cachedProfile.deviceId === deviceId) {
+            currentProfile = cachedProfile;
+            authType = 'device';
+          }
+          
+          responseQueue.push({
+            action: 'init',
+            success: true,
+            authenticated: false,
+            anonymousReady: true,
+            deviceId: deviceId
+          });
         } else {
           responseQueue.push({
             action: 'init',
@@ -871,9 +1092,7 @@
             cancel_on_tap_outside: true
           });
           
-          console.log('[Init] ✅ Google Sign-In initialized');
-        } else if (CONFIG.GOOGLE_CLIENT_ID) {
-          console.warn('[Init] ⚠️ Google Sign-In library not loaded');
+          console.log('[Init] Google Sign-In initialized');
         }
 
         // Initialize Apple Sign-In (if configured)
@@ -889,19 +1108,14 @@
           document.addEventListener('AppleIDSignInOnSuccess', async (event) => {
             if (window._appleLoginTimeout) {
               clearTimeout(window._appleLoginTimeout);
-              window._appleLoginTimeout = null;
             }
 
             try {
               const auth = event.detail?.authorization;
-              console.log('[Apple] Auth response received');
-
               if (!auth?.id_token) throw new Error("Missing id_token");
-
               const profile = await chedda.login.apple(auth);
               handleLoginSuccess('apple', profile);
             } catch (error) {
-              console.error('[Apple] Sign-In Error:', error);
               handleLoginError(error);
             }
           });
@@ -909,16 +1123,11 @@
           document.addEventListener('AppleIDSignInOnFailure', (event) => {
             if (window._appleLoginTimeout) {
               clearTimeout(window._appleLoginTimeout);
-              window._appleLoginTimeout = null;
             }
-
-            console.warn('[Apple] Sign-In Failed:', event);
             handleLoginError({ message: 'Apple Sign-In failed or cancelled' });
           });
 
-          console.log('[Init] ✅ Apple Sign-In initialized');
-        } else if (CONFIG.APPLE_SERVICE_ID) {
-          console.warn('[Init] ⚠️ Apple Sign-In library not loaded or missing REDIRECT_URI');
+          console.log('[Init] Apple Sign-In initialized');
         }
 
         // Initialize Godot engine
@@ -933,19 +1142,19 @@
         await engine.startGame();
         window.godot = engine;
         godotReady = true;
-        console.log('[Init] ✅ Godot engine started');
+        console.log('[Init] Godot engine started');
 
-        // Hide preloader with fade
+        // Hide preloader
         setTimeout(() => {
           const preload = document.getElementById('preload');
           preload?.classList.add('fade');
           setTimeout(() => preload?.remove(), 500);
         }, 500);
 
-        console.log('[Init] ✅ All systems ready!');
+        console.log('[Init] All systems ready!');
         
       } catch (error) {
-        console.error('[Init] ❌ Initialization failed:', error);
+        console.error('[Init] Initialization failed:', error);
         document.querySelector('.loading-text').textContent = 'Error: ' + error.message;
       }
     });
@@ -956,26 +1165,26 @@
     // ============================================================
     window.debugChedda = () => {
       console.log('═══════════════════════════════════════');
-      console.log('🧀 CheddaBoards Debug Info');
+      console.log('CheddaBoards Debug Info v1.2.0');
       console.log('═══════════════════════════════════════');
-      console.log('Template Version: 1.1.0');
       console.log('Game ID:', CONFIG.GAME_ID);
-      console.log('Canister:', CONFIG.CANISTER_ID);
+      console.log('Anonymous Play:', CONFIG.ALLOW_ANONYMOUS_PLAY);
       console.log('───────────────────────────────────────');
-      console.log('SDK Instance:', chedda ? '✅ Loaded' : '❌ Not loaded');
-      console.log('Authenticated:', isAuthenticated ? '✅ Yes' : '❌ No');
+      console.log('SDK Instance:', chedda ? 'Loaded' : 'Not loaded');
+      console.log('SDK Authenticated:', chedda?.isAuthenticated() || false);
+      console.log('Local Authenticated:', isAuthenticated);
       console.log('Auth Type:', authType || 'None');
+      console.log('Device ID:', deviceId ? deviceId.substring(0, 12) + '...' : 'Not set');
       console.log('───────────────────────────────────────');
       console.log('Profile:', currentProfile);
       console.log('Response Queue:', responseQueue.length, 'items');
-      console.log('Godot Ready:', godotReady ? '✅ Yes' : '❌ No');
+      console.log('Godot Ready:', godotReady);
       console.log('───────────────────────────────────────');
-      console.log('Google:', CONFIG.GOOGLE_CLIENT_ID ? '✅ Configured' : '⚪ Disabled');
-      console.log('Apple:', CONFIG.APPLE_SERVICE_ID ? '✅ Configured' : '⚪ Disabled');
+      console.log('Google:', CONFIG.GOOGLE_CLIENT_ID ? 'Configured' : 'Disabled');
+      console.log('Apple:', CONFIG.APPLE_SERVICE_ID ? 'Configured' : 'Disabled');
       console.log('═══════════════════════════════════════');
-      return { chedda, currentProfile, responseQueue, CONFIG };
+      return { chedda, currentProfile, responseQueue, deviceId, CONFIG };
     };
   </script>
 </body>
-
 </html>
