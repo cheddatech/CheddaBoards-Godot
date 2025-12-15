@@ -7,16 +7,85 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.0] - 2025-12-15
+
+### Anonymous Play & Device ID Support
+
+Play and save scores without requiring login! Perfect for casual players who want to jump straight into the game.
+
+### Added
+
+#### Anonymous Play System
+- **Device ID authentication**: Unique device identifier generated and stored in localStorage
+- **Play without login**: Users can click "PLAY NOW" and scores still save
+- **Auto-anonymous login**: MainMenu automatically creates anonymous session on direct play
+- **Local score storage**: Fallback for anonymous users if backend unavailable
+- **Seamless upgrade path**: Anonymous users can later login to sync to real account
+
+#### New CheddaBoards.gd Functions
+- `login_anonymous()` - Create anonymous session with device ID
+- `is_anonymous()` - Check if using device/anonymous authentication
+- `get_device_id()` - Get the unique device identifier
+
+#### Template Configuration
+- `CONFIG.ALLOW_ANONYMOUS_PLAY` - Enable/disable anonymous play (default: true)
+- `chedda_login_anonymous()` - JavaScript bridge for anonymous login
+- `chedda_get_device_id()` - Get device ID from JavaScript
+
+### Changed
+
+#### Authentication Flow
+- `is_authenticated()` now returns `true` for anonymous/device users
+- `chedda_is_auth()` checks both SDK auth and device ID
+- Score submission works for both authenticated and anonymous users
+- Leaderboard viewing no longer requires authentication
+
+#### MainMenu.gd
+- "PLAY NOW" button now auto-calls `login_anonymous()` before starting game
+- Anonymous users get temporary nickname like "Player_abc123"
+
+#### Game.gd
+- Simplified game over logic - always tries to submit if SDK ready
+- Handles both authenticated and anonymous score submission
+- Better logging for auth type during submission
+
+#### template.html
+- Added device ID generation using crypto API
+- Anonymous profile creation and caching
+- Score submission fallback for anonymous users
+- Achievement storage for anonymous users (local only)
+
+### Fixed
+
+- Double authentication check blocking anonymous score submission
+- Score submission failing silently when not logged in
+- Leaderboard requiring auth just to view
+
+### Technical Details
+
+**Device ID Format**: `dev_` + 32 hex characters (128-bit random)
+**Storage Key**: `cheddaboards_device_{GAME_ID}`
+**Anonymous Profile**: Stored in localStorage, persists across sessions
+
+### Important Notes
+
+- Anonymous scores are stored locally as fallback
+- To sync anonymous progress to account: login after playing
+- Device ID persists even after logout (for future anonymous play)
+- Anonymous users appear on leaderboard with auto-generated nicknames
+
+---
+
 ## [1.1.0] - 2025-12-03
 
-### 🧙 Setup Wizard & Asset Library Release
+### Setup Wizard & Asset Library Release
 
 New automated setup wizard and restructured for Godot Asset Library compatibility!
 
 ### Added
 
 #### Setup Wizard (SetupWizard.gd v2.1)
-- **One-command setup**: `File → Run → addons/cheddaboards/SetupWizard.gd`
+- **One-command setup**: `File > Run > addons/cheddaboards/SetupWizard.gd`
 - **Auto-fix autoloads**: Automatically adds CheddaBoards & Achievements if missing
 - **Interactive Game ID popup**: Configure your Game ID without editing files
 - **Comprehensive validation**: Checks Godot version, files, settings, export config
@@ -45,12 +114,12 @@ New automated setup wizard and restructured for Godot Asset Library compatibilit
 YourGame/
 ├── addons/
 │   └── cheddaboards/
-│       ├── CheddaBoards.gd      ← Core SDK
-│       ├── Achievements.gd      ← Achievement system
-│       ├── SetupWizard.gd       ← NEW! Automated setup
-│       ├── plugin.cfg           ← NEW! Asset Library metadata
-│       └── icon.png             ← NEW! Plugin icon
-├── template.html                ← Web export template (root)
+│       ├── CheddaBoards.gd      <- Core SDK
+│       ├── Achievements.gd      <- Achievement system
+│       ├── SetupWizard.gd       <- NEW! Automated setup
+│       ├── plugin.cfg           <- NEW! Asset Library metadata
+│       └── icon.png             <- NEW! Plugin icon
+├── template.html                <- Web export template (root)
 ├── docs/
 │   ├── QUICKSTART.md
 │   ├── SETUP.md
@@ -88,7 +157,7 @@ YourGame/
 
 ## [1.0.0] - 2025-11-02
 
-### 🎉 Initial Release
+### Initial Release
 
 First public release of the CheddaBoards Godot 4 Template.
 
@@ -162,12 +231,37 @@ First public release of the CheddaBoards Godot 4 Template.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| **v1.2.0** | 2025-12-15 | Anonymous play with device ID, play without login |
 | **v1.1.0** | 2025-12-03 | Setup Wizard v2.1, Asset Library structure, mainnet fix |
 | **v1.0.0** | 2025-11-02 | Initial public release |
 
 ---
 
 ## Upgrade Guide
+
+### From v1.1.0 to v1.2.0
+
+1. **Update these files:**
+   - `addons/cheddaboards/CheddaBoards.gd` (new anonymous functions)
+   - `template.html` (device ID support)
+   - Your `MainMenu.gd` (if using direct play button)
+
+2. **Optional: Enable/disable anonymous play** in template.html:
+   ```javascript
+   CONFIG.ALLOW_ANONYMOUS_PLAY: true,  // or false to require login
+   ```
+
+3. **Update MainMenu direct play** to auto-login anonymously:
+   ```gdscript
+   func _on_direct_play_button_pressed():
+       if not CheddaBoards.is_authenticated():
+           CheddaBoards.login_anonymous()
+       get_tree().change_scene_to_file("res://scenes/game.tscn")
+   ```
+
+4. **No changes needed** to:
+   - Achievements.gd (works as-is)
+   - GameOver.gd (works as-is)
 
 ### From v1.0.0 to v1.1.0
 
@@ -184,7 +278,7 @@ First public release of the CheddaBoards Godot 4 Template.
    - `addons/cheddaboards/icon.png` (new!)
    - Updated `template.html` (renamed, with mainnet fix)
 
-3. **Update autoload paths** in Project Settings → Autoload:
+3. **Update autoload paths** in Project Settings > Autoload:
    ```
    CheddaBoards: res://addons/cheddaboards/CheddaBoards.gd
    Achievements: res://addons/cheddaboards/Achievements.gd
@@ -192,20 +286,21 @@ First public release of the CheddaBoards Godot 4 Template.
 
 4. **Run the wizard:**
    ```
-   File → Run → addons/cheddaboards/SetupWizard.gd
+   File > Run > addons/cheddaboards/SetupWizard.gd
    ```
 
 5. **Update export settings:**
    - Change Custom HTML Shell to `res://template.html`
    - Always export as `index.html`
 
-### From Nothing to v1.1.0
+### From Nothing to v1.2.0
 1. Download/clone from GitHub
 2. Copy `addons/cheddaboards/` folder to your project
 3. Copy `template.html` to your project root
-4. Run `File → Run → addons/cheddaboards/SetupWizard.gd`
+4. Run `File > Run > addons/cheddaboards/SetupWizard.gd`
 5. Enter your Game ID in the popup
 6. Export as `index.html` and test!
+7. Users can now play immediately without login!
 
 ---
 
@@ -228,4 +323,4 @@ Found a bug? Have a feature request?
 
 ---
 
-**Thank you for using CheddaBoards!** 🧀🎮
+**Thank you for using CheddaBoards!** Build. Own. Chedda.
