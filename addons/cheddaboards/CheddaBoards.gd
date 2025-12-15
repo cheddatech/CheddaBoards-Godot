@@ -1,7 +1,11 @@
-# CheddaBoards.gd v1.1.0
+# CheddaBoards.gd v1.2.0
 # CheddaBoards integration for Godot 4.x
-# https://github.com/cheddatech/CheddaBoards-SDK
+# https://github.com/cheddatech/CheddaBoards-Godot
 # https://cheddaboards.com
+#
+# HYBRID SDK: Supports both Web (JavaScript Bridge) and Native (HTTP API)
+# - Web exports use JavaScript bridge for ICP authentication
+# - Native exports (Windows/Mac/Linux/Mobile) use HTTP API
 #
 # Add to Project Settings > Autoload as "CheddaBoards"
 
@@ -11,29 +15,17 @@ extends Node
 # QUICK START
 # ============================================================
 # 1. Add this script to Project Settings > Autoload as "CheddaBoards"
-# 2. Configure your HTML template with your Game ID
-# 3. In your script:
+# 2. For WEB: Configure your HTML template with your Game ID
+# 3. For NATIVE: Set your API key: CheddaBoards.set_api_key("cb_xxx")
 #
+# Example:
 #    func _ready():
-#        # Wait for SDK to be ready
 #        await CheddaBoards.wait_until_ready()
-#        
-#        # Connect signals
 #        CheddaBoards.login_success.connect(_on_login_success)
 #        CheddaBoards.score_submitted.connect(_on_score_submitted)
-#        CheddaBoards.profile_loaded.connect(_on_profile_loaded)
-#
-#    func _on_login_button_pressed():
-#        CheddaBoards.login_google()  # or login_apple() or login_internet_identity()
-#
-#    func _on_login_success(nickname: String):
-#        print("Welcome, ", nickname)
 #
 #    func _on_game_over(score: int, streak: int):
 #        CheddaBoards.submit_score(score, streak)
-#
-#    func _on_score_submitted(score: int, streak: int):
-#        print("Score saved!")
 #
 # ============================================================
 
@@ -42,76 +34,64 @@ extends Node
 # ============================================================
 
 # --- Initialization ---
-
-## Emitted when SDK is fully initialized and ready to use
 signal sdk_ready()
-
-## Emitted if SDK fails to initialize after max retries
 signal init_error(reason: String)
 
 # --- Authentication ---
-
-## Emitted when a user successfully logs in
 signal login_success(nickname: String)
-
-## Emitted when login fails
 signal login_failed(reason: String)
-
-## Emitted when login times out (user didn't complete login)
 signal login_timeout()
-
-## Emitted when user logs out
 signal logout_success()
-
-## Emitted for general authentication errors
 signal auth_error(reason: String)
 
 # --- Profile ---
-
-## Emitted when profile data is loaded
-## Parameters: nickname, high score, best streak, achievements array
 signal profile_loaded(nickname: String, score: int, streak: int, achievements: Array)
-
-## Emitted when no profile is available (not logged in)
 signal no_profile()
-
-## Emitted when nickname is successfully changed
 signal nickname_changed(new_nickname: String)
-
-## Emitted when nickname change fails
 signal nickname_error(reason: String)
 
 # --- Scores & Leaderboards ---
-
-## Emitted when score is successfully submitted
 signal score_submitted(score: int, streak: int)
-
-## Emitted when score submission fails
 signal score_error(reason: String)
-
-## Emitted when leaderboard data is loaded
-## Parameter: Array of [nickname, score] entries
 signal leaderboard_loaded(entries: Array)
-
-## Emitted when player rank is loaded
 signal player_rank_loaded(rank: int, score: int, streak: int, total_players: int)
-
-## Emitted when rank fetch fails
 signal rank_error(reason: String)
+
+# --- Achievements ---
+signal achievement_unlocked(achievement_id: String)
+signal achievements_loaded(achievements: Array)
+
+# --- HTTP API Specific ---
+signal request_failed(endpoint: String, error: String)
 
 # ============================================================
 # CONFIGURATION
 # ============================================================
 
 ## Set to true to enable verbose logging
-var debug_logging: bool = false
+var debug_logging: bool = true  # Enabled for debugging
 
-# Internal state
+## HTTP API Configuration (for native builds)
+const API_BASE_URL = "https://cheddaboards.com/api"
+var api_key: String = ""
+var _player_id: String = ""  # For native API auth
+
+# ============================================================
+# PLATFORM DETECTION
+# ============================================================
+
 var _is_web: bool = false
+var _is_native: bool = false
 var _init_complete: bool = false
 var _init_attempts: int = 0
+
+# ============================================================
+# INTERNAL STATE (Shared)
+# ============================================================
+
 var _auth_type: String = ""
 var _cached_profile: Dictionary = {}
+var _nickname: String = "Player"
 
 # ============================================================
 # PERFORMANCE OPTIMIZATION
@@ -132,7 +112,7 @@ const LOGIN_TIMEOUT_DURATION: float = 35.0
 const MAX_INIT_ATTEMPTS: int = 50
 
 # ============================================================
-# POLLING CONFIGURATION
+# POLLING CONFIGURATION (Web only)
 # ============================================================
 
 var _poll_timer: Timer = null
@@ -141,33 +121,52 @@ const MIN_RESPONSE_CHECK_INTERVAL: float = 0.3
 const PROFILE_REFRESH_COOLDOWN: float = 2.0
 
 # ============================================================
+# HTTP REQUEST (Native only)
+# ============================================================
+
+var _http_request: HTTPRequest
+var _current_endpoint: String = ""
+
+# ============================================================
 # INITIALIZATION
 # ============================================================
 
 func _ready() -> void:
 	_is_web = OS.get_name() == "Web"
+	_is_native = not _is_web
+	
+	if _is_web:
+		_log("Initializing CheddaBoards v1.2.0 (Web Mode)...")
+		_start_polling()
+		_check_chedda_ready()
+	else:
+		_log("Initializing CheddaBoards v1.2.0 (Native/HTTP API Mode)...")
+		_setup_http_client()
+		# For native, SDK is ready once HTTP client is set up
+		_init_complete = true
+		call_deferred("_emit_sdk_ready")
 
-	if not _is_web:
-		push_warning("[CheddaBoards] Not running in web environment - CheddaBoards features disabled")
-		return
+func _emit_sdk_ready() -> void:
+	sdk_ready.emit()
 
-	_log("Initializing CheddaBoards v1.1.0...")
-	_start_polling()
-	_check_chedda_ready()
+func _setup_http_client() -> void:
+	"""Setup HTTP client for native builds"""
+	_http_request = HTTPRequest.new()
+	add_child(_http_request)
+	_http_request.request_completed.connect(_on_http_request_completed)
 
 # ============================================================
-# SDK READY CHECK
+# SDK READY CHECK (Web Only)
 # ============================================================
 
 func _check_chedda_ready() -> void:
-	"""Check if CheddaBoards SDK is loaded and ready"""
+	"""Check if CheddaBoards SDK is loaded and ready (Web)"""
 	if not _is_web or _is_checking_auth:
 		return
 
 	_is_checking_auth = true
 	_init_attempts += 1
 
-	# Check if we've exceeded max attempts
 	if _init_attempts > MAX_INIT_ATTEMPTS:
 		_is_checking_auth = false
 		push_error("[CheddaBoards] SDK failed to load after %d attempts" % MAX_INIT_ATTEMPTS)
@@ -199,7 +198,7 @@ func _check_chedda_ready() -> void:
 		_check_chedda_ready()
 
 # ============================================================
-# POLLING SYSTEM
+# POLLING SYSTEM (Web Only)
 # ============================================================
 
 func _start_polling() -> void:
@@ -219,14 +218,12 @@ func _check_for_responses() -> void:
 	if not _is_web or not _init_complete:
 		return
 
-	# Rate limiting
 	var current_time: float = Time.get_ticks_msec() / 1000.0
 	if current_time - _last_response_check < MIN_RESPONSE_CHECK_INTERVAL:
 		return
 
 	_last_response_check = current_time
 
-	# Get response from JavaScript
 	var resp: Variant = JavaScriptBridge.eval("chedda_get_response()", true)
 	if resp == null:
 		return
@@ -239,13 +236,13 @@ func _check_for_responses() -> void:
 	var parse_result: int = json.parse(response_str)
 	if parse_result == OK:
 		var response: Dictionary = json.data
-		_handle_response(response)
+		_handle_web_response(response)
 
 # ============================================================
-# RESPONSE HANDLER
+# WEB RESPONSE HANDLER
 # ============================================================
 
-func _handle_response(response: Dictionary) -> void:
+func _handle_web_response(response: Dictionary) -> void:
 	"""Process responses from JavaScript bridge"""
 	var action: String = str(response.get("action", ""))
 	var success: bool = bool(response.get("success", false))
@@ -281,16 +278,18 @@ func _handle_response(response: Dictionary) -> void:
 
 		"submitScore":
 			_is_submitting_score = false
+			_log("submitScore response received - success: %s" % success)
 			if success:
 				var scored: int = int(response.get("score", 0))
 				var streakd: int = int(response.get("streak", 0))
+				_log("Score submitted successfully: %d points, %d streak" % [scored, streakd])
 				score_submitted.emit(scored, streakd)
-				# Update cached profile if returned
 				if response.has("profile"):
 					var p: Dictionary = response.get("profile")
 					_update_cached_profile(p)
 			else:
 				var error: String = str(response.get("error", "Unknown error"))
+				_log("Score submission FAILED: %s" % error)
 				score_error.emit(error)
 
 		"getProfile":
@@ -333,11 +332,119 @@ func _handle_response(response: Dictionary) -> void:
 					_cached_profile["nickname"] = new_nickname
 				nickname_changed.emit(new_nickname)
 			elif bool(response.get("cancelled", false)):
-				# User cancelled - no error needed
 				pass
 			else:
 				var error: String = str(response.get("error", "Unknown error"))
 				nickname_error.emit(error)
+
+# ============================================================
+# HTTP RESPONSE HANDLER (Native Only)
+# ============================================================
+
+func _on_http_request_completed(result: int, response_code: int, headers: PackedStringArray, body: PackedByteArray) -> void:
+	"""Handle HTTP API responses for native builds"""
+	if result != HTTPRequest.RESULT_SUCCESS:
+		push_error("[CheddaBoards] Request failed with result %d" % result)
+		request_failed.emit(_current_endpoint, "Network error")
+		_emit_http_failure("Network error")
+		return
+	
+	var json = JSON.new()
+	var parse_result = json.parse(body.get_string_from_utf8())
+	
+	if parse_result != OK:
+		push_error("[CheddaBoards] Failed to parse JSON response")
+		request_failed.emit(_current_endpoint, "Invalid JSON response")
+		_emit_http_failure("Invalid JSON response")
+		return
+	
+	var response = json.data
+	
+	if response_code != 200:
+		var error_msg = response.get("error", "Unknown error")
+		push_error("[CheddaBoards] API error (%d): %s" % [response_code, error_msg])
+		request_failed.emit(_current_endpoint, error_msg)
+		_emit_http_failure(error_msg)
+		return
+	
+	if not response.get("ok", false):
+		var error_msg = response.get("error", "Unknown error")
+		request_failed.emit(_current_endpoint, error_msg)
+		_emit_http_failure(error_msg)
+		return
+	
+	var data = response.get("data", {})
+	_emit_http_success(data)
+
+func _emit_http_success(data) -> void:
+	"""Emit appropriate success signal for HTTP responses"""
+	match _current_endpoint:
+		"submit_score":
+			_is_submitting_score = false
+			var score_val = int(data.get("score", 0))
+			var streak_val = int(data.get("streak", 0))
+			score_submitted.emit(score_val, streak_val)
+		"leaderboard":
+			var entries = data.get("leaderboard", [])
+			leaderboard_loaded.emit(entries)
+		"player_rank":
+			var rank = int(data.get("rank", 0))
+			var score_val = int(data.get("score", 0))
+			var streak_val = int(data.get("streak", 0))
+			var total = int(data.get("totalPlayers", 0))
+			player_rank_loaded.emit(rank, score_val, streak_val, total)
+		"player_profile":
+			if data and not data.is_empty():
+				_update_cached_profile(data)
+			else:
+				no_profile.emit()
+		"unlock_achievement":
+			var ach_id = str(data.get("achievementId", ""))
+			achievement_unlocked.emit(ach_id)
+		"achievements":
+			var achievements = data.get("achievements", [])
+			achievements_loaded.emit(achievements)
+		"game_info", "game_stats", "health":
+			_log("API response: %s" % str(data))
+
+func _emit_http_failure(error: String) -> void:
+	"""Emit appropriate failure signal for HTTP responses"""
+	match _current_endpoint:
+		"submit_score":
+			_is_submitting_score = false
+			score_error.emit(error)
+		"leaderboard":
+			leaderboard_loaded.emit([])
+		"player_rank":
+			rank_error.emit(error)
+		"player_profile":
+			no_profile.emit()
+		"unlock_achievement":
+			pass
+		"achievements":
+			achievements_loaded.emit([])
+
+func _make_http_request(endpoint: String, method: int, body: Dictionary, request_type: String) -> void:
+	"""Make HTTP request for native builds"""
+	if api_key.is_empty():
+		push_error("[CheddaBoards] API key not set! Call set_api_key() first.")
+		request_failed.emit(endpoint, "API key not set")
+		return
+	
+	_current_endpoint = request_type
+	
+	var headers = [
+		"Content-Type: application/json",
+		"X-API-Key: " + api_key
+	]
+	
+	var url = API_BASE_URL + endpoint
+	var json_body = JSON.stringify(body) if body.size() > 0 else ""
+	
+	var error = _http_request.request(url, headers, method, json_body)
+	if error != OK:
+		push_error("[CheddaBoards] HTTP request failed to start: %s" % error)
+		request_failed.emit(endpoint, "Request failed to start")
 
 # ============================================================
 # PROFILE MANAGEMENT
@@ -354,6 +461,8 @@ func _update_cached_profile(profile: Dictionary) -> void:
 	var score: int = int(profile.get("score", profile.get("highScore", 0)))
 	var streak: int = int(profile.get("streak", profile.get("bestStreak", 0)))
 	var achievements: Array = profile.get("achievements", [])
+	
+	_nickname = nickname
 
 	profile_loaded.emit(nickname, score, streak, achievements)
 
@@ -401,215 +510,341 @@ func _log(message: String) -> void:
 
 ## Check if CheddaBoards is fully initialized and ready
 func is_ready() -> bool:
-	return _is_web and _init_complete
+	if _is_web:
+		return _is_web and _init_complete
+	else:
+		return _init_complete
 
 ## Wait until SDK is ready (use with await)
-## Example: await CheddaBoards.wait_until_ready()
 func wait_until_ready() -> void:
 	if is_ready():
 		return
 	await sdk_ready
 
-## Get current player's nickname (or "Player" if not logged in)
+## Get current player's nickname
 func get_nickname() -> String:
 	if _cached_profile.is_empty():
-		return "Player"
+		return _nickname if _nickname != "" else "Player"
 	return str(_cached_profile.get("nickname", "Player"))
 
-## Get current player's high score (or 0 if not logged in)
+## Get current player's high score
 func get_high_score() -> int:
 	if _cached_profile.is_empty():
 		return 0
 	return int(_cached_profile.get("score", 0))
 
-## Get current player's best streak (or 0 if not logged in)
+## Get current player's best streak
 func get_best_streak() -> int:
 	if _cached_profile.is_empty():
 		return 0
 	return int(_cached_profile.get("streak", 0))
 
+## Get the cached profile data
+func get_cached_profile() -> Dictionary:
+	return _cached_profile
+
+## Get the authentication type
+func get_auth_type() -> String:
+	return _auth_type
+
+# ============================================================
+# PUBLIC API - CONFIGURATION (Native)
+# ============================================================
+
+## Set the API key for HTTP API (native builds)
+func set_api_key(key: String) -> void:
+	api_key = key
+	_log("API key set")
+
+## Set player ID for HTTP API authentication
+func set_player_id(player_id: String) -> void:
+	_player_id = player_id
+	_log("Player ID set: %s" % player_id)
+
+## Get current player ID (for native builds)
+func get_player_id() -> String:
+	if _player_id.is_empty():
+		# Generate a unique device ID as fallback
+		return OS.get_unique_id()
+	return _player_id
+
 # ============================================================
 # PUBLIC API - AUTHENTICATION
 # ============================================================
 
-## Log in with Internet Identity (passwordless authentication)
-## This is the primary login method - works without OAuth setup
+## Log in with Internet Identity (Web only - passwordless)
 func login_internet_identity(nickname: String = "") -> void:
-	if not _is_web or not _init_complete:
-		login_failed.emit("CheddaBoards not ready")
-		return
+	if _is_web:
+		if not _init_complete:
+			login_failed.emit("CheddaBoards not ready")
+			return
+		var safe_nickname: String = nickname.replace("'", "\\'").replace('"', '\\"')
+		JavaScriptBridge.eval("chedda_login_ii('%s')" % safe_nickname, true)
+		_log("Internet Identity login requested")
+		_start_login_timeout()
+	else:
+		# Native: Use API key auth with player ID
+		if api_key.is_empty():
+			login_failed.emit("API key not set")
+			return
+		_nickname = nickname if nickname != "" else "Player"
+		_auth_type = "api_key"
+		login_success.emit(_nickname)
+		_log("Native login (API key mode)")
 
-	var safe_nickname: String = nickname.replace("'", "\\'").replace('"', '\\"')
-	JavaScriptBridge.eval("chedda_login_ii('%s')" % safe_nickname, true)
-	_log("Internet Identity login requested")
-	_start_login_timeout()
-
-## Alias for login_internet_identity (legacy name)
+## Alias for login_internet_identity
 func login_chedda_id(nickname: String = "") -> void:
 	login_internet_identity(nickname)
 
-## Log in with Google
-## Requires GOOGLE_CLIENT_ID in HTML template
+## Log in with Google (Web only)
 func login_google() -> void:
-	if not _is_web or not _init_complete:
-		login_failed.emit("CheddaBoards not ready")
-		return
+	if _is_web:
+		if not _init_complete:
+			login_failed.emit("CheddaBoards not ready")
+			return
+		JavaScriptBridge.eval("chedda_login_google()", true)
+		_log("Google login requested")
+		_start_login_timeout()
+	else:
+		login_failed.emit("Google login only available in web builds")
 
-	JavaScriptBridge.eval("chedda_login_google()", true)
-	_log("Google login requested")
-	_start_login_timeout()
-
-## Log in with Apple
-## Requires APPLE_SERVICE_ID and APPLE_REDIRECT_URI in HTML template
+## Log in with Apple (Web only)
 func login_apple() -> void:
-	if not _is_web or not _init_complete:
-		login_failed.emit("CheddaBoards not ready")
-		return
-
-	JavaScriptBridge.eval("chedda_login_apple()", true)
-	_log("Apple login requested")
-	_start_login_timeout()
+	if _is_web:
+		if not _init_complete:
+			login_failed.emit("CheddaBoards not ready")
+			return
+		JavaScriptBridge.eval("chedda_login_apple()", true)
+		_log("Apple login requested")
+		_start_login_timeout()
+	else:
+		login_failed.emit("Apple login only available in web builds")
 
 ## Log out the current user
 func logout() -> void:
-	if not _is_web or not _init_complete:
-		return
-
-	JavaScriptBridge.eval("chedda_logout()", true)
-	_log("Logout requested")
+	if _is_web:
+		if not _init_complete:
+			return
+		JavaScriptBridge.eval("chedda_logout()", true)
+		_log("Logout requested")
+	else:
+		_cached_profile = {}
+		_auth_type = ""
+		_nickname = "Player"
+		logout_success.emit()
+		_log("Native logout")
 
 ## Check if user is currently authenticated
 func is_authenticated() -> bool:
-	if not _is_web or not _init_complete:
-		return false
+	if _is_web:
+		if not _init_complete:
+			return false
+		var result: Variant = JavaScriptBridge.eval("chedda_is_auth()", true)
+		return bool(result)
+	else:
+		# Native: Check if we have API key and player ID
+		return not api_key.is_empty()
 
-	var result: Variant = JavaScriptBridge.eval("chedda_is_auth()", true)
-	return bool(result)
+## Check if using anonymous/device authentication
+func is_anonymous() -> bool:
+	return _auth_type == "device" or _auth_type == "anonymous"
 
-## Get the authentication type (google, apple, cheddaId, internetIdentity)
-func get_auth_type() -> String:
-	return _auth_type
+## Get device ID for anonymous play (Web)
+func get_device_id() -> String:
+	if _is_web:
+		var result: Variant = JavaScriptBridge.eval("chedda_get_device_id()", true)
+		return str(result) if result else ""
+	else:
+		return get_player_id()
+
+# ============================================================
+# PUBLIC API - AUTHENTICATION
+# ============================================================
+
+## Login anonymously with device ID (no account required)
+func login_anonymous() -> void:
+	if _is_web:
+		if not _init_complete:
+			login_failed.emit("CheddaBoards not ready")
+			return
+		_log("Starting anonymous login...")
+		JavaScriptBridge.eval("chedda_login_anonymous()", true)
+	else:
+		# Native: Already "anonymous" with device ID
+		_auth_type = "device"
+		var player_id = get_player_id()
+		_nickname = "Player_" + player_id.left(6)
+		_cached_profile = {
+			"nickname": _nickname,
+			"score": 0,
+			"streak": 0,
+			"playCount": 0,
+			"achievements": [],
+			"deviceId": player_id
+		}
+		login_success.emit(_nickname)
+		profile_loaded.emit(_nickname, 0, 0, [])
 
 # ============================================================
 # PUBLIC API - PROFILE MANAGEMENT
 # ============================================================
 
 ## Refresh profile data from server
-## Respects cooldown to prevent spamming
 func refresh_profile() -> void:
-	if not _is_web or not _init_complete:
-		return
+	if _is_web:
+		if not _init_complete:
+			return
+		if _is_refreshing_profile:
+			_log("Profile refresh already in progress")
+			return
+		var current_time: float = Time.get_ticks_msec() / 1000.0
+		if current_time - _last_profile_refresh < PROFILE_REFRESH_COOLDOWN:
+			_log("Profile refresh on cooldown")
+			return
+		_is_refreshing_profile = true
+		_last_profile_refresh = current_time
+		JavaScriptBridge.eval("chedda_refresh_profile()", true)
+		_log("Profile refresh requested")
+	else:
+		# Native: Use HTTP API
+		get_player_profile(get_player_id())
 
-	if _is_refreshing_profile:
-		_log("Profile refresh already in progress")
-		return
-
-	var current_time: float = Time.get_ticks_msec() / 1000.0
-	if current_time - _last_profile_refresh < PROFILE_REFRESH_COOLDOWN:
-		_log("Profile refresh on cooldown")
-		return
-
-	_is_refreshing_profile = true
-	_last_profile_refresh = current_time
-
-	JavaScriptBridge.eval("chedda_refresh_profile()", true)
-	_log("Profile refresh requested")
-
-## Get the cached profile data (instant, no network call)
-## Returns empty Dictionary if not logged in
-func get_cached_profile() -> Dictionary:
-	return _cached_profile
-
-## Open the nickname change prompt
+## Open the nickname change prompt (Web only)
 func change_nickname() -> void:
-	if not _is_web or not _init_complete:
-		return
-
-	JavaScriptBridge.eval("chedda_change_nickname_prompt()", true)
-	_log("Nickname change requested")
+	if _is_web:
+		if not _init_complete:
+			return
+		JavaScriptBridge.eval("chedda_change_nickname_prompt()", true)
+		_log("Nickname change requested")
+	else:
+		# Native: Could implement a popup or just emit error
+		nickname_error.emit("Nickname change not available in native builds")
 
 # ============================================================
 # PUBLIC API - SCORES & LEADERBOARDS
 # ============================================================
 
 ## Submit score and streak to leaderboard
-## Emits score_submitted on success, score_error on failure
-func submit_score(score: int, streak: int = 0) -> void:
-	if not _is_web or not _init_complete:
-		score_error.emit("CheddaBoards not ready")
-		return
-
-	if not is_authenticated():
-		_log("Not authenticated, cannot submit score")
-		score_error.emit("Not authenticated")
-		return
-
+func submit_score(score: int, streak: int = 0, rounds: int = -1) -> void:
 	if _is_submitting_score:
 		_log("Score submission already in progress")
 		return
-
-	_is_submitting_score = true
-
-	var js_code: String = "chedda_submit_score(%d, %d)" % [score, streak]
-	JavaScriptBridge.eval(js_code, true)
-	_log("Score submission: %d points, %d streak" % [score, streak])
+	
+	if _is_web:
+		if not _init_complete:
+			_log("SDK not ready, waiting...")
+			# Try to wait a bit for init
+			await get_tree().create_timer(0.5).timeout
+			if not _init_complete:
+				score_error.emit("CheddaBoards not ready")
+				return
+		# Let JavaScript bridge handle auth check - it will return error if not authenticated
+		_is_submitting_score = true
+		var js_code: String = "chedda_submit_score(%d, %d)" % [score, streak]
+		_log("Calling JS: %s" % js_code)
+		JavaScriptBridge.eval(js_code, true)
+		_log("Score submission: %d points, %d streak" % [score, streak])
+	else:
+		# Native: Use HTTP API
+		_is_submitting_score = true
+		var body = {
+			"playerId": get_player_id(),
+			"score": score,
+			"streak": streak
+		}
+		if rounds >= 0:
+			body["rounds"] = rounds
+		_make_http_request("/scores", HTTPClient.METHOD_POST, body, "submit_score")
+		_log("Score submission (HTTP): %d points, %d streak" % [score, streak])
 
 ## Get leaderboard data
-## Emits leaderboard_loaded with array of entries
 func get_leaderboard(sort_by: String = "score", limit: int = 100) -> void:
-	if not _is_web or not _init_complete:
-		return
-
-	var js_code: String = "chedda_get_leaderboard('%s', %d)" % [sort_by, limit]
-	JavaScriptBridge.eval(js_code, true)
-	_log("Leaderboard requested (sort: %s, limit: %d)" % [sort_by, limit])
+	if _is_web:
+		if not _init_complete:
+			return
+		var js_code: String = "chedda_get_leaderboard('%s', %d)" % [sort_by, limit]
+		JavaScriptBridge.eval(js_code, true)
+		_log("Leaderboard requested (sort: %s, limit: %d)" % [sort_by, limit])
+	else:
+		# Native: Use HTTP API
+		var url = "/leaderboard?limit=%d&sort=%s" % [limit, sort_by]
+		_make_http_request(url, HTTPClient.METHOD_GET, {}, "leaderboard")
+		_log("Leaderboard requested (HTTP)")
 
 ## Get current player's rank on leaderboard
-## Emits player_rank_loaded on success, rank_error on failure
 func get_player_rank(sort_by: String = "score") -> void:
-	if not _is_web or not _init_complete:
-		return
+	if _is_web:
+		if not _init_complete:
+			return
+		var js_code: String = "chedda_get_player_rank('%s')" % sort_by
+		JavaScriptBridge.eval(js_code, true)
+		_log("Player rank requested (sort: %s)" % sort_by)
+	else:
+		# Native: Use HTTP API
+		var url = "/players/%s/rank?sort=%s" % [get_player_id().uri_encode(), sort_by]
+		_make_http_request(url, HTTPClient.METHOD_GET, {}, "player_rank")
+		_log("Player rank requested (HTTP)")
 
-	var js_code: String = "chedda_get_player_rank('%s')" % sort_by
-	JavaScriptBridge.eval(js_code, true)
-	_log("Player rank requested (sort: %s)" % sort_by)
+## Get a player's full profile (Native API)
+func get_player_profile(player_id: String = "") -> void:
+	var pid = player_id if player_id != "" else get_player_id()
+	if _is_web:
+		# Web uses refresh_profile instead
+		refresh_profile()
+	else:
+		var url = "/players/%s/profile" % pid.uri_encode()
+		_make_http_request(url, HTTPClient.METHOD_GET, {}, "player_profile")
+		_log("Player profile requested (HTTP)")
 
 # ============================================================
 # PUBLIC API - ACHIEVEMENTS
 # ============================================================
 
 ## Unlock a single achievement
-func unlock_achievement(achievement_id: String, achievement_name: String, achievement_desc: String = "") -> void:
-	if not _is_web or not _init_complete:
-		return
-
-	var safe_id: String = achievement_id.replace("'", "\\'").replace('"', '\\"')
-	var safe_name: String = achievement_name.replace("'", "\\'").replace('"', '\\"')
-	var safe_desc: String = achievement_desc.replace("'", "\\'").replace('"', '\\"')
-
-	var js_code: String = """
-		(function() {
-			try {
-				if (window.chedda && window.chedda.unlockAchievement) {
-					window.chedda.unlockAchievement('%s', '%s', '%s')
-						.then(result => console.log('[CheddaBoards] Achievement unlocked:', result))
-						.catch(error => console.error('[CheddaBoards] Achievement error:', error));
+func unlock_achievement(achievement_id: String, achievement_name: String = "", achievement_desc: String = "") -> void:
+	if _is_web:
+		if not _init_complete:
+			return
+		var safe_id: String = achievement_id.replace("'", "\\'").replace('"', '\\"')
+		var safe_name: String = achievement_name.replace("'", "\\'").replace('"', '\\"')
+		var safe_desc: String = achievement_desc.replace("'", "\\'").replace('"', '\\"')
+		var js_code: String = """
+			(function() {
+				try {
+					if (window.chedda && window.chedda.unlockAchievement) {
+						window.chedda.unlockAchievement('%s', '%s', '%s')
+							.then(result => console.log('[CheddaBoards] Achievement unlocked:', result))
+							.catch(error => console.error('[CheddaBoards] Achievement error:', error));
+					}
+				} catch(e) {
+					console.error('[CheddaBoards] Achievement unlock failed:', e);
 				}
-			} catch(e) {
-				console.error('[CheddaBoards] Achievement unlock failed:', e);
-			}
-		})();
-	""" % [safe_id, safe_name, safe_desc]
+			})();
+		""" % [safe_id, safe_name, safe_desc]
+		JavaScriptBridge.eval(js_code, true)
+		_log("Achievement unlock: %s" % achievement_name)
+	else:
+		# Native: Use HTTP API
+		var body = {
+			"playerId": get_player_id(),
+			"achievementId": achievement_id
+		}
+		_make_http_request("/achievements", HTTPClient.METHOD_POST, body, "unlock_achievement")
+		_log("Achievement unlock (HTTP): %s" % achievement_id)
 
-	JavaScriptBridge.eval(js_code, true)
-	_log("Achievement unlock: %s" % achievement_name)
+## Get all achievements for a player
+func get_achievements(player_id: String = "") -> void:
+	var pid = player_id if player_id != "" else get_player_id()
+	if _is_web:
+		# Web: achievements come with profile
+		refresh_profile()
+	else:
+		var url = "/players/%s/achievements" % pid.uri_encode()
+		_make_http_request(url, HTTPClient.METHOD_GET, {}, "achievements")
+		_log("Achievements requested (HTTP)")
 
 ## Submit score with achievements in one call
 func submit_score_with_achievements(score: int, streak: int, achievements: Array) -> void:
-	if not _is_web or not _init_complete:
-		score_error.emit("CheddaBoards not ready")
-		return
-
 	if not is_authenticated():
 		_log("Not authenticated, cannot submit")
 		score_error.emit("Not authenticated")
@@ -619,9 +854,7 @@ func submit_score_with_achievements(score: int, streak: int, achievements: Array
 		_log("Score submission already in progress")
 		return
 
-	_is_submitting_score = true
-
-	# First unlock achievements individually (these are non-blocking)
+	# First unlock achievements
 	for ach in achievements:
 		if typeof(ach) == TYPE_DICTIONARY:
 			var ach_id: String = str(ach.get("id", ""))
@@ -630,8 +863,7 @@ func submit_score_with_achievements(score: int, streak: int, achievements: Array
 			if ach_id != "":
 				unlock_achievement(ach_id, ach_name, ach_desc)
 	
-	# Then submit score using the bridge function (this queues response to Godot)
-	_is_submitting_score = false  # Reset so submit_score can proceed
+	# Then submit score
 	submit_score(score, streak)
 	_log("Score + %d achievements submitted" % achievements.size())
 
@@ -641,26 +873,45 @@ func submit_score_with_achievements(score: int, streak: int, achievements: Array
 
 ## Track a custom event (for analytics)
 func track_event(event_type: String, metadata: Dictionary = {}) -> void:
-	if not _is_web or not _init_complete:
-		return
+	if _is_web:
+		if not _init_complete:
+			return
+		var meta_json: String = JSON.stringify(metadata)
+		var js_code: String = """
+			if (window.chedda && window.chedda.trackEvent) {
+				window.chedda.trackEvent('%s', %s);
+			}
+		""" % [event_type, meta_json]
+		JavaScriptBridge.eval(js_code, true)
+		_log("Event tracked: %s" % event_type)
+	else:
+		# Native: Could implement event tracking endpoint
+		_log("Event tracked (local): %s" % event_type)
 
-	var meta_json: String = JSON.stringify(metadata)
+# ============================================================
+# PUBLIC API - GAME INFO (Native HTTP API)
+# ============================================================
 
-	var js_code: String = """
-		if (window.chedda && window.chedda.trackEvent) {
-			window.chedda.trackEvent('%s', %s);
-		}
-	""" % [event_type, meta_json]
+## Get game info
+func get_game_info() -> void:
+	if _is_native:
+		_make_http_request("/game", HTTPClient.METHOD_GET, {}, "game_info")
 
-	JavaScriptBridge.eval(js_code, true)
-	_log("Event tracked: %s" % event_type)
+## Get game statistics
+func get_game_stats() -> void:
+	if _is_native:
+		_make_http_request("/game/stats", HTTPClient.METHOD_GET, {}, "game_stats")
+
+## Health check - verify API connection
+func health_check() -> void:
+	if _is_native:
+		_make_http_request("/health", HTTPClient.METHOD_GET, {}, "health")
 
 # ============================================================
 # HELPER FUNCTIONS
 # ============================================================
 
-## Force check for pending events or auth status
-## Useful after scene changes or if you suspect missed signals
+## Force check for pending events or auth status (Web only)
 func force_check_events() -> void:
 	if not _is_web or _is_checking_auth or not _init_complete:
 		return
@@ -683,8 +934,7 @@ func force_check_events() -> void:
 
 	_is_checking_auth = false
 
-## Get profile data directly from JavaScript cache
-## Internal use - prefer get_cached_profile() or refresh_profile()
+## Get profile data directly from JavaScript cache (Web only)
 func _get_profile_from_js() -> Dictionary:
 	if not _is_web or not _init_complete:
 		return {}
@@ -707,16 +957,19 @@ func _get_profile_from_js() -> Dictionary:
 func debug_status() -> void:
 	print("")
 	print("╔══════════════════════════════════════════════╗")
-	print("║        CheddaBoards Debug Status v1.1.0      ║")
+	print("║        CheddaBoards Debug Status v1.2.0      ║")
 	print("╠══════════════════════════════════════════════╣")
 	print("║ Environment                                  ║")
-	print("║  - Is Web:           %s" % str(_is_web).rpad(24) + "║")
+	print("║  - Platform:         %s" % ("Web" if _is_web else "Native").rpad(24) + "║")
 	print("║  - Init Complete:    %s" % str(_init_complete).rpad(24) + "║")
 	print("║  - Init Attempts:    %s" % str(_init_attempts).rpad(24) + "║")
 	print("╠══════════════════════════════════════════════╣")
 	print("║ Authentication                               ║")
 	print("║  - Authenticated:    %s" % str(is_authenticated()).rpad(24) + "║")
 	print("║  - Auth Type:        %s" % _auth_type.rpad(24) + "║")
+	if _is_native:
+		print("║  - API Key Set:      %s" % str(not api_key.is_empty()).rpad(24) + "║")
+		print("║  - Player ID:        %s" % get_player_id().left(20).rpad(24) + "║")
 	print("╠══════════════════════════════════════════════╣")
 	print("║ Profile                                      ║")
 	print("║  - Nickname:         %s" % get_nickname().rpad(24) + "║")
