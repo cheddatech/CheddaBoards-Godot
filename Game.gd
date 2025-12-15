@@ -1,35 +1,78 @@
 # Game.gd v1.2.0
-# Main game scene with CheddaBoards integration
-# https://github.com/cheddatech/CheddaBoards-Godot
+# Dynamic clicker game with moving targets and combo system
+# Compatible with CheddaBoards SDK (Web + Native API)
+# https://github.com/cheddatech/CheddaBoards-SDK
 #
 # ============================================================
-# SETUP
+# FEATURES
 # ============================================================
-# Required nodes in scene:
-#   - GameOverPanel (Control)
-#   - TestButton (Button)
-#   - ScoreDisplay (Label)
-#   - CountdownDisplay (Label)
-#   - AchievementNotification (custom node)
-#
-# Required Autoloads:
-#   - CheddaBoards
-#   - Achievements
+# - Moving targets that spawn around the screen
+# - Combo system with multipliers (max x10)
+# - Time bonuses for quick consecutive clicks
+# - Difficulty progression (faster spawns, faster movement)
+# - Works with both Web (JS bridge) and Native (HTTP API)
 #
 # ============================================================
 
 extends Control
 
 # ============================================================
+# CONFIGURATION
+# ============================================================
+
+const GAME_DURATION: float = 60.0
+const BASE_POINTS: int = 100
+const COMBO_DECAY_TIME: float = 2.0
+const MAX_COMBO_MULTIPLIER: int = 10
+const QUICK_CLICK_BONUS: float = 0.5  # seconds for time bonus
+
+# Target settings
+const TARGET_MIN_SIZE: float = 80.0
+const TARGET_MAX_SIZE: float = 150.0
+const TARGET_MIN_SPEED: float = 50.0
+const TARGET_MAX_SPEED: float = 200.0
+const TARGET_MIN_LIFETIME: float = 3.0
+const TARGET_MAX_LIFETIME: float = 8.0
+const MAX_TARGETS_ON_SCREEN: int = 5
+
+# Difficulty progression
+const SPAWN_TIME_MIN: float = 0.5
+const SPAWN_TIME_MAX: float = 2.0
+const DIFFICULTY_INCREASE_RATE: float = 0.1
+
+# ============================================================
 # GAME STATE
 # ============================================================
 
 var current_score: int = 0
-var current_streak: int = 0
+var combo_count: int = 0
+var combo_multiplier: int = 1
+var max_combo: int = 1
+var total_hits: int = 0
+var total_misses: int = 0
+var time_remaining: float = GAME_DURATION
+var last_hit_time: float = 0.0
+var combo_timer: float = 0.0
+var difficulty_level: int = 1
 var is_game_over: bool = false
-var score_submitted: bool = false
-var countdown_time: float = 15.0
 var game_started: bool = false
+var score_submitted: bool = false
+
+# Target tracking
+var active_targets: Array = []
+var target_texture: Texture2D = null
+
+# ============================================================
+# NODE REFERENCES - HUD
+# ============================================================
+
+@onready var game_area = $GameArea
+@onready var score_label = $HUD/TopBar/ScorePanel/VBox/ScoreLabel
+@onready var combo_label = $HUD/TopBar/ScorePanel/VBox/ComboLabel
+@onready var time_label = $HUD/TopBar/TimePanel/TimeLabel
+@onready var hits_label = $HUD/TopBar/StatsPanel/VBox/HitsLabel
+@onready var misses_label = $HUD/TopBar/StatsPanel/VBox/MissesLabel
+@onready var multiplier_label = $MultiplierLabel
 
 # ============================================================
 # NODE REFERENCES - GAME OVER
@@ -37,204 +80,459 @@ var game_started: bool = false
 
 @onready var game_over_panel = $GameOverPanel
 @onready var title_label = $GameOverPanel/MarginContainer/VBoxContainer/TitleLabel
-@onready var score_label = $GameOverPanel/MarginContainer/VBoxContainer/ScoreLabel
-@onready var streak_label = $GameOverPanel/MarginContainer/VBoxContainer/StreakLabel
+@onready var final_score_label = $GameOverPanel/MarginContainer/VBoxContainer/FinalScoreLabel
+@onready var hits_result = $GameOverPanel/MarginContainer/VBoxContainer/StatsContainer/HitsResult
+@onready var accuracy_result = $GameOverPanel/MarginContainer/VBoxContainer/StatsContainer/AccuracyResult
+@onready var max_combo_label = $GameOverPanel/MarginContainer/VBoxContainer/MaxComboLabel
 @onready var status_label = $GameOverPanel/MarginContainer/VBoxContainer/StatusLabel
 @onready var play_again_button = $GameOverPanel/MarginContainer/VBoxContainer/ButtonsContainer/PlayAgainButton
 @onready var main_menu_button = $GameOverPanel/MarginContainer/VBoxContainer/ButtonsContainer/MainMenuButton
 @onready var leaderboard_button = $GameOverPanel/MarginContainer/VBoxContainer/LeaderboardButton
 
 # ============================================================
-# NODE REFERENCES - GAME UI
+# NODE REFERENCES - TIMERS
 # ============================================================
 
-@onready var test_button = $TestButton
-@onready var score_display = $ScoreDisplay
-@onready var countdown_display = $CountdownDisplay
-@onready var achievement_notification = $AchievementNotification
+@onready var spawn_timer = $SpawnTimer
+@onready var difficulty_timer = $DifficultyTimer
 
 # ============================================================
 # INITIALIZATION
 # ============================================================
 
 func _ready():
-	# Hide game over panel initially
-	game_over_panel.visible = false
+	# Load target texture (cheese icon)
+	target_texture = load("res://addons/cheddaboards/icon.png")
+	if not target_texture:
+		push_warning("[Game] Target texture not found - using placeholder")
 	
-	# Wait for CheddaBoards to be ready
-	if not CheddaBoards.is_ready():
-		await CheddaBoards.wait_until_ready()
+	# Hide game over panel
+	game_over_panel.visible = false
+	multiplier_label.visible = false
+	
+	# Connect timers
+	spawn_timer.timeout.connect(_on_spawn_timer_timeout)
+	difficulty_timer.timeout.connect(_on_difficulty_timer_timeout)
 	
 	# Connect game over buttons
 	play_again_button.pressed.connect(_on_play_again_pressed)
 	main_menu_button.pressed.connect(_on_main_menu_pressed)
 	leaderboard_button.pressed.connect(_on_leaderboard_pressed)
 	
-	# Connect test button
-	test_button.pressed.connect(_on_test_pressed)
-	
 	# Connect CheddaBoards signals
 	CheddaBoards.score_submitted.connect(_on_score_submitted)
 	CheddaBoards.score_error.connect(_on_score_error)
 	
-	# Connect achievement signals
-	Achievements.achievement_unlocked.connect(_on_achievement_unlocked)
+	# Connect game area click for misses
+	game_area.gui_input.connect(_on_game_area_input)
 	
-	# Validate required nodes
-	if not achievement_notification:
-		push_warning("[Game] AchievementNotification node missing - notifications disabled")
-	
-	print("[Game] Starting new game (games played: %d)" % Achievements.get_games_played())
-	print("[Game] Debug shortcuts: Ctrl+Shift+C (clear cache), Ctrl+Shift+D (debug)")
+	print("[Game] Starting dynamic game v1.2.0")
+	print("[Game] Platform: %s" % ("Web" if OS.get_name() == "Web" else "Native"))
 	
 	_start_game()
 
-func _input(event):
-	"""Handle keyboard input for testing shortcuts"""
-	if event is InputEventKey and event.pressed:
-		# Ctrl+Shift+C to clear achievements cache
-		if event.keycode == KEY_C and event.ctrl_pressed and event.shift_pressed:
-			_clear_achievements_cache()
-			get_viewport().set_input_as_handled()
-		
-		# Ctrl+Shift+D for debug info
-		if event.keycode == KEY_D and event.ctrl_pressed and event.shift_pressed:
-			_debug_status()
-			get_viewport().set_input_as_handled()
-
 # ============================================================
-# GAME LOGIC
+# GAME LOOP
 # ============================================================
 
 func _start_game():
 	"""Initialize new game"""
 	current_score = 0
-	current_streak = 0
+	combo_count = 0
+	combo_multiplier = 1
+	max_combo = 1
+	total_hits = 0
+	total_misses = 0
+	time_remaining = GAME_DURATION
+	difficulty_level = 1
 	is_game_over = false
-	score_submitted = false
-	countdown_time = 15.0
 	game_started = true
-	game_over_panel.visible = false
-	test_button.visible = true
+	score_submitted = false
+	last_hit_time = 0.0
+	combo_timer = 0.0
 	
-	_update_score_display()
-	_update_countdown_display()
+	# Clear any existing targets
+	_clear_all_targets()
+	
+	# Reset timers
+	spawn_timer.wait_time = SPAWN_TIME_MAX
+	spawn_timer.start()
+	difficulty_timer.start()
+	
+	# Update UI
+	_update_hud()
+	game_over_panel.visible = false
 
 func _process(delta):
-	"""Update countdown timer"""
-	if game_started and not is_game_over:
-		countdown_time -= delta
-		_update_countdown_display()
-		
-		# Check if time is up
-		if countdown_time <= 0:
-			countdown_time = 0
-			_update_countdown_display()
-			game_over()
-
-func _update_countdown_display():
-	"""Update the countdown display label"""
-	if not countdown_display:
+	if not game_started or is_game_over:
 		return
 	
-	var seconds = int(ceil(countdown_time))
-	countdown_display.text = "Time: %d" % seconds
+	# Update time
+	time_remaining -= delta
+	_update_time_display()
 	
-	# Change color based on time remaining
-	if countdown_time <= 5:
-		countdown_display.add_theme_color_override("font_color", Color.RED)
-	elif countdown_time <= 10:
-		countdown_display.add_theme_color_override("font_color", Color.YELLOW)
+	# Update combo decay
+	if combo_count > 0:
+		combo_timer += delta
+		if combo_timer >= COMBO_DECAY_TIME:
+			_reset_combo()
+	
+	# Check game over
+	if time_remaining <= 0:
+		time_remaining = 0
+		_game_over()
+
+func _update_time_display():
+	"""Update the time display with color coding"""
+	var seconds = int(ceil(time_remaining))
+	time_label.text = "%d" % seconds
+	
+	if time_remaining <= 10:
+		time_label.add_theme_color_override("font_color", Color.RED)
+	elif time_remaining <= 30:
+		time_label.add_theme_color_override("font_color", Color.YELLOW)
 	else:
-		countdown_display.add_theme_color_override("font_color", Color.WHITE)
+		time_label.add_theme_color_override("font_color", Color.WHITE)
 
-func _update_score_display():
-	"""Update the score display label"""
-	if score_display:
-		score_display.text = "Score: %d | Streak: %d" % [current_score, current_streak]
+func _update_hud():
+	"""Update all HUD elements"""
+	score_label.text = "Score: %d" % current_score
+	combo_label.text = "Combo: x%d" % combo_multiplier
+	hits_label.text = "Hits: %d" % total_hits
+	misses_label.text = "Misses: %d" % total_misses
+	
+	# Color combo based on multiplier
+	if combo_multiplier >= 8:
+		combo_label.add_theme_color_override("font_color", Color(1, 0.2, 0.2))  # Red
+	elif combo_multiplier >= 5:
+		combo_label.add_theme_color_override("font_color", Color(1, 0.5, 0.1))  # Orange
+	elif combo_multiplier >= 3:
+		combo_label.add_theme_color_override("font_color", Color(1, 0.8, 0.2))  # Yellow
+	else:
+		combo_label.add_theme_color_override("font_color", Color(0.8, 0.8, 0.8))  # Gray
 
 # ============================================================
-# SCORE & STREAK
+# TARGET SPAWNING
 # ============================================================
 
-func add_score(points: int):
-	"""Add points to score"""
+func _on_spawn_timer_timeout():
+	if is_game_over or active_targets.size() >= MAX_TARGETS_ON_SCREEN:
+		return
+	
+	_spawn_target()
+
+func _spawn_target():
+	"""Spawn a new clickable target"""
+	var target = _create_target()
+	game_area.add_child(target)
+	active_targets.append(target)
+
+func _create_target() -> Control:
+	"""Create a target node with random properties"""
+	var target = TextureRect.new()
+	
+	# Set texture
+	if target_texture:
+		target.texture = target_texture
+	
+	# Random size based on difficulty
+	var size_range = TARGET_MAX_SIZE - TARGET_MIN_SIZE
+	var size_factor = 1.0 - (difficulty_level * 0.05)  # Smaller at higher difficulty
+	var target_size = TARGET_MIN_SIZE + (size_range * size_factor * randf())
+	target.custom_minimum_size = Vector2(target_size, target_size)
+	target.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	target.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	
+	# Random position within game area
+	var game_rect = game_area.get_rect()
+	var margin = target_size / 2
+	var pos_x = randf_range(margin, game_rect.size.x - target_size - margin)
+	var pos_y = randf_range(margin, game_rect.size.y - target_size - margin)
+	target.position = Vector2(pos_x, pos_y)
+	
+	# Store movement data
+	var speed = randf_range(TARGET_MIN_SPEED, TARGET_MAX_SPEED) * (1 + difficulty_level * DIFFICULTY_INCREASE_RATE)
+	var direction = Vector2(randf_range(-1, 1), randf_range(-1, 1)).normalized()
+	var lifetime = randf_range(TARGET_MIN_LIFETIME, TARGET_MAX_LIFETIME) / (1 + difficulty_level * 0.1)
+	
+	target.set_meta("speed", speed)
+	target.set_meta("direction", direction)
+	target.set_meta("lifetime", lifetime)
+	target.set_meta("age", 0.0)
+	target.set_meta("points", _calculate_target_points(target_size))
+	
+	# Make clickable
+	target.mouse_filter = Control.MOUSE_FILTER_STOP
+	target.gui_input.connect(_on_target_input.bind(target))
+	
+	# Start movement
+	target.set_process(true)
+	
+	return target
+
+func _calculate_target_points(size: float) -> int:
+	"""Smaller targets = more points"""
+	var size_factor = 1.0 - ((size - TARGET_MIN_SIZE) / (TARGET_MAX_SIZE - TARGET_MIN_SIZE))
+	return int(BASE_POINTS * (1 + size_factor))
+
+func _physics_process(delta):
+	"""Update target positions"""
 	if is_game_over:
 		return
 	
+	var game_rect = game_area.get_rect()
+	var targets_to_remove = []
+	
+	for target in active_targets:
+		if not is_instance_valid(target):
+			targets_to_remove.append(target)
+			continue
+		
+		# Update age
+		var age = target.get_meta("age") + delta
+		target.set_meta("age", age)
+		
+		# Check lifetime
+		var lifetime = target.get_meta("lifetime")
+		if age >= lifetime:
+			targets_to_remove.append(target)
+			_on_target_missed(target)
+			continue
+		
+		# Move target
+		var speed = target.get_meta("speed")
+		var direction = target.get_meta("direction")
+		target.position += direction * speed * delta
+		
+		# Bounce off walls
+		var target_size = target.custom_minimum_size
+		if target.position.x <= 0 or target.position.x + target_size.x >= game_rect.size.x:
+			direction.x *= -1
+			target.set_meta("direction", direction)
+			target.position.x = clamp(target.position.x, 0, game_rect.size.x - target_size.x)
+		
+		if target.position.y <= 0 or target.position.y + target_size.y >= game_rect.size.y:
+			direction.y *= -1
+			target.set_meta("direction", direction)
+			target.position.y = clamp(target.position.y, 0, game_rect.size.y - target_size.y)
+		
+		# Fade out near end of lifetime
+		var fade_start = lifetime * 0.7
+		if age > fade_start:
+			var fade_progress = (age - fade_start) / (lifetime - fade_start)
+			target.modulate.a = 1.0 - fade_progress
+	
+	# Remove expired targets
+	for target in targets_to_remove:
+		_remove_target(target)
+
+func _remove_target(target: Control):
+	"""Remove a target from the game"""
+	if target in active_targets:
+		active_targets.erase(target)
+	if is_instance_valid(target):
+		target.queue_free()
+
+func _clear_all_targets():
+	"""Remove all active targets"""
+	for target in active_targets:
+		if is_instance_valid(target):
+			target.queue_free()
+	active_targets.clear()
+
+# ============================================================
+# INPUT HANDLING
+# ============================================================
+
+func _on_target_input(event: InputEvent, target: Control):
+	"""Handle click on target"""
+	if is_game_over:
+		return
+	
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_hit_target(target)
+		get_viewport().set_input_as_handled()
+
+func _on_game_area_input(event: InputEvent):
+	"""Handle click on empty area (miss)"""
+	if is_game_over:
+		return
+	
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_register_miss()
+
+func _hit_target(target: Control):
+	"""Process a successful hit"""
+	if not is_instance_valid(target):
+		return
+	
+	var base_points = target.get_meta("points")
+	var current_time = Time.get_ticks_msec() / 1000.0
+	
+	# Check for quick click bonus
+	var time_bonus = 1.0
+	if last_hit_time > 0 and (current_time - last_hit_time) < QUICK_CLICK_BONUS:
+		time_bonus = 1.5
+	
+	# Update combo
+	combo_count += 1
+	combo_timer = 0.0
+	combo_multiplier = min(1 + (combo_count / 3), MAX_COMBO_MULTIPLIER)
+	
+	if combo_multiplier > max_combo:
+		max_combo = combo_multiplier
+	
+	# Calculate final points
+	var points = int(base_points * combo_multiplier * time_bonus)
 	current_score += points
-	_update_score_display()
+	total_hits += 1
+	last_hit_time = current_time
 	
-	# Check score achievements in real-time
-	Achievements.check_score(current_score)
+	# Show floating score
+	_show_score_popup(target.position + target.custom_minimum_size / 2, points, time_bonus > 1.0)
+	
+	# Remove target
+	_remove_target(target)
+	
+	# Update HUD
+	_update_hud()
+	
+	print("[Game] HIT! +%d (combo x%d)" % [points, combo_multiplier])
 
-func add_streak():
-	"""Increment streak"""
+func _on_target_missed(target: Control):
+	"""Target expired without being clicked"""
+	total_misses += 1
+	_reset_combo()
+	_update_hud()
+
+func _register_miss():
+	"""Clicked on empty space"""
+	total_misses += 1
+	_reset_combo()
+	_update_hud()
+
+func _reset_combo():
+	"""Reset combo counter"""
+	combo_count = 0
+	combo_multiplier = 1
+	combo_timer = 0.0
+	_update_hud()
+
+# ============================================================
+# VISUAL FEEDBACK
+# ============================================================
+
+func _show_score_popup(pos: Vector2, points: int, is_bonus: bool):
+	"""Show floating score text"""
+	var popup = Label.new()
+	popup.text = "+%d" % points
+	popup.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	popup.position = pos - Vector2(50, 25)
+	
+	# Style based on points
+	if is_bonus:
+		popup.add_theme_color_override("font_color", Color(0.2, 1, 0.4))
+		popup.add_theme_font_size_override("font_size", 32)
+	elif combo_multiplier >= 5:
+		popup.add_theme_color_override("font_color", Color(1, 0.5, 0.1))
+		popup.add_theme_font_size_override("font_size", 28)
+	else:
+		popup.add_theme_color_override("font_color", Color(1, 1, 1))
+		popup.add_theme_font_size_override("font_size", 24)
+	
+	game_area.add_child(popup)
+	
+	# Animate and remove
+	var tween = create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(popup, "position:y", pos.y - 80, 0.8)
+	tween.tween_property(popup, "modulate:a", 0, 0.8)
+	tween.chain().tween_callback(popup.queue_free)
+
+# ============================================================
+# DIFFICULTY PROGRESSION
+# ============================================================
+
+func _on_difficulty_timer_timeout():
 	if is_game_over:
 		return
 	
-	current_streak += 1
-	_update_score_display()
-
-func reset_streak():
-	"""Reset streak to 0"""
-	current_streak = 0
-	_update_score_display()
+	difficulty_level += 1
+	
+	# Decrease spawn time (more targets)
+	var new_spawn_time = max(SPAWN_TIME_MIN, spawn_timer.wait_time * 0.85)
+	spawn_timer.wait_time = new_spawn_time
+	
+	print("[Game] Difficulty increased to level %d (spawn: %.2fs)" % [difficulty_level, new_spawn_time])
 
 # ============================================================
 # GAME OVER
 # ============================================================
 
-func game_over():
-	"""End the game and process achievements"""
+func _game_over():
+	"""End the game"""
 	if is_game_over:
 		return
 	
 	is_game_over = true
 	game_started = false
-	test_button.visible = false
+	spawn_timer.stop()
+	difficulty_timer.stop()
 	
-	print("[Game] ════════════════════════════════════")
+	_clear_all_targets()
+	
+	# Calculate stats
+	var total_clicks = total_hits + total_misses
+	var accuracy = 0
+	if total_clicks > 0:
+		accuracy = int((float(total_hits) / total_clicks) * 100)
+	
+	print("[Game] ========================================")
 	print("[Game] GAME OVER")
-	print("[Game] Score: %d | Streak: %d | Time Left: %.1fs" % [
-		current_score, current_streak, countdown_time
-	])
-	print("[Game] ════════════════════════════════════")
+	print("[Game] Score: %d | Hits: %d | Accuracy: %d%%" % [current_score, total_hits, accuracy])
+	print("[Game] Max Combo: x%d | Difficulty: %d" % [max_combo, difficulty_level])
+	print("[Game] ========================================")
 	
-	# Increment games played counter
-	Achievements.increment_games_played()
-	
-	# Check score and clutch achievements at game over
-	# Pass time remaining for clutch achievement checks
-	Achievements.check_game_over(current_score, countdown_time)
-	
-	# Show the game over screen
-	_show_game_over_screen()
+	_show_game_over_screen(accuracy)
 
-func _show_game_over_screen():
-	"""Display game over panel and submit score with achievements"""
+func _show_game_over_screen(accuracy: int):
+	"""Display game over panel and submit score"""
 	game_over_panel.visible = true
 	
 	# Update labels
 	title_label.text = "Game Over!"
-	score_label.text = "Score: %d" % current_score
-	streak_label.text = "Streak: %d" % current_streak
+	final_score_label.text = "Final Score: %d" % current_score
+	hits_result.text = "Hits: %d" % total_hits
+	accuracy_result.text = "Accuracy: %d%%" % accuracy
+	max_combo_label.text = "Max Combo: x%d" % max_combo
 	
-	# Check if authenticated
+	# Submit score
 	if CheddaBoards.is_authenticated():
 		status_label.text = "Saving score..."
 		status_label.add_theme_color_override("font_color", Color.WHITE)
-		
-		# Disable buttons while submitting
 		_set_buttons_disabled(true)
-		
-		# Submit score WITH any pending achievements
-		Achievements.submit_with_score(current_score, current_streak)
-		print("[Game] Submitting score + achievements to CheddaBoards...")
+		_submit_score()
+	elif CheddaBoards.is_ready():
+		# Native mode with API key - can still submit
+		if OS.get_name() != "Web" and not CheddaBoards.api_key.is_empty():
+			status_label.text = "Saving score..."
+			status_label.add_theme_color_override("font_color", Color.WHITE)
+			_set_buttons_disabled(true)
+			_submit_score()
+		else:
+			status_label.text = "Not logged in - Score not saved"
+			status_label.add_theme_color_override("font_color", Color.YELLOW)
+			_set_buttons_disabled(false)
 	else:
-		status_label.text = "Not logged in - Score not saved"
-		status_label.add_theme_color_override("font_color", Color.YELLOW)
+		status_label.text = "Offline - Score not saved"
+		status_label.add_theme_color_override("font_color", Color.GRAY)
 		_set_buttons_disabled(false)
+
+func _submit_score():
+	"""Submit score to CheddaBoards (works with both Web and Native API)"""
+	# Use max_combo as the streak value for this game
+	CheddaBoards.submit_score(current_score, max_combo)
+	print("[Game] Submitting score: %d (combo: %d)" % [current_score, max_combo])
 
 func _set_buttons_disabled(disabled: bool):
 	"""Enable/disable game over buttons"""
@@ -248,18 +546,17 @@ func _set_buttons_disabled(disabled: bool):
 
 func _on_score_submitted(score: int, streak: int):
 	"""Called when score is successfully submitted"""
-	print("[Game] ✅ Score submitted: %d points, %d streak" % [score, streak])
+	print("[Game] Score submitted: %d points" % score)
 	score_submitted = true
-	
-	# Profile now exists - safe to sync achievements to backend
-	Achievements.sync_pending_to_backend()
 	
 	# Check for new high score
 	var profile = CheddaBoards.get_cached_profile()
-	var previous_high = profile.get("score", 0) if not profile.is_empty() else 0
+	var previous_high = 0
+	if not profile.is_empty():
+		previous_high = int(profile.get("score", 0))
 	
 	if score > previous_high and previous_high > 0:
-		title_label.text = "🏆 NEW HIGH SCORE!"
+		title_label.text = "NEW HIGH SCORE!"
 		status_label.text = "New record: %d!" % score
 		status_label.add_theme_color_override("font_color", Color.GOLD)
 	else:
@@ -270,7 +567,7 @@ func _on_score_submitted(score: int, streak: int):
 
 func _on_score_error(reason: String):
 	"""Called when score submission fails"""
-	print("[Game] ❌ Score submission failed: %s" % reason)
+	print("[Game] Score submission failed: %s" % reason)
 	
 	status_label.text = "Save failed: %s" % reason
 	status_label.add_theme_color_override("font_color", Color.RED)
@@ -278,99 +575,49 @@ func _on_score_error(reason: String):
 	_set_buttons_disabled(false)
 
 # ============================================================
-# ACHIEVEMENT NOTIFICATIONS
-# ============================================================
-
-func _on_achievement_unlocked(_achievement_id: String, _achievement_name: String):
-	"""Called when an achievement is unlocked"""
-	# Show notifications from queue (handles multiple unlocks)
-	_show_next_achievement_notification()
-
-func _show_next_achievement_notification():
-	"""Show achievement notifications one at a time"""
-	if not achievement_notification:
-		return
-	
-	if not Achievements.has_pending_notifications():
-		return
-	
-	var notif = Achievements.get_next_notification()
-	print("[Game] 🏆 Showing achievement: %s" % notif.name)
-	
-	achievement_notification.show_achievement(
-		notif.name,
-		notif.get("icon", ""),
-		notif.get("description", "")
-	)
-	
-	# If your notification has a "finished" signal, connect it to show the next one:
-	# achievement_notification.finished.connect(_show_next_achievement_notification, CONNECT_ONE_SHOT)
-
-# ============================================================
 # BUTTON HANDLERS
 # ============================================================
 
-func _on_test_pressed():
-	"""Called when test button is clicked"""
-	add_score(100)
-	add_streak()
-	
-	# Auto game-over after reaching 10000 points (for testing)
-	if current_score >= 10000:
-		print("[Game] Reached 10000 points - triggering game over")
-		game_over()
-
 func _on_play_again_pressed():
-	"""Restart the game"""
 	print("[Game] Play again")
 	get_tree().reload_current_scene()
 
 func _on_main_menu_pressed():
-	"""Return to main menu"""
 	print("[Game] Main menu")
 	get_tree().change_scene_to_file("res://MainMenu.tscn")
 
 func _on_leaderboard_pressed():
-	"""View leaderboard"""
 	print("[Game] Leaderboard")
 	get_tree().change_scene_to_file("res://Leaderboard.tscn")
 
 # ============================================================
-# DEBUG & TESTING
+# DEBUG
 # ============================================================
 
-func _clear_achievements_cache():
-	"""Clear all cached achievements for testing (Ctrl+Shift+C)"""
-	print("")
-	print("[Game] ⚠️  CLEARING ACHIEVEMENTS CACHE")
-	Achievements.clear_local_cache()
-	print("[Game] ✓ Cache cleared - all achievements reset locally")
-	print("[Game] Note: Backend achievements remain intact")
-	print("")
-	
-	# Visual feedback
-	if achievement_notification:
-		achievement_notification.show_achievement("Cache Cleared", "", "Local achievements reset")
+func _input(event):
+	if event is InputEventKey and event.pressed:
+		# F9 for debug status
+		if event.keycode == KEY_F9:
+			_debug_status()
+			get_viewport().set_input_as_handled()
 
 func _debug_status():
-	"""Print debug status (Ctrl+Shift+D)"""
+	"""Print debug status"""
 	print("")
-	print("╔══════════════════════════════════════════════╗")
-	print("║            Game Debug Status                 ║")
-	print("╠══════════════════════════════════════════════╣")
-	print("║ Game State                                   ║")
-	print("║  - Score:            %s" % str(current_score).rpad(24) + "║")
-	print("║  - Streak:           %s" % str(current_streak).rpad(24) + "║")
-	print("║  - Time Left:        %s" % ("%.1fs" % countdown_time).rpad(24) + "║")
-	print("║  - Game Over:        %s" % str(is_game_over).rpad(24) + "║")
-	print("║  - Games Played:     %s" % str(Achievements.get_games_played()).rpad(24) + "║")
-	print("╠══════════════════════════════════════════════╣")
-	print("║ CheddaBoards                                 ║")
-	print("║  - Ready:            %s" % str(CheddaBoards.is_ready()).rpad(24) + "║")
-	print("║  - Authenticated:    %s" % str(CheddaBoards.is_authenticated()).rpad(24) + "║")
-	print("║  - Nickname:         %s" % CheddaBoards.get_nickname().rpad(24) + "║")
-	print("╚══════════════════════════════════════════════╝")
+	print("========================================")
+	print("         Game Debug Status             ")
+	print("========================================")
+	print(" Score:        %d" % current_score)
+	print(" Combo:        x%d (count: %d)" % [combo_multiplier, combo_count])
+	print(" Max Combo:    x%d" % max_combo)
+	print(" Hits:         %d" % total_hits)
+	print(" Misses:       %d" % total_misses)
+	print(" Time Left:    %.1fs" % time_remaining)
+	print(" Difficulty:   %d" % difficulty_level)
+	print(" Targets:      %d / %d" % [active_targets.size(), MAX_TARGETS_ON_SCREEN])
+	print("----------------------------------------")
+	print(" Platform:     %s" % OS.get_name())
+	print(" SDK Ready:    %s" % CheddaBoards.is_ready())
+	print(" Authenticated: %s" % CheddaBoards.is_authenticated())
+	print("========================================")
 	print("")
-	
-	# Also print achievement status
-	Achievements.debug_status()
