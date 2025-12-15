@@ -1,15 +1,14 @@
-# MainMenu.gd v1.1.0
+# MainMenu.gd v1.2.0
 # Main menu with authentication flow and profile display
-# https://github.com/cheddatech/CheddaBoards-Godot
+# Supports play and leaderboard without login (Scooter Dash style)
+# https://github.com/cheddatech/CheddaBoards-SDK
 #
 # ============================================================
 # SETUP
 # ============================================================
 # Required Autoloads:
 #   - CheddaBoards
-#   - Achievements
-#
-# Required nodes: See NODE REFERENCES sections below
+#   - Achievements (optional)
 #
 # ============================================================
 
@@ -22,21 +21,25 @@ extends Control
 const SCENE_GAME: String = "res://Game.tscn"
 const SCENE_LEADERBOARD: String = "res://Leaderboard.tscn"
 const SCENE_ACHIEVEMENTS: String = "res://AchievementsView.tscn"
+const SCENE_SETTINGS: String = "res://Settings.tscn"
 
 const UI_TIMEOUT_DURATION: float = 40.0
 const PROFILE_TIMEOUT_DURATION: float = 10.0
 const POLL_INTERVAL: float = 0.5
 const MAX_PROFILE_LOAD_ATTEMPTS: int = 3
-const MAX_POLL_ATTEMPTS: int = 15  # 15 * 0.5s = 7.5 seconds
+const MAX_POLL_ATTEMPTS: int = 15
 
 # ============================================================
 # NODE REFERENCES - LOGIN PANEL
 # ============================================================
 
 @onready var login_panel = $LoginPanel
+@onready var direct_play_button = $LoginPanel/MarginContainer/VBoxContainer/DirectPlayButton
+@onready var login_leaderboard_button = $LoginPanel/MarginContainer/VBoxContainer/LeaderboardButton
 @onready var google_button = $LoginPanel/MarginContainer/VBoxContainer/GoogleButton
 @onready var apple_button = $LoginPanel/MarginContainer/VBoxContainer/AppleButton
 @onready var chedda_button = $LoginPanel/MarginContainer/VBoxContainer/CheddaButton
+@onready var exit_button = $LoginPanel/MarginContainer/VBoxContainer/ExitButton
 @onready var status_label = $LoginPanel/MarginContainer/VBoxContainer/StatusLabel
 
 # ============================================================
@@ -52,6 +55,7 @@ const MAX_POLL_ATTEMPTS: int = 15  # 15 * 0.5s = 7.5 seconds
 @onready var change_nickname_button = $MainPanel/MarginContainer/VBoxContainer/ChangeNicknameButton
 @onready var achievement_button = $MainPanel/MarginContainer/VBoxContainer/AchievementsButton
 @onready var leaderboard_button = $MainPanel/MarginContainer/VBoxContainer/LeaderboardButton
+@onready var settings_button = $MainPanel/MarginContainer/VBoxContainer/SettingsButton
 @onready var logout_button = $MainPanel/MarginContainer/VBoxContainer/LogoutButton
 
 # ============================================================
@@ -83,7 +87,6 @@ var state_history: Array = []
 # ============================================================
 
 func _ready():
-	
 	# Connect CheddaBoards signals
 	CheddaBoards.sdk_ready.connect(_on_sdk_ready)
 	CheddaBoards.login_success.connect(_on_login_success)
@@ -94,28 +97,36 @@ func _ready():
 	CheddaBoards.logout_success.connect(_on_logout_success)
 	CheddaBoards.nickname_changed.connect(_on_nickname_changed)
 	
-	# Connect button signals
+	# Connect LOGIN PANEL button signals
+	direct_play_button.pressed.connect(_on_direct_play_button_pressed)
+	login_leaderboard_button.pressed.connect(_on_leaderboard_button_pressed)
 	google_button.pressed.connect(_on_google_button_pressed)
 	apple_button.pressed.connect(_on_apple_button_pressed)
 	chedda_button.pressed.connect(_on_chedda_button_pressed)
+	exit_button.pressed.connect(_on_exit_button_pressed)
+	
+	# Connect MAIN PANEL button signals
 	play_button.pressed.connect(_on_play_button_pressed)
 	change_nickname_button.pressed.connect(_on_change_nickname_button_pressed)
 	leaderboard_button.pressed.connect(_on_leaderboard_button_pressed)
 	achievement_button.pressed.connect(_on_achievements_button_pressed)
 	logout_button.pressed.connect(_on_logout_button_pressed)
 	
+	# Optional settings button
+	if settings_button:
+		settings_button.pressed.connect(_on_settings_button_pressed)
+	
 	# Initial state - show login panel while loading
 	_show_login_panel()
 	status_label.text = "Connecting..."
 	_enable_login_buttons(false)
 	
-	_log("MainMenu initialized")
+	_log("MainMenu v1.2.0 initialized")
 	_log("Debug: F8 = force refresh, F9 = dump debug")
 	
 	# Wait for SDK to be ready
 	if CheddaBoards.is_ready():
 		_on_sdk_ready()
-	# else: wait for sdk_ready signal
 
 func _on_sdk_ready():
 	"""Called when CheddaBoards SDK is ready"""
@@ -129,7 +140,7 @@ func _input(event):
 	if event is InputEventKey and event.pressed:
 		match event.keycode:
 			KEY_F8:
-				_log("🔄 Force profile refresh (F8)")
+				_log("Force profile refresh (F8)")
 				CheddaBoards.refresh_profile()
 				_start_profile_polling()
 				get_viewport().set_input_as_handled()
@@ -154,13 +165,11 @@ func _check_existing_auth():
 
 func _load_authenticated_profile():
 	"""Load profile for already authenticated user"""
-	# Always refresh profile from backend when returning to main menu
-	# This ensures we have the latest score/streak after playing
 	_log("Refreshing profile from backend...")
 	waiting_for_profile = true
 	profile_load_attempts = 0
 	
-	# Show current cached data immediately (if available) while refreshing
+	# Show current cached data immediately while refreshing
 	var profile = CheddaBoards.get_cached_profile()
 	if not profile.is_empty():
 		_log("Showing cached profile while refreshing")
@@ -168,7 +177,6 @@ func _load_authenticated_profile():
 	else:
 		_show_main_panel_loading()
 	
-	# Request fresh profile from backend
 	_request_profile_with_timeout()
 
 func _request_profile_with_timeout():
@@ -200,7 +208,7 @@ func _check_profile_poll():
 	var profile = CheddaBoards.get_cached_profile()
 	
 	if not profile.is_empty() and waiting_for_profile:
-		_log("✓ Profile found via polling (attempt %d)" % profile_poll_attempts)
+		_log("Profile found via polling (attempt %d)" % profile_poll_attempts)
 		_stop_all_timers()
 		waiting_for_profile = false
 		_show_main_panel(profile)
@@ -255,7 +263,6 @@ func _on_profile_timeout():
 		_stop_all_timers()
 		waiting_for_profile = false
 		
-		# Show main panel with default values since user IS authenticated
 		_show_main_panel({
 			"nickname": CheddaBoards.get_nickname(),
 			"score": 0,
@@ -330,7 +337,6 @@ func _show_main_panel_loading():
 	score_label.text = "High Score: --"
 	streak_label.text = "Best Streak: --"
 	
-	# Handle optional plays_label
 	if plays_label:
 		plays_label.text = "Games Played: --"
 	
@@ -357,30 +363,48 @@ func _show_main_panel(profile: Dictionary):
 	score_label.text = "High Score: %d" % score
 	streak_label.text = "Best Streak: %d" % streak
 	
-	# Handle optional plays_label
 	if plays_label:
 		plays_label.text = "Games Played: %d" % play_count
 	
-	# Update achievement button with progress
 	_update_achievement_button()
-	
-	# Enable buttons
 	_set_main_buttons_disabled(false)
 	
 	_log("Profile displayed - Score: %d, Streak: %d, Plays: %d" % [score, streak, play_count])
 
+func _update_main_panel_stats(profile: Dictionary):
+	"""Update just the stats on main panel"""
+	var nickname = str(profile.get("nickname", "Player"))
+	var score = int(profile.get("score", 0))
+	var streak = int(profile.get("streak", 0))
+	var play_count = int(profile.get("playCount", 0))
+	
+	welcome_label.text = "Welcome, %s!" % nickname
+	score_label.text = "High Score: %d" % score
+	streak_label.text = "Best Streak: %d" % streak
+	
+	if plays_label:
+		plays_label.text = "Games Played: %d" % play_count
+	
+	_update_achievement_button()
+
 func _update_achievement_button():
 	"""Update achievement button text with progress"""
-	if achievement_button and Achievements.is_ready:
-		var unlocked = Achievements.get_unlocked_count()
-		var total = Achievements.get_total_count()
-		achievement_button.text = "Achievements (%d/%d)" % [unlocked, total]
+	if achievement_button:
+		# Check if Achievements autoload exists
+		var achievements_node = get_node_or_null("/root/Achievements")
+		if achievements_node and achievements_node.has_method("get_unlocked_count"):
+			var unlocked = achievements_node.get_unlocked_count()
+			var total = achievements_node.get_total_count()
+			achievement_button.text = "Achievements (%d/%d)" % [unlocked, total]
 
 func _enable_login_buttons(enabled: bool):
 	"""Enable/disable login buttons"""
+	direct_play_button.disabled = not enabled
+	login_leaderboard_button.disabled = not enabled
 	google_button.disabled = not enabled
 	apple_button.disabled = not enabled
 	chedda_button.disabled = not enabled
+	exit_button.disabled = not enabled
 
 func _set_main_buttons_disabled(disabled: bool):
 	"""Enable/disable main panel buttons"""
@@ -388,8 +412,9 @@ func _set_main_buttons_disabled(disabled: bool):
 	change_nickname_button.disabled = disabled
 	achievement_button.disabled = disabled
 	leaderboard_button.disabled = disabled
-	# Logout always enabled
-	logout_button.disabled = false
+	if settings_button:
+		settings_button.disabled = disabled
+	logout_button.disabled = false  # Always enabled
 
 func _set_status(message: String, is_error: bool = false):
 	"""Set status label text and color"""
@@ -400,8 +425,13 @@ func _set_status(message: String, is_error: bool = false):
 		status_label.remove_theme_color_override("font_color")
 
 # ============================================================
-# LOGIN BUTTON HANDLERS
+# LOGIN PANEL BUTTON HANDLERS
 # ============================================================
+
+func _on_direct_play_button_pressed():
+	"""Play without login - uses anonymous/device ID"""
+	_log("Direct play pressed")
+	get_tree().change_scene_to_file(SCENE_GAME)
 
 func _on_google_button_pressed():
 	_log("Google login pressed")
@@ -427,23 +457,26 @@ func _on_chedda_button_pressed():
 	is_logging_in = true
 	CheddaBoards.login_internet_identity()
 
+func _on_exit_button_pressed():
+	_log("Exit pressed")
+	get_tree().quit()
+
 # ============================================================
 # CHEDDABOARDS SIGNAL HANDLERS
 # ============================================================
 
 func _on_login_success(nickname: String):
-	_log("✅ Login success: %s" % nickname)
+	_log("Login success: %s" % nickname)
 	_clear_ui_timeout()
 	is_logging_in = false
 	
-	# Show loading state and request profile
 	_show_main_panel_loading()
 	waiting_for_profile = true
 	profile_load_attempts = 0
 	_request_profile_with_timeout()
 
 func _on_login_failed(reason: String):
-	_log("❌ Login failed: %s" % reason)
+	_log("Login failed: %s" % reason)
 	_clear_ui_timeout()
 	_set_status("Login failed: %s" % reason, true)
 	_enable_login_buttons(true)
@@ -452,7 +485,7 @@ func _on_login_failed(reason: String):
 	is_logging_in = false
 
 func _on_login_timeout():
-	_log("⏰ Login timeout signal")
+	_log("Login timeout signal")
 	_clear_ui_timeout()
 	_set_status("Login took too long. Please try again.", true)
 	_enable_login_buttons(true)
@@ -461,45 +494,26 @@ func _on_login_timeout():
 	is_logging_in = false
 
 func _on_profile_loaded(nickname: String, score: int, streak: int, achievements: Array):
-	_log("📊 Profile loaded: %s (score: %d, streak: %d)" % [nickname, score, streak])
+	_log("Profile loaded: %s (score: %d, streak: %d)" % [nickname, score, streak])
 	
 	var profile = CheddaBoards.get_cached_profile()
 	if profile.is_empty():
 		_log("Warning: profile_loaded signal but cache is empty")
 		return
 	
-	# Always update UI when profile loads
 	if main_panel.visible:
 		_log("Updating main panel with fresh profile")
 		_update_main_panel_stats(profile)
 	
-	# Clear waiting state
 	if waiting_for_profile:
 		waiting_for_profile = false
 		_stop_all_timers()
 		if not main_panel.visible:
 			_show_main_panel(profile)
 
-func _update_main_panel_stats(profile: Dictionary):
-	"""Update just the stats on main panel (not full refresh)"""
-	var nickname = str(profile.get("nickname", "Player"))
-	var score = int(profile.get("score", 0))
-	var streak = int(profile.get("streak", 0))
-	var play_count = int(profile.get("playCount", 0))
-	
-	welcome_label.text = "Welcome, %s!" % nickname
-	score_label.text = "High Score: %d" % score
-	streak_label.text = "Best Streak: %d" % streak
-	
-	if plays_label:
-		plays_label.text = "Games Played: %d" % play_count
-	
-	_update_achievement_button()
-
 func _on_no_profile():
-	_log("📭 No profile signal (logging_in: %s, auth: %s)" % [is_logging_in, CheddaBoards.is_authenticated()])
+	_log("No profile signal (logging_in: %s, auth: %s)" % [is_logging_in, CheddaBoards.is_authenticated()])
 	
-	# Only show login if NOT authenticated and NOT in login flow
 	if not CheddaBoards.is_authenticated() and not is_logging_in:
 		_log("Not authenticated - showing login")
 		_stop_all_timers()
@@ -509,7 +523,6 @@ func _on_no_profile():
 		_log("Still logging in - ignoring no_profile")
 	else:
 		_log("Authenticated but no profile - using defaults")
-		# User is authenticated, show main panel with defaults
 		_stop_all_timers()
 		waiting_for_profile = false
 		_show_main_panel({
@@ -521,12 +534,12 @@ func _on_no_profile():
 		})
 
 func _on_logout_success():
-	_log("👋 Logout success")
+	_log("Logout success")
 	is_logging_in = false
 	_show_login_panel()
 
 func _on_nickname_changed(new_nickname: String):
-	_log("✏️ Nickname changed: %s" % new_nickname)
+	_log("Nickname changed: %s" % new_nickname)
 	if main_panel.visible:
 		welcome_label.text = "Welcome, %s!" % new_nickname
 
@@ -535,23 +548,30 @@ func _on_nickname_changed(new_nickname: String):
 # ============================================================
 
 func _on_play_button_pressed():
-	_log("▶️ Play pressed")
+	_log("Play pressed")
 	get_tree().change_scene_to_file(SCENE_GAME)
 
 func _on_change_nickname_button_pressed():
-	_log("✏️ Change nickname pressed")
+	_log("Change nickname pressed")
 	CheddaBoards.change_nickname()
 
 func _on_leaderboard_button_pressed():
-	_log("📊 Leaderboard pressed")
+	_log("Leaderboard pressed")
 	get_tree().change_scene_to_file(SCENE_LEADERBOARD)
 
 func _on_achievements_button_pressed():
-	_log("🏆 Achievements pressed")
+	_log("Achievements pressed")
 	get_tree().change_scene_to_file(SCENE_ACHIEVEMENTS)
 
+func _on_settings_button_pressed():
+	_log("Settings pressed")
+	if FileAccess.file_exists(SCENE_SETTINGS):
+		get_tree().change_scene_to_file(SCENE_SETTINGS)
+	else:
+		_log("Settings scene not found")
+
 func _on_logout_button_pressed():
-	_log("🚪 Logout pressed")
+	_log("Logout pressed")
 	CheddaBoards.logout()
 
 # ============================================================
@@ -571,34 +591,34 @@ func _log(message: String):
 func _dump_debug():
 	"""Dump all debug info (F9)"""
 	print("")
-	print("╔══════════════════════════════════════════════╗")
-	print("║           MainMenu Debug v1.1.0              ║")
-	print("╠══════════════════════════════════════════════╣")
-	print("║ State                                        ║")
-	print("║  - Is Logging In:    %s" % str(is_logging_in).rpad(24) + "║")
-	print("║  - Waiting Profile:  %s" % str(waiting_for_profile).rpad(24) + "║")
-	print("║  - Profile Attempts: %s" % str(profile_load_attempts).rpad(24) + "║")
-	print("╠══════════════════════════════════════════════╣")
-	print("║ Timers                                       ║")
-	print("║  - UI Timeout:       %s" % str(ui_timeout_timer != null).rpad(24) + "║")
-	print("║  - Profile Timeout:  %s" % str(profile_timeout_timer != null).rpad(24) + "║")
-	print("║  - Polling:          %s" % str(profile_poll_timer != null).rpad(24) + "║")
-	print("╠══════════════════════════════════════════════╣")
-	print("║ CheddaBoards                                 ║")
-	print("║  - SDK Ready:        %s" % str(CheddaBoards.is_ready()).rpad(24) + "║")
-	print("║  - Authenticated:    %s" % str(CheddaBoards.is_authenticated()).rpad(24) + "║")
-	print("║  - Nickname:         %s" % CheddaBoards.get_nickname().rpad(24) + "║")
-	print("║  - High Score:       %s" % str(CheddaBoards.get_high_score()).rpad(24) + "║")
-	print("╠══════════════════════════════════════════════╣")
-	print("║ Cached Profile                               ║")
+	print("================================================")
+	print("           MainMenu Debug v1.2.0                ")
+	print("================================================")
+	print(" State")
+	print("  - Is Logging In:    %s" % str(is_logging_in))
+	print("  - Waiting Profile:  %s" % str(waiting_for_profile))
+	print("  - Profile Attempts: %s" % str(profile_load_attempts))
+	print("------------------------------------------------")
+	print(" Timers")
+	print("  - UI Timeout:       %s" % str(ui_timeout_timer != null))
+	print("  - Profile Timeout:  %s" % str(profile_timeout_timer != null))
+	print("  - Polling:          %s" % str(profile_poll_timer != null))
+	print("------------------------------------------------")
+	print(" CheddaBoards")
+	print("  - SDK Ready:        %s" % str(CheddaBoards.is_ready()))
+	print("  - Authenticated:    %s" % str(CheddaBoards.is_authenticated()))
+	print("  - Nickname:         %s" % CheddaBoards.get_nickname())
+	print("  - High Score:       %s" % str(CheddaBoards.get_high_score()))
+	print("------------------------------------------------")
+	print(" Cached Profile")
 	var profile = CheddaBoards.get_cached_profile()
 	if profile.is_empty():
-		print("║  (empty)                                     ║")
+		print("  (empty)")
 	else:
-		print("║  - score:            %s" % str(profile.get("score", 0)).rpad(24) + "║")
-		print("║  - streak:           %s" % str(profile.get("streak", 0)).rpad(24) + "║")
-		print("║  - playCount:        %s" % str(profile.get("playCount", 0)).rpad(24) + "║")
-	print("╚══════════════════════════════════════════════╝")
+		print("  - score:            %s" % str(profile.get("score", 0)))
+		print("  - streak:           %s" % str(profile.get("streak", 0)))
+		print("  - playCount:        %s" % str(profile.get("playCount", 0)))
+	print("================================================")
 	print("")
 	print("State History (last 10):")
 	var start_idx = max(0, state_history.size() - 10)
