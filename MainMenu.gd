@@ -1,7 +1,7 @@
 # MainMenu.gd v1.2.0
 # Main menu with authentication flow and profile display
-# Supports play and leaderboard without login (Scooter Dash style)
-# https://github.com/cheddatech/CheddaBoards-SDK
+# Supports play and leaderboard without login
+# https://github.com/cheddatech/CheddaBoards-Godot
 #
 # ============================================================
 # SETUP
@@ -431,6 +431,13 @@ func _set_status(message: String, is_error: bool = false):
 func _on_direct_play_button_pressed():
 	"""Play without login - uses anonymous/device ID"""
 	_log("Direct play pressed")
+	
+	# Auto-login anonymously if not already authenticated
+	if not CheddaBoards.is_authenticated():
+		_log("Setting up anonymous session...")
+		CheddaBoards.login_anonymous()
+	
+	# Go directly to game - anonymous session will be ready
 	get_tree().change_scene_to_file(SCENE_GAME)
 
 func _on_google_button_pressed():
@@ -633,3 +640,4 @@ func _dump_debug():
 func _exit_tree():
 	"""Clean up on exit"""
 	_stop_all_timers()
+
