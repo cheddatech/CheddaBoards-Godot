@@ -40,9 +40,9 @@ expand_mode = 1
 [node name="LoginPanel" type="Panel" parent="."]
 layout_mode = 1
 offset_left = 262.0
-offset_top = 513.0
+offset_top = 511.0
 offset_right = 262.0
-offset_bottom = 513.0
+offset_bottom = 511.0
 
 [node name="MarginContainer" type="MarginContainer" parent="LoginPanel"]
 layout_mode = 1
@@ -72,11 +72,35 @@ horizontal_alignment = 1
 custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 
-[node name="CheddaButton" type="Button" parent="LoginPanel/MarginContainer/VBoxContainer"]
+[node name="DirectPlayButton" type="Button" parent="LoginPanel/MarginContainer/VBoxContainer"]
 custom_minimum_size = Vector2(100, 100)
 layout_mode = 2
+tooltip_text = "Play and submit scores without an account"
+theme_override_colors/font_color = Color(0.3, 1, 0.4, 1)
+theme_override_font_sizes/font_size = 28
+text = "PLAY NOW"
+
+[node name="LeaderboardButton" type="Button" parent="LoginPanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(100, 80)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
 theme_override_font_sizes/font_size = 24
-text = "Login with Chedda"
+text = "Leaderboard"
+
+[node name="Spacer2" type="Control" parent="LoginPanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 10)
+layout_mode = 2
+
+[node name="OrLabel" type="Label" parent="LoginPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.6, 0.6, 0.6, 1)
+theme_override_font_sizes/font_size = 20
+text = "— or login to sync across devices —"
+horizontal_alignment = 1
+
+[node name="Spacer3" type="Control" parent="LoginPanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 10)
+layout_mode = 2
 
 [node name="GoogleButton" type="Button" parent="LoginPanel/MarginContainer/VBoxContainer"]
 custom_minimum_size = Vector2(100, 100)
@@ -90,11 +114,24 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 24
 text = "Login with Apple"
 
+[node name="CheddaButton" type="Button" parent="LoginPanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(100, 100)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "Login with Chedda"
+
+[node name="ExitButton" type="Button" parent="LoginPanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(100, 80)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "Exit"
+
 [node name="StatusLabel" type="Label" parent="LoginPanel/MarginContainer/VBoxContainer"]
 layout_mode = 2
 horizontal_alignment = 1
 
 [node name="MainPanel" type="Panel" parent="."]
+visible = false
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
