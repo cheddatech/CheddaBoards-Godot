@@ -126,8 +126,12 @@ func _ready():
 	# Connect game area click for misses
 	game_area.gui_input.connect(_on_game_area_input)
 	
+	# Check if Achievements autoload exists (optional)
+	var has_achievements = get_node_or_null("/root/Achievements") != null
+	
 	print("[Game] Starting dynamic game v1.2.0")
 	print("[Game] Platform: %s" % ("Web" if OS.get_name() == "Web" else "Native"))
+	print("[Game] Achievements: %s" % ("enabled" if has_achievements else "disabled"))
 	
 	_start_game()
 
@@ -506,23 +510,22 @@ func _show_game_over_screen(accuracy: int):
 	accuracy_result.text = "Accuracy: %d%%" % accuracy
 	max_combo_label.text = "Max Combo: x%d" % max_combo
 	
-	# Submit score
-	if CheddaBoards.is_authenticated():
-		status_label.text = "Saving score..."
-		status_label.add_theme_color_override("font_color", Color.WHITE)
-		_set_buttons_disabled(true)
-		_submit_score()
-	elif CheddaBoards.is_ready():
-		# Native mode with API key - can still submit
-		if OS.get_name() != "Web" and not CheddaBoards.api_key.is_empty():
+	# Submit score - works for authenticated AND anonymous users
+	if CheddaBoards.is_ready():
+		if CheddaBoards.is_authenticated():
+			# Logged in or anonymous - submit score
+			var auth_type = "anonymous" if CheddaBoards.is_anonymous() else "account"
 			status_label.text = "Saving score..."
 			status_label.add_theme_color_override("font_color", Color.WHITE)
 			_set_buttons_disabled(true)
 			_submit_score()
+			print("[Game] Submitting score (auth: %s)" % auth_type)
 		else:
-			status_label.text = "Not logged in - Score not saved"
-			status_label.add_theme_color_override("font_color", Color.YELLOW)
-			_set_buttons_disabled(false)
+			# Not authenticated at all - try anyway (JS will handle it)
+			status_label.text = "Saving score..."
+			status_label.add_theme_color_override("font_color", Color.WHITE)
+			_set_buttons_disabled(true)
+			_submit_score()
 	else:
 		status_label.text = "Offline - Score not saved"
 		status_label.add_theme_color_override("font_color", Color.GRAY)
