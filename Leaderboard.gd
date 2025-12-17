@@ -1,6 +1,7 @@
-# Leaderboard.gd v1.1.0
+# Leaderboard.gd v1.2.0
 # Leaderboard display with sorting options
-# https://github.com/cheddatech/CheddaBoards-Godot
+# Now supports viewing without login!
+# https://github.com/cheddatech/CheddaBoards-SDK
 #
 # ============================================================
 # SETUP
@@ -67,8 +68,9 @@ func _ready():
 		status_label.text = "Connecting..."
 		await CheddaBoards.wait_until_ready()
 	
-	# Get current player's nickname for highlighting
-	current_player_nickname = CheddaBoards.get_nickname()
+	# Get current player's nickname for highlighting (if logged in)
+	if CheddaBoards.is_authenticated():
+		current_player_nickname = CheddaBoards.get_nickname()
 	
 	# Connect buttons
 	refresh_button.pressed.connect(_on_refresh_pressed)
@@ -90,17 +92,9 @@ func _ready():
 # ============================================================
 
 func _load_leaderboard():
-	"""Load leaderboard data"""
+	"""Load leaderboard data - works with or without login"""
 	if is_loading:
 		print("[Leaderboard] Already loading, ignoring request")
-		return
-	
-	# Check authentication
-	if not CheddaBoards.is_authenticated():
-		status_label.text = "Login to view leaderboard"
-		status_label.add_theme_color_override("font_color", Color.YELLOW)
-		your_rank_label.text = "Login to see your rank"
-		_set_loading_ui(false)
 		return
 	
 	is_loading = true
@@ -112,7 +106,6 @@ func _load_leaderboard():
 	# Show loading state
 	status_label.text = "Loading..."
 	status_label.add_theme_color_override("font_color", Color.WHITE)
-	your_rank_label.text = "Loading your rank..."
 	
 	# Update button states
 	_update_sort_buttons()
@@ -122,9 +115,16 @@ func _load_leaderboard():
 	# Start timeout timer
 	_start_load_timeout()
 	
-	# Request leaderboard and player rank
+	# Request leaderboard (no auth required!)
 	CheddaBoards.get_leaderboard(current_sort_by, LEADERBOARD_LIMIT)
-	CheddaBoards.get_player_rank(current_sort_by)
+	
+	# Only request player rank if user has a real account
+	if CheddaBoards.has_account():
+		your_rank_label.text = "Loading your rank..."
+		CheddaBoards.get_player_rank(current_sort_by)
+	else:
+		your_rank_label.text = "Login to see your rank"
+		your_rank_label.add_theme_color_override("font_color", Color.GRAY)
 
 func _set_loading_ui(loading: bool):
 	"""Update UI elements based on loading state"""
@@ -224,7 +224,7 @@ func _add_leaderboard_entry(rank: int, entry) -> void:
 		return
 	
 	# Check if this is the current player
-	var is_current_player = (nickname == current_player_nickname)
+	var is_current_player = (nickname == current_player_nickname) and current_player_nickname != ""
 	
 	# Create entry container
 	var entry_container = PanelContainer.new()
@@ -273,8 +273,6 @@ func _add_leaderboard_entry(rank: int, entry) -> void:
 	# Nickname label
 	var nickname_label = Label.new()
 	nickname_label.text = nickname
-	if is_current_player:
-		nickname_label.text += ""
 	nickname_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	nickname_label.add_theme_font_size_override("font_size", 24)
 	hbox.add_child(nickname_label)
@@ -303,14 +301,14 @@ func _on_player_rank_loaded(rank: int, score: int, streak: int, total_players: i
 	print("[Leaderboard] Your rank: #%d / %d players" % [rank, total_players])
 	
 	if rank == 0:
-		your_rank_label.text = "Not ranked yet — play a game to get on the leaderboard!"
+		your_rank_label.text = "Not ranked yet - play a game to get on the leaderboard!"
 	else:
 		var rank_text = "Your Rank: #%d of %d" % [rank, total_players]
 		
 		if current_sort_by == "score":
-			rank_text += "  •  Score: %d" % score
+			rank_text += "  |  Score: %d" % score
 		else:
-			rank_text += "  •  Streak: %d" % streak
+			rank_text += "  |  Streak: %d" % streak
 		
 		# Add encouraging message for top ranks
 		if rank == 1:
@@ -321,11 +319,13 @@ func _on_player_rank_loaded(rank: int, score: int, streak: int, total_players: i
 			rank_text += "   Top 10!"
 		
 		your_rank_label.text = rank_text
+		your_rank_label.add_theme_color_override("font_color", Color.WHITE)
 
 func _on_rank_error(reason: String):
 	"""Called when rank fetch fails"""
 	print("[Leaderboard] Rank error: %s" % reason)
-	your_rank_label.text = "Could not load your rank"
+	your_rank_label.text = "Login to see your rank"
+	your_rank_label.add_theme_color_override("font_color", Color.GRAY)
 
 # ============================================================
 # BUTTON HANDLERS
@@ -343,7 +343,7 @@ func _on_sort_by_score_pressed():
 	
 	print("[Leaderboard] Sort by score")
 	current_sort_by = "score"
-	title_label.text = "Leaderboard — By Score"
+	title_label.text = "Leaderboard - By Score"
 	_load_leaderboard()
 
 func _on_sort_by_streak_pressed():
@@ -353,7 +353,7 @@ func _on_sort_by_streak_pressed():
 	
 	print("[Leaderboard] Sort by streak")
 	current_sort_by = "streak"
-	title_label.text = "Leaderboard — By Streak"
+	title_label.text = "Leaderboard - By Streak"
 	_load_leaderboard()
 
 func _on_back_pressed():
