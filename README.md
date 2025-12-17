@@ -15,10 +15,10 @@ A complete, production-ready SDK for integrating [CheddaBoards](https://cheddabo
 - ✅ **Cross-platform** - Same codebase works everywhere
 
 ### Authentication
-- ✅ Google Sign-In (Web)
-- ✅ Apple Sign-In (Web)
-- ✅ Internet Identity / Chedda ID (Web - passwordless)
-- ✅ **Anonymous / Device ID** (Web + Native)
+- ✅ **Chedda ID / Internet Identity** (Web - works out of box!)
+- ✅ **Anonymous / Device ID** (Web + Native - works out of box!)
+- ⚙️ Google Sign-In (Web - requires your OAuth credentials)
+- ⚙️ Apple Sign-In (Web - requires your OAuth credentials)
 - ✅ Session persistence across page reloads
 
 ### Leaderboards
@@ -89,9 +89,11 @@ The SDK automatically detects the platform and uses the appropriate backend:
 
 | Platform | Mode | Authentication Options |
 |----------|------|----------------------|
-| Web | JavaScript Bridge | Google, Apple, Internet Identity, Anonymous |
-| Windows/Mac/Linux | HTTP API | Anonymous (API Key) |
-| Mobile | HTTP API | Anonymous (API Key) |
+| Web | JavaScript Bridge | Chedda ID ✅, Anonymous ✅, Google/Apple ⚙️ |
+| Windows/Mac/Linux | HTTP API | Anonymous ✅ |
+| Mobile | HTTP API | Anonymous ✅ |
+
+> ✅ = Works out of box | ⚙️ = Requires your own OAuth credentials
 
 ```gdscript
 # The SDK handles this automatically!
@@ -177,13 +179,16 @@ func _on_score_error(reason: String):
 ### Authentication Options
 
 ```gdscript
-# === ANONYMOUS (Web + Native) ===
+# === ANONYMOUS (Web + Native) - Works out of box! ===
 CheddaBoards.login_anonymous("CustomNickname")
 
-# === WEB ONLY - Social Login ===
+# === CHEDDA ID (Web) - Works out of box! ===
+CheddaBoards.login_internet_identity("Nickname")
+
+# === GOOGLE/APPLE (Web) - Requires your own OAuth credentials ===
+# Set GOOGLE_CLIENT_ID or APPLE_SERVICE_ID in template.html first
 CheddaBoards.login_google()
 CheddaBoards.login_apple()
-CheddaBoards.login_internet_identity("Nickname")
 
 # === Check Status ===
 if CheddaBoards.is_authenticated():
@@ -193,7 +198,7 @@ if CheddaBoards.is_anonymous():
     print("Playing anonymously")
     
 if CheddaBoards.has_account():
-    print("Has real account (Google/Apple/II)")
+    print("Has real account (Google/Apple/Chedda ID)")
 
 # === Logout ===
 CheddaBoards.logout()
