@@ -1,4 +1,4 @@
-# Game.gd v1.2.0
+# Game.gd v1.3.0
 # Dynamic clicker game with moving targets and combo system
 # Compatible with CheddaBoards SDK (Web + Native API)
 # https://github.com/cheddatech/CheddaBoards-SDK
@@ -10,6 +10,7 @@
 # - Combo system with multipliers (max x10)
 # - Time bonuses for quick consecutive clicks
 # - Difficulty progression (faster spawns, faster movement)
+# - Achievement system integration
 # - Works with both Web (JS bridge) and Native (HTTP API)
 #
 # ============================================================
@@ -62,6 +63,9 @@ var score_submitted: bool = false
 var active_targets: Array = []
 var target_texture: Texture2D = null
 
+# Achievements (check if available)
+var has_achievements: bool = false
+
 # ============================================================
 # NODE REFERENCES - HUD
 # ============================================================
@@ -102,7 +106,7 @@ var target_texture: Texture2D = null
 
 func _ready():
 	# Load target texture (cheese icon)
-	target_texture = load("res://addons/cheddaboards/icon.png")
+	target_texture = load("res://addons/cheddaboards/cheese.png")
 	if not target_texture:
 		push_warning("[Game] Target texture not found - using placeholder")
 	
@@ -122,14 +126,14 @@ func _ready():
 	# Connect CheddaBoards signals
 	CheddaBoards.score_submitted.connect(_on_score_submitted)
 	CheddaBoards.score_error.connect(_on_score_error)
-	
+
 	# Connect game area click for misses
 	game_area.gui_input.connect(_on_game_area_input)
 	
-	# Check if Achievements autoload exists (optional)
-	var has_achievements = get_node_or_null("/root/Achievements") != null
+	# Check if Achievements autoload exists
+	has_achievements = get_node_or_null("/root/Achievements") != null
 	
-	print("[Game] Starting dynamic game v1.2.0")
+	print("[Game] Starting dynamic game v1.3.0")
 	print("[Game] Platform: %s" % ("Web" if OS.get_name() == "Web" else "Native"))
 	print("[Game] Achievements: %s" % ("enabled" if has_achievements else "disabled"))
 	
@@ -383,14 +387,22 @@ func _hit_target(target: Control):
 	combo_timer = 0.0
 	combo_multiplier = min(1 + (combo_count / 3), MAX_COMBO_MULTIPLIER)
 	
+	# Track max combo and check achievements
 	if combo_multiplier > max_combo:
 		max_combo = combo_multiplier
+		# Check combo achievements in real-time
+		if has_achievements:
+			Achievements.check_combo(max_combo)
 	
 	# Calculate final points
 	var points = int(base_points * combo_multiplier * time_bonus)
 	current_score += points
 	total_hits += 1
 	last_hit_time = current_time
+	
+	# Check score achievements in real-time (optional - can remove if too frequent)
+	if has_achievements:
+		Achievements.check_score(current_score)
 	
 	# Show floating score
 	_show_score_popup(target.position + target.custom_minimum_size / 2, points, time_bonus > 1.0)
@@ -497,6 +509,19 @@ func _game_over():
 	print("[Game] Max Combo: x%d | Difficulty: %d" % [max_combo, difficulty_level])
 	print("[Game] ========================================")
 	
+	# ========================================
+	# ACHIEVEMENTS - Check at game over
+	# ========================================
+	if has_achievements:
+		# Increment games played FIRST
+		Achievements.increment_games_played()
+		
+		# Check all achievements (score, clicks, combo)
+		# Using total_hits as "clicks" since that's successful target hits
+		Achievements.check_game_over(current_score, total_hits, max_combo)
+		
+		print("[Game] Achievements checked - games played: %d" % Achievements.get_games_played())
+	
 	_show_game_over_screen(accuracy)
 
 func _show_game_over_screen(accuracy: int):
@@ -532,10 +557,16 @@ func _show_game_over_screen(accuracy: int):
 		_set_buttons_disabled(false)
 
 func _submit_score():
-	"""Submit score to CheddaBoards (works with both Web and Native API)"""
+	"""Submit score to CheddaBoards with achievements"""
 	# Use max_combo as the streak value for this game
-	CheddaBoards.submit_score(current_score, max_combo)
-	print("[Game] Submitting score: %d (combo: %d)" % [current_score, max_combo])
+	if has_achievements:
+		# Submit with any pending achievements attached
+		Achievements.submit_with_score(current_score, max_combo)
+		print("[Game] Submitting score with achievements: %d (combo: %d)" % [current_score, max_combo])
+	else:
+		# No achievements - submit directly
+		CheddaBoards.submit_score(current_score, max_combo)
+		print("[Game] Submitting score: %d (combo: %d)" % [current_score, max_combo])
 
 func _set_buttons_disabled(disabled: bool):
 	"""Enable/disable game over buttons"""
@@ -598,10 +629,23 @@ func _on_leaderboard_pressed():
 # ============================================================
 
 func _input(event):
+	# Debug click positions
+	if event is InputEventMouseButton and event.pressed:
+		print("=== CLICK DEBUG ===")
+		print("Mouse position: ", event.position)
+		print("Global mouse: ", get_global_mouse_position())
+		print("Viewport size: ", get_viewport().get_visible_rect().size)
+		print("Window size: ", DisplayServer.window_get_size())
+	
+	# Keyboard shortcuts
 	if event is InputEventKey and event.pressed:
 		# F9 for debug status
 		if event.keycode == KEY_F9:
 			_debug_status()
+			get_viewport().set_input_as_handled()
+		# F10 for achievement debug (if available)
+		if event.keycode == KEY_F10 and has_achievements:
+			Achievements.debug_status()
 			get_viewport().set_input_as_handled()
 
 func _debug_status():
@@ -622,5 +666,9 @@ func _debug_status():
 	print(" Platform:     %s" % OS.get_name())
 	print(" SDK Ready:    %s" % CheddaBoards.is_ready())
 	print(" Authenticated: %s" % CheddaBoards.is_authenticated())
+	print(" Achievements: %s" % ("enabled" if has_achievements else "disabled"))
+	if has_achievements:
+		print(" Games Played: %d" % Achievements.get_games_played())
+		print(" Unlocked:     %d / %d" % [Achievements.get_unlocked_count(), Achievements.get_total_count()])
 	print("========================================")
 	print("")
