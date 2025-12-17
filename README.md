@@ -1,29 +1,37 @@
-# CheddaBoards Godot 4 Template
+# CheddaBoards Godot 4 SDK
 
-A complete, production-ready template for integrating [CheddaBoards](https://cheddaboards.com) into your Godot 4 web game.
+A complete, production-ready SDK for integrating [CheddaBoards](https://cheddaboards.com) into your Godot 4 game.
 
-**Zero servers. $0 for indie devs. 5-minute setup with the Setup Wizard.**
+**Zero servers. $0 for indie devs. 5-minute setup.**
 
 ---
 
 ## 🎮 Features
 
+### Platform Support
+- ✅ **Web exports** - JavaScript bridge for full ICP authentication
+- ✅ **Native exports** - HTTP API for Windows, Mac, Linux, Mobile
+- ✅ **Anonymous play** - No account required, instant play with device ID
+- ✅ **Cross-platform** - Same codebase works everywhere
+
 ### Authentication
-- ✅ Google Sign-In
-- ✅ Apple Sign-In  
-- ✅ Internet Identity (passwordless)
+- ✅ Google Sign-In (Web)
+- ✅ Apple Sign-In (Web)
+- ✅ Internet Identity / Chedda ID (Web - passwordless)
+- ✅ **Anonymous / Device ID** (Web + Native)
 - ✅ Session persistence across page reloads
 
 ### Leaderboards
 - ✅ Global leaderboard with rankings
 - ✅ Sort by score or streak
 - ✅ Player rank display
+- ✅ Custom nicknames for anonymous players
 - ✅ Your entry highlighted
 
 ### Achievements
-- ✅ 17 pre-configured achievements
+- ✅ Configurable achievement definitions
 - ✅ Backend-first architecture
-- ✅ Automatic unlocking based on score/streak
+- ✅ Automatic unlocking based on score/streak/games played
 - ✅ Popup notifications
 - ✅ Offline support with local caching
 - ✅ Multi-device sync
@@ -34,15 +42,6 @@ A complete, production-ready template for integrating [CheddaBoards](https://che
 - ✅ Games played count (playCount)
 - ✅ Cross-game player profiles
 
-### Technical
-- ✅ Godot 4.x compatible
-- ✅ HTML5 web export
-- ✅ JavaScript ↔ GDScript bridge
-- ✅ Signal-based architecture
-- ✅ Comprehensive error handling
-- ✅ Debug logging & shortcuts
-- ✅ **Setup Wizard** for automated configuration
-
 ---
 
 ## 📋 Prerequisites
@@ -50,236 +49,153 @@ A complete, production-ready template for integrating [CheddaBoards](https://che
 - **Godot 4.x** (tested on 4.3+)
 - **CheddaBoards Account** - Free at [cheddaboards.com](https://cheddaboards.com)
 - **Game ID** - Register your game on the dashboard
-- **Web server** for testing (can't use `file://` protocol)
+- **API Key** - For native/anonymous builds (get from dashboard)
 
 ---
 
-## 🚀 Quick Start (5 Minutes)
+## 🚀 Quick Start
 
-### 1. Register Your Game
+### Web Export (5 Minutes)
 
-1. Go to [cheddaboards.com](https://cheddaboards.com)
-2. Click "Register Game"
-3. Sign in with Internet Identity
-4. Fill in: Game ID, Name, Description
-5. **Save your Game ID!**
+1. **Register your game** at [cheddaboards.com](https://cheddaboards.com)
+2. **Copy files** to your project:
+   - `addons/cheddaboards/` folder
+   - `template.html` to project root
+3. **Run Setup Wizard**: File → Run → `SetupWizard.gd`
+4. **Configure export**: Project → Export → Web → Custom HTML Shell: `res://template.html`
+5. **Export as `index.html`** and test with local server
 
-### 2. Download Template Files
+### Native Export (Windows/Mac/Linux/Mobile)
 
-From [GitHub](https://github.com/cheddatech/CheddaBoards-Godot):
-
-Copy the `addons/cheddaboards/` folder to your project:
-- `CheddaBoards.gd` - Core SDK integration
-- `Achievements.gd` - Achievement system
-- `SetupWizard.gd` - **Automated setup & configuration**
-- `plugin.cfg` - Asset Library metadata
-- `icon.png` - Plugin icon
-
-Copy `template.html` to your project root.
-
-### 3. Run the Setup Wizard ✨
-
-In Godot: **File → Run** (or `Ctrl+Shift+X`)
-
-Select `addons/cheddaboards/SetupWizard.gd` and run it. The wizard will:
-
-| What It Checks | What It Does |
-|----------------|--------------|
-| Godot version | Verifies 4.x compatibility |
-| Autoloads | **Auto-adds** CheddaBoards & Achievements |
-| Required files | Lists any missing files |
-| CheddaBoards.gd | Validates configuration |
-| Project settings | Checks stretch mode, main scene |
-| Export preset | Warns if Web export not configured |
-| template.html | Validates Game ID |
-| Game ID | **Opens interactive config popup** |
-
-After running, you'll see a summary of any issues and a popup to configure your Game ID.
-
-### 4. Set Export Template
-
-In Godot: **Project → Export → Web**
-
-Under "HTML" section:
-- **Custom HTML Shell:** `res://template.html`
-
-### 5. Export & Test
-
-> ⚠️ **IMPORTANT:** Export your game as `index.html` - the template expects `index.js`!
-
-```bash
-# Export from Godot as index.html, then:
-cd your-export-folder
-python3 -m http.server 8000
-
-# Open: http://localhost:8000
-```
+1. **Register your game** at [cheddaboards.com](https://cheddaboards.com)
+2. **Get your API Key** from the dashboard
+3. **Copy files** to your project:
+   - `addons/cheddaboards/` folder
+4. **Add Autoloads** in Project Settings:
+   - `CheddaBoards` → `addons/cheddaboards/CheddaBoards.gd`
+   - `Achievements` → `addons/cheddaboards/Achievements.gd`
+5. **Set API key** in CheddaBoards.gd or at runtime:
+   ```gdscript
+   CheddaBoards.set_api_key("cb_your_api_key_here")
+   ```
 
 ---
 
-## 🧙 Setup Wizard Reference
+## 🔧 Platform Modes
 
-### Running the Wizard
+### Hybrid Architecture
 
-```
-File → Run (Ctrl+Shift+X) → Select addons/cheddaboards/SetupWizard.gd
-```
+The SDK automatically detects the platform and uses the appropriate backend:
 
-### What It Checks
-
-```
-╔══════════════════════════════════════════════════════════════╗
-║         🧀 CheddaBoards Ultimate Setup Wizard v2.1          ║
-╚══════════════════════════════════════════════════════════════╝
-
-┌─ Godot Version
-│  ✅ Godot 4.3.0 - Compatible
-
-┌─ Autoloads
-│  ✅ CheddaBoards → addons/cheddaboards/CheddaBoards.gd
-│  🔧 Achievements → Added automatically    ← Auto-fixed!
-
-┌─ Required Files
-│  ✅ CheddaBoards.gd (Core SDK)
-│  ✅ template.html (Web export template)
-│  ...
-
-┌─ Template.html (Game ID)
-│  ⚠️  Using default Game ID: 'catch-the-cheese'
-│      → This works for testing!
-
-═══════════════════════════════════════════════════════════════
-                        📊 SUMMARY
-═══════════════════════════════════════════════════════════════
-
-🔧 Auto-Fixes Applied (1):
-   • Added Achievements autoload
-
-✅ Setup complete with 1 warning(s) - project should work!
-```
-
-### Interactive Game ID Configuration
-
-After checks complete, a popup appears:
-
-```
-┌────────────────────────────────────────┐
-│  🧀 CheddaBoards - Set Game ID         │
-├────────────────────────────────────────┤
-│  Current: catch-the-cheese (default)   │
-│                                        │
-│  Enter new Game ID:                    │
-│  ┌──────────────────────────────────┐  │
-│  │ my-awesome-game                  │  │
-│  └──────────────────────────────────┘  │
-│                                        │
-│  💡 Get your Game ID at                │
-│     cheddaboards.com                   │
-│                                        │
-│         [Cancel]  [Save]               │
-└────────────────────────────────────────┘
-```
-
-### Utility Functions
-
-The wizard also provides functions you can call from other scripts:
+| Platform | Mode | Authentication Options |
+|----------|------|----------------------|
+| Web | JavaScript Bridge | Google, Apple, Internet Identity, Anonymous |
+| Windows/Mac/Linux | HTTP API | Anonymous (API Key) |
+| Mobile | HTTP API | Anonymous (API Key) |
 
 ```gdscript
-# Get project status
-var status = SetupWizard.get_project_status()
-# Returns: {
-#   has_cheddaboards_autoload: true,
-#   has_achievements_autoload: true,
-#   has_template_html: true,
-#   game_id: "my-game",
-#   using_default_game_id: false,
-#   ...
-# }
+# The SDK handles this automatically!
+# Same code works on all platforms:
 
-# Check if ready to export
-if SetupWizard.is_ready_to_export():
-    print("Good to go!")
-
-# Fix autoloads programmatically
-var fixed = SetupWizard.fix_autoloads()
-print("Fixed: ", fixed)  # ["Achievements"]
+func _ready():
+    await CheddaBoards.wait_until_ready()
+    
+    # This works on web AND native:
+    CheddaBoards.login_anonymous("PlayerName")
+    CheddaBoards.submit_score(1000, 5)
 ```
 
----
+### Anonymous Play (Recommended for Native)
 
-## 📁 Project Structure
+Anonymous play uses device IDs - no account creation required:
 
+```gdscript
+func _ready():
+    await CheddaBoards.wait_until_ready()
+    
+    # Login with device ID + custom nickname
+    CheddaBoards.login_anonymous("CheeseMaster")
+    
+    # Or setup without emitting signals (for pre-config)
+    CheddaBoards.setup_anonymous_player("", "CheeseMaster")
+
+func _on_game_over(score: int, streak: int):
+    # Works exactly like authenticated play
+    CheddaBoards.submit_score(score, streak)
 ```
-YourGame/
-├── addons/
-│   └── cheddaboards/
-│       ├── CheddaBoards.gd       # Core SDK (Autoload)
-│       ├── Achievements.gd       # Achievement system (Autoload)
-│       ├── SetupWizard.gd        # Setup & validation tool
-│       ├── plugin.cfg            # Asset Library metadata
-│       └── icon.png              # Plugin icon (256x256)
-├── template.html                 # HTML export template (root!)
-├── scenes/
-│   ├── MainMenu.tscn/.gd         # Login & navigation
-│   ├── Game.tscn/.gd             # Your game
-│   ├── GameOver.tscn/.gd         # Score submission
-│   ├── Leaderboard.tscn/.gd      # Rankings display
-│   └── AchievementsView.tscn/.gd # Achievement list
-├── project.godot
-└── export/                       # Your export folder
-    ├── index.html                # ⚠️ MUST be index.html!
-    ├── index.js
-    ├── index.wasm
-    └── index.pck
-```
+
+**Benefits of Anonymous Play:**
+- ✅ Instant play - no login popups
+- ✅ Works on ALL platforms (web + native)
+- ✅ Players can set custom nicknames
+- ✅ Scores appear on leaderboards
+- ✅ Achievements still work
+- ✅ Device ID persists across sessions
 
 ---
 
 ## 🎯 Integration Guide
 
-### Basic Usage
+### Basic Setup
 
 ```gdscript
 extends Node
 
 func _ready():
-    # Wait for SDK to be ready
+    # Wait for SDK
     await CheddaBoards.wait_until_ready()
     
     # Connect signals
     CheddaBoards.login_success.connect(_on_login)
     CheddaBoards.score_submitted.connect(_on_score_saved)
+    CheddaBoards.score_error.connect(_on_score_error)
 
-func _on_login_button():
-    CheddaBoards.login_google()  # or login_apple() or login_internet_identity()
+func _start_game():
+    # For anonymous play (works everywhere)
+    CheddaBoards.login_anonymous("PlayerName")
 
 func _on_login(nickname: String):
     print("Welcome, ", nickname)
+    # Start your game...
 
 func _on_game_over(score: int, streak: int):
-    # Check achievements
-    var is_first = not Achievements.is_unlocked("first_game")
-    Achievements.check_game_over(score, streak, is_first)
-    
-    # Submit score + achievements
-    Achievements.submit_with_score(score, streak)
+    # Submit score (with achievements if using Achievements.gd)
+    if Achievements:
+        Achievements.increment_games_played()
+        Achievements.check_game_over(score, 0, streak)
+        Achievements.submit_with_score(score, streak)
+    else:
+        CheddaBoards.submit_score(score, streak)
+
+func _on_score_saved(score: int, streak: int):
+    print("Score saved: ", score)
+
+func _on_score_error(reason: String):
+    print("Error: ", reason)
 ```
 
-### Authentication
+### Authentication Options
 
 ```gdscript
-# Login methods
+# === ANONYMOUS (Web + Native) ===
+CheddaBoards.login_anonymous("CustomNickname")
+
+# === WEB ONLY - Social Login ===
 CheddaBoards.login_google()
 CheddaBoards.login_apple()
-CheddaBoards.login_internet_identity()
+CheddaBoards.login_internet_identity("Nickname")
 
-# Check status
+# === Check Status ===
 if CheddaBoards.is_authenticated():
-    var name = CheddaBoards.get_nickname()
-    var score = CheddaBoards.get_high_score()
-    var streak = CheddaBoards.get_best_streak()
+    print("Logged in as: ", CheddaBoards.get_nickname())
+    
+if CheddaBoards.is_anonymous():
+    print("Playing anonymously")
+    
+if CheddaBoards.has_account():
+    print("Has real account (Google/Apple/II)")
 
-# Logout
+# === Logout ===
 CheddaBoards.logout()
 ```
 
@@ -295,71 +211,100 @@ CheddaBoards.get_leaderboard("score", 100)  # sort_by, limit
 
 func _on_leaderboard(entries: Array):
     for entry in entries:
-        print(entry)  # {nickname, score, streak, rank}
+        print("%d. %s - %d pts" % [entry.rank, entry.nickname, entry.score])
 
 # Get player rank
 CheddaBoards.player_rank_loaded.connect(_on_rank)
 CheddaBoards.get_player_rank("score")
+
+func _on_rank(rank: int, score: int, streak: int, total: int):
+    print("You are #%d of %d players!" % [rank, total])
+```
+
+### Nickname Management
+
+```gdscript
+# Get current nickname
+var name = CheddaBoards.get_nickname()
+
+# Set nickname (anonymous players)
+CheddaBoards.set_nickname("NewName")
+
+# Change nickname via API (persists to backend)
+CheddaBoards.change_nickname_to("NewName")
+CheddaBoards.nickname_changed.connect(func(n): print("Now known as: ", n))
+CheddaBoards.nickname_error.connect(func(e): print("Error: ", e))
+
+# Web only - opens popup
+CheddaBoards.change_nickname()
 ```
 
 ### Achievements
 
 ```gdscript
+# Check if Achievements autoload exists
+var has_achievements = get_node_or_null("/root/Achievements") != null
+
 # Unlock single achievement
 Achievements.unlock("first_game")
 
-# Check score/streak achievements
+# Check achievements during gameplay
 Achievements.check_score(current_score)
-Achievements.check_streak(current_streak)
+Achievements.check_combo(max_combo)
+Achievements.check_clicks(total_clicks)
 
-# Check all at game over
-Achievements.check_game_over(score, streak, is_first_game)
+# At game over - check all + increment games
+Achievements.increment_games_played()
+Achievements.check_game_over(score, clicks, max_combo)
 
-# Submit with achievements
+# Submit score WITH achievements attached
 Achievements.submit_with_score(score, streak)
 
-# Query achievements
+# Query status
 var unlocked = Achievements.get_unlocked_count()
 var total = Achievements.get_total_count()
 var percent = Achievements.get_unlocked_percentage()
+print("%d/%d (%.0f%%)" % [unlocked, total, percent])
 ```
 
 ---
 
-## 🏆 Pre-configured Achievements
+## ⚙️ Configuration
 
-### Games Played (6)
-| ID | Name | Description |
-|----|------|-------------|
-| `games_1` | First Slice | Complete your very first cheese run |
-| `games_5` | Getting Hungry | Play 5 games — the cheese addiction begins |
-| `games_10` | Cheese Curious | Play 10 games — developing a taste for chedda |
-| `games_20` | Dairy Devotee | Play 20 games — officially hooked on cheese |
-| `games_30` | Fromage Fanatic | Play 30 games — cheese runs through your veins |
-| `games_50` | Cheese Legend | Play 50 games — a true master of the wheel |
+### API Key (Native/Anonymous)
 
-### Score Milestones (6)
-| ID | Name | Description |
-|----|------|-------------|
-| `score_1000` | Cheese Nibbler | Score 1,000 points in a single game |
-| `score_2000` | Chedda Chaser | Score 2,000 points — warming up nicely |
-| `score_3000` | Gouda Grabber | Score 3,000 points — now we're cooking |
-| `score_5000` | Brie Boss | Score 5,000 points — serious cheese skills |
-| `score_7500` | Parmesan Pro | Score 7,500 points — elite tier unlocked |
-| `score_10000` | The Big Cheese | Score 10,000 points — absolute dairy dominance |
+Set in CheddaBoards.gd:
+```gdscript
+var api_key: String = "cb_your_api_key_here"
+```
 
-### Clutch Achievements (5)
-*Score X points with ≤5 seconds remaining*
+Or at runtime:
+```gdscript
+func _ready():
+    CheddaBoards.set_api_key("cb_your_api_key_here")
+```
 
-| ID | Name | Description |
-|----|------|-------------|
-| `clutch_500` | Close Call Chedda | Finish with 500+ points and ≤5 seconds left |
-| `clutch_1000` | Last Bite | Finish with 1,000+ points and ≤5 seconds left |
-| `clutch_2000` | Buzzer Beater Brie | Finish with 2,000+ points and ≤5 seconds left |
-| `clutch_3000` | Photo Finish Fromage | Finish with 3,000+ points and ≤5 seconds left |
-| `clutch_5000` | Miraculous Mozzarella | Finish with 5,000+ points and ≤5 seconds left |
+### HTML Template (Web)
 
-**Customize in** `addons/cheddaboards/Achievements.gd` → `ACHIEVEMENTS` constant.
+In `template.html`:
+```javascript
+const CONFIG = {
+    GAME_ID: 'your-game-id',  // From dashboard
+    CANISTER_ID: 'fdvph-sqaaa-aaaap-qqc4a-cai',
+    
+    // Optional: Social login
+    GOOGLE_CLIENT_ID: '',
+    APPLE_SERVICE_ID: '',
+    APPLE_REDIRECT_URI: ''
+};
+```
+
+### Project Settings
+
+For high-DPI display support:
+- Display → Window → DPI → Allow Hidpi: `On`
+- Display → Window → Stretch → Mode: `canvas_items`
+- Display → Window → Stretch → Aspect: `keep`
 
 ---
 
@@ -382,6 +327,7 @@ signal logout_success()
 signal profile_loaded(nickname: String, score: int, streak: int, achievements: Array)
 signal no_profile()
 signal nickname_changed(new_nickname: String)
+signal nickname_error(reason: String)
 
 # Scores
 signal score_submitted(score: int, streak: int)
@@ -391,6 +337,13 @@ signal score_error(reason: String)
 signal leaderboard_loaded(entries: Array)
 signal player_rank_loaded(rank: int, score: int, streak: int, total_players: int)
 signal rank_error(reason: String)
+
+# Achievements
+signal achievement_unlocked(achievement_id: String)
+signal achievements_loaded(achievements: Array)
+
+# HTTP API
+signal request_failed(endpoint: String, error: String)
 ```
 
 ### Achievements.gd
@@ -404,54 +357,31 @@ signal achievements_ready()
 
 ---
 
-## 🔧 Configuration Options
+## 🏆 Example Achievement Definitions
 
-### HTML Template (template.html)
-
-```javascript
-const CONFIG = {
-  // REQUIRED
-  GAME_ID: 'your-game-id',  // ← Set via Setup Wizard!
-  CANISTER_ID: 'fdvph-sqaaa-aaaap-qqc4a-cai',
-  
-  // OPTIONAL: Google OAuth
-  GOOGLE_CLIENT_ID: '',  // From console.cloud.google.com
-  
-  // OPTIONAL: Apple OAuth
-  APPLE_SERVICE_ID: '',
-  APPLE_REDIRECT_URI: ''  // https://yourdomain.com/auth/apple
-};
-```
-
-**💡 Tip:** Use the Setup Wizard to configure Game ID instead of editing manually!
-
-### CheddaBoards.gd Constants
+Customize in `Achievements.gd`:
 
 ```gdscript
-const LOGIN_TIMEOUT_DURATION: float = 35.0
-const POLL_INTERVAL: float = 0.1
-const PROFILE_REFRESH_COOLDOWN: float = 2.0
+const ACHIEVEMENTS = {
+    # Games Played
+    "games_1": {"name": "First Game", "description": "Play your first game"},
+    "games_10": {"name": "Getting Started", "description": "Play 10 games"},
+    "games_50": {"name": "Dedicated", "description": "Play 50 games"},
+    
+    # Score Milestones
+    "score_1000": {"name": "Beginner", "description": "Score 1,000 points"},
+    "score_5000": {"name": "Skilled", "description": "Score 5,000 points"},
+    "score_10000": {"name": "Expert", "description": "Score 10,000 points"},
+    
+    # Combo/Streak
+    "combo_10": {"name": "Combo Starter", "description": "Reach 10x combo"},
+    "combo_50": {"name": "Combo Master", "description": "Reach 50x combo"},
+}
 ```
 
 ---
 
 ## 🐛 Debugging
-
-### Setup Wizard
-
-Run the wizard anytime to check project health:
-```
-File → Run → addons/cheddaboards/SetupWizard.gd
-```
-
-### Keyboard Shortcuts
-
-| Key | Action | Scene |
-|-----|--------|-------|
-| F8 | Force profile refresh | MainMenu |
-| F9 | Dump debug info | MainMenu |
-| Ctrl+Shift+C | Clear achievement cache | Game |
-| Ctrl+Shift+D | Debug status | Game |
 
 ### Debug Methods
 
@@ -465,138 +395,77 @@ CheddaBoards.debug_logging = true
 Achievements.debug_logging = true
 ```
 
-### Browser Console
+### Keyboard Shortcuts (add to your game)
 
-Press F12 and check for `[CheddaBoards]` and `[Achievements]` logs.
+```gdscript
+func _input(event):
+    if event is InputEventKey and event.pressed:
+        if event.keycode == KEY_F9:
+            CheddaBoards.debug_status()
+        if event.keycode == KEY_F10:
+            Achievements.debug_status()
+```
+
+### Common Issues
+
+| Issue | Solution |
+|-------|----------|
+| "API key not set" | Set `api_key` in CheddaBoards.gd or call `set_api_key()` |
+| "CheddaBoards not ready" | Use `await CheddaBoards.wait_until_ready()` |
+| Score not submitting | Check `is_authenticated()` and connect to `score_error` |
+| Click offset on high-DPI | Enable "Allow Hidpi" in Project Settings |
+| Web: "Engine not defined" | Export must be named `index.html` |
+| Web: Blank screen | Use local server, not `file://` |
 
 ---
 
 ## 🚢 Deployment
 
-### Export Checklist
-
-Run the Setup Wizard to verify all of these automatically!
+### Web Export Checklist
 
 - [ ] Game ID configured in template.html
-- [ ] CheddaBoards in Autoload (exact name)
-- [ ] Achievements in Autoload (exact name)
 - [ ] Custom HTML Shell set to `res://template.html`
-- [ ] **Export filename is `index.html`**
-- [ ] Tested locally with `python3 -m http.server 8000`
-- [ ] All login methods working
-- [ ] Score submission working
-- [ ] Leaderboard displaying
+- [ ] Export filename is `index.html`
+- [ ] Test with `python3 -m http.server 8000`
+- [ ] Deploy to HTTPS host (Netlify, Vercel, itch.io)
 
-### Hosting Options
+### Native Export Checklist
 
-CheddaBoards requires HTTPS for OAuth. Use:
+- [ ] API Key set in CheddaBoards.gd
+- [ ] CheddaBoards + Achievements in Autoloads
+- [ ] High-DPI settings configured
+- [ ] Test anonymous login flow
 
-- **Netlify** (recommended, free)
-- **Vercel** (free)
-- **itch.io** (free, game-focused)
-- **GitHub Pages** (free)
+### Exit Button (Web vs Native)
 
-### Deploy to Netlify
-
-```bash
-# Install Netlify CLI
-npm install -g netlify-cli
-
-# Deploy
-cd your-export-folder
-netlify deploy --prod
+```gdscript
+func _on_exit_pressed():
+    if OS.get_name() == "Web":
+        JavaScriptBridge.eval("window.location.href = 'https://yourdomain.com'")
+    else:
+        get_tree().quit()
 ```
 
 ---
 
-## ❓ Troubleshooting
-
-### "Engine is not defined"
-
-- **You exported with the wrong filename!**
-- Export MUST be named `index.html` (creates `index.js`, `index.wasm`, etc.)
-- The template looks for `index.js` - any other name fails
-
-### "CheddaBoards not ready"
-
-- Run the Setup Wizard - it will auto-add the autoload
-- Or manually add: `await CheddaBoards.wait_until_ready()` before using SDK
-
-### "Game not registered" error
-
-- Complete registration at cheddaboards.com
-- Run the Setup Wizard to configure Game ID
-- Check Game ID matches exactly (case-sensitive)
-
-### "Login popup blocked"
-
-- Login must be triggered by direct button click
-- Allow popups for your domain in browser
-
-### "Blank screen / CORS error"
-
-- Use web server: `python3 -m http.server 8000`
-- Don't open HTML file directly (file://)
-
-### "localhost:4943 connection refused"
-
-- This means the SDK is trying to connect to a local ICP replica
-- The template.html already includes `host: 'https://icp-api.io'` to fix this
-- If you see this error, make sure you have the latest template.html
-
-### "Score not submitting"
-
-- Check `CheddaBoards.is_authenticated()` is true
-- Connect to `score_error` signal for error details
-- Check browser console for errors
-
-### "Achievements not syncing"
-
-- Run Setup Wizard to verify Achievements autoload
-- Check `Achievements.is_ready` is true
-- Use `Achievements.debug_status()` to inspect state
-
----
-
-## 📊 How It Works
-
-### Architecture
+## 📁 Project Structure
 
 ```
-┌─────────────────────┐
-│     Your Game       │
-│     (GDScript)      │
-└──────────┬──────────┘
-           │ Signals & Methods
-┌──────────┴──────────┐
-│  CheddaBoards.gd    │  ← Autoload
-│  Achievements.gd    │  ← Autoload
-└──────────┬──────────┘
-           │ JavaScriptBridge
-┌──────────┴──────────┐
-│   HTML Template     │  ← Custom Export Shell
-│   (SDK via CDN)     │
-└──────────┬──────────┘
-           │ HTTPS
-┌──────────┴──────────┐
-│    CheddaBoards     │  ← Backend (ICP)
-│      Canister       │
-└─────────────────────┘
+YourGame/
+├── addons/
+│   └── cheddaboards/
+│       ├── CheddaBoards.gd       # Core SDK (Autoload)
+│       ├── Achievements.gd       # Achievement system (Autoload)
+│       ├── SetupWizard.gd        # Setup & validation tool
+│       └── icon.png
+├── template.html                 # Web export template
+├── scenes/
+│   ├── MainMenu.tscn
+│   ├── Game.tscn
+│   ├── Leaderboard.tscn
+│   └── AchievementsView.tscn
+└── project.godot
 ```
-
-### Data Flow
-
-1. **Login** → OAuth popup → Profile from backend
-2. **Play** → Track score/streak locally
-3. **Game Over** → Check achievements → Submit to backend
-4. **Leaderboard** → Fetch from backend → Display
-
-### Offline Support
-
-- Profile cached in localStorage
-- Achievements cached locally
-- Pending achievements queued
-- Syncs when back online
 
 ---
 
@@ -604,49 +473,26 @@ netlify deploy --prod
 
 - **Dashboard:** [cheddaboards.com](https://cheddaboards.com)
 - **GitHub:** [github.com/cheddatech/CheddaBoards-Godot](https://github.com/cheddatech/CheddaBoards-Godot)
-- **Example Game:** [thecheesegame.online](https://thecheesegame.online)
+- **Example Games:** 
+  - [thecheesegame.online](https://thecheesegame.online) (Web)
+  - [cheddaclick.cheddagames.com](https://cheddaclick.cheddagames.com) (Web + Native)
 - **Support:** info@cheddaboards.com
 
 ---
 
-## 📄 Files Included
+## 📄 Version History
 
-| File | Version | Description |
-|------|---------|-------------|
-| `addons/cheddaboards/CheddaBoards.gd` | v1.1.0 | Core SDK integration |
-| `addons/cheddaboards/Achievements.gd` | v1.1.0 | Achievement system |
-| `addons/cheddaboards/SetupWizard.gd` | v2.1.0 | **Automated setup & config** |
-| `addons/cheddaboards/plugin.cfg` | v1.1.0 | Asset Library metadata |
-| `addons/cheddaboards/icon.png` | - | Plugin icon (256x256) |
-| `template.html` | v1.1.0 | HTML export template |
-
----
-
-## 💡 Tips
-
-- ⭐ Run the Setup Wizard first - it auto-fixes most issues!
-- ⭐ **Always export as `index.html`** - other names break the template!
-- ⭐ Always use `await CheddaBoards.wait_until_ready()` before SDK calls
-- ⭐ Test with `python3 -m http.server 8000`, never `file://`
-- ⭐ Check browser console (F12) for debug logs
-- ⭐ Clear browser cache if you see stale data
-- ⭐ Use debug shortcuts during development
+| Version | Changes |
+|---------|---------|
+| v1.2.1 | Native HTTP API support, anonymous login, API key auth |
+| v1.1.0 | Achievement system, Setup Wizard |
+| v1.0.0 | Initial release - Web only |
 
 ---
 
 ## 📄 License
 
 MIT License - Use freely in your games!
-
----
-
-## 🤝 Contributing
-
-Found a bug? Have an improvement?
-
-1. Open an issue on GitHub
-2. Submit a pull request
-3. Email info@cheddaboards.com
 
 ---
 
