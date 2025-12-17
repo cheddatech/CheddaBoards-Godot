@@ -1,7 +1,9 @@
-[gd_scene load_steps=3 format=3 uid="uid://cuvkn80vfc7mq"]
+[gd_scene load_steps=5 format=3 uid="uid://cuvkn80vfc7mq"]
 
-[ext_resource type="Script" uid="uid://bj84fn3woq8fv" path="res://Leaderboard.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://t0yeoi0pqnx2" path="res://Leaderboard.gd" id="1_script"]
 [ext_resource type="Texture2D" uid="uid://c4ifusj1tgphd" path="res://addons/cheddaboards/icon.png" id="2_an2gi"]
+[ext_resource type="FontFile" uid="uid://cctneumd3ufx5" path="res://fonts/ZeroCool.ttf" id="2_mruqn"]
+[ext_resource type="Theme" uid="uid://cg1jdv7rfyi22" path="res://fonts/Buttons.tres" id="3_xtqbn"]
 
 [node name="Leaderboard" type="Control"]
 layout_mode = 3
@@ -44,7 +46,8 @@ theme_override_constants/separation = 10
 
 [node name="TitleLabel" type="Label" parent="MarginContainer/VBoxContainer/HeaderContainer"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 48
+theme_override_fonts/font = ExtResource("2_mruqn")
+theme_override_font_sizes/font_size = 64
 text = "Leaderboard"
 horizontal_alignment = 1
 
@@ -52,6 +55,7 @@ horizontal_alignment = 1
 custom_minimum_size = Vector2(150, 60)
 layout_mode = 2
 size_flags_horizontal = 4
+theme = ExtResource("3_xtqbn")
 theme_override_font_sizes/font_size = 24
 text = "Refresh"
 
@@ -63,14 +67,16 @@ alignment = 1
 [node name="SortByScoreButton" type="Button" parent="MarginContainer/VBoxContainer/HeaderContainer/SortContainer"]
 custom_minimum_size = Vector2(150, 60)
 layout_mode = 2
+theme = ExtResource("3_xtqbn")
 theme_override_font_sizes/font_size = 24
 text = "By Score"
 
 [node name="SortByStreakButton" type="Button" parent="MarginContainer/VBoxContainer/HeaderContainer/SortContainer"]
 custom_minimum_size = Vector2(150, 60)
 layout_mode = 2
+theme = ExtResource("3_xtqbn")
 theme_override_font_sizes/font_size = 24
-text = "By Streak"
+text = "By Combo"
 
 [node name="HSeparator" type="HSeparator" parent="MarginContainer/VBoxContainer"]
 layout_mode = 2
@@ -100,6 +106,7 @@ theme_override_constants/margin_right = 10
 theme_override_constants/margin_bottom = 10
 
 [node name="YourRankLabel" type="Label" parent="MarginContainer/VBoxContainer/YourRankPanel/MarginContainer"]
+visible = false
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
 text = "Your Rank: Loading..."
@@ -120,12 +127,14 @@ alignment = 1
 [node name="BackButton" type="Button" parent="MarginContainer/VBoxContainer/ButtonsContainer"]
 custom_minimum_size = Vector2(150, 60)
 layout_mode = 2
+theme = ExtResource("3_xtqbn")
 theme_override_font_sizes/font_size = 24
 text = "Back to Menu"
 
 [node name="PlayAgainButton" type="Button" parent="MarginContainer/VBoxContainer/ButtonsContainer"]
 custom_minimum_size = Vector2(150, 60)
 layout_mode = 2
+theme = ExtResource("3_xtqbn")
 theme_override_font_sizes/font_size = 24
 text = "Play Again"
 
@@ -136,15 +145,11 @@ anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -395.0
-offset_top = -216.0
-offset_right = -50.0
-offset_bottom = 13.0
+offset_left = -266.0
+offset_top = -247.0
+offset_right = -35.0
+offset_bottom = -18.0
 grow_horizontal = 0
 grow_vertical = 0
 texture = ExtResource("2_an2gi")
 expand_mode = 1
-
-[node name="Camera2D" type="Camera2D" parent="."]
-anchor_mode = 0
-position_smoothing_enabled = true
