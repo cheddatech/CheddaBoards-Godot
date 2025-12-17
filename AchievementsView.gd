@@ -1,5 +1,14 @@
-# AchievementsView.gd
+# AchievementsView.gd v1.1.0 - CheddaClick Edition
 # Displays all achievements with unlock status and progress
+# https://github.com/cheddatech/CheddaBoards-SDK
+#
+# ============================================================
+# USAGE
+# ============================================================
+# Pair with AchievementsView.tscn
+# Navigate to this scene from your main menu
+# ============================================================
+
 extends Control
 
 # ============================================================
@@ -16,10 +25,22 @@ func _ready():
 	# Connect button
 	back_button.pressed.connect(_on_back_pressed)
 	
+	# Connect to achievement signals for live updates
+	Achievements.achievement_unlocked.connect(_on_achievement_unlocked)
+	Achievements.achievements_ready.connect(_on_achievements_ready)
+	
 	# Load and display achievements
 	_load_achievements()
 	
 	print("[AchievementsView] Loaded")
+
+func _on_achievements_ready():
+	"""Refresh when achievements sync from backend"""
+	_load_achievements()
+
+func _on_achievement_unlocked(_id: String, _name: String):
+	"""Refresh when a new achievement unlocks"""
+	_load_achievements()
 
 # ============================================================
 # LOAD ACHIEVEMENTS
@@ -48,7 +69,7 @@ func _load_achievements():
 		var achievement_item = _create_achievement_item(achievement)
 		achievements_list.add_child(achievement_item)
 	
-	print("[AchievementsView] Loaded %d achievements" % all_achievements.size())
+	print("[AchievementsView] Loaded %d achievements (%d unlocked)" % [all_achievements.size(), unlocked_count])
 
 func _sort_achievements(a, b):
 	"""Sort achievements: unlocked first, then alphabetically"""
@@ -182,3 +203,4 @@ func _on_back_pressed():
 func refresh():
 	"""Refresh the achievements list"""
 	_load_achievements()
+
