@@ -385,7 +385,8 @@ YourGame/
 - **Dashboard:** https://cheddaboards.com
 - **GitHub:** https://github.com/cheddatech/CheddaBoards-Godot
 - **Example Games:**
-  - https://cheddagames.com
+  - https://thecheesegame.online (Web)
+  - https://cheddaclick.cheddagames.com (Web + Native)
 - **Support:** info@cheddaboards.com
 
 ---
