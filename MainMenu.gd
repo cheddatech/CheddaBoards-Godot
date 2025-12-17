@@ -632,4 +632,272 @@ func _is_mobile_web() -> bool:
 	""", true)
 	return bool(is_mobile)
 
-func _show_mobile_n
+func _show_mobile_name_prompt():
+	"""Show native prompt for mobile web users"""
+	var default_name = anonymous_nickname if anonymous_nickname != "" else "Player"
+	var js_code = "prompt('Enter your name:', '%s')" % default_name.replace("'", "\\'")
+	var result = JavaScriptBridge.eval(js_code, true)
+	
+	if result == null or str(result) == "null" or str(result).strip_edges() == "":
+		_log("Mobile prompt cancelled")
+		return
+	
+	var name_text = str(result).strip_edges()
+	
+	# Validate
+	if name_text.length() < MIN_NAME_LENGTH or name_text.length() > MAX_NAME_LENGTH:
+		JavaScriptBridge.eval("alert('Name must be %d-%d characters')" % [MIN_NAME_LENGTH, MAX_NAME_LENGTH], true)
+		return
+	
+	# Same logic as _on_confirm_name_pressed()
+	var old_nickname = anonymous_nickname
+	anonymous_nickname = name_text
+	_save_player_data()
+	
+	CheddaBoards.set_player_id(anonymous_player_id)
+	
+	if old_nickname != "" and old_nickname != name_text:
+		_log("Updating nickname on backend: %s -> %s" % [old_nickname, name_text])
+		CheddaBoards.change_nickname_to(name_text)
+	
+	CheddaBoards.login_anonymous(name_text)
+	_log("Starting game as: %s (ID: %s)" % [anonymous_nickname, anonymous_player_id])
+	
+	get_tree().change_scene_to_file(SCENE_GAME)
+	
+func _on_name_text_changed(_new_text: String):
+	"""Handle name text changes"""
+	_update_confirm_button_state()
+	name_status_label.text = ""
+
+func _on_name_submitted(name_text: String):
+	"""Handle Enter key in name field"""
+	if not confirm_name_button.disabled:
+		_on_confirm_name_pressed()
+
+func _on_confirm_name_pressed():
+	"""Confirm name and start game"""
+	var name_text = name_line_edit.text.strip_edges()
+	
+	_log("=== NAME CONFIRMATION ===")
+	_log("Entered name: '%s'" % name_text)
+	_log("Old nickname: '%s'" % anonymous_nickname)
+	_log("Player ID: '%s'" % anonymous_player_id)
+	
+	# Validate name
+	if name_text.length() < MIN_NAME_LENGTH:
+		name_status_label.text = "Name too short (min %d characters)" % MIN_NAME_LENGTH
+		name_status_label.add_theme_color_override("font_color", Color.RED)
+		return
+	
+	if name_text.length() > MAX_NAME_LENGTH:
+		name_status_label.text = "Name too long (max %d characters)" % MAX_NAME_LENGTH
+		name_status_label.add_theme_color_override("font_color", Color.RED)
+		return
+	
+	var old_nickname = anonymous_nickname
+	
+	# Save the nickname
+	anonymous_nickname = name_text
+	_save_player_data()
+	
+	# Set player ID first
+	CheddaBoards.set_player_id(anonymous_player_id)
+	_log("Set player ID to: %s" % anonymous_player_id)
+	
+	# If returning player with different name, update on backend
+	_log("Checking nickname change: old='%s' new='%s' different=%s" % [old_nickname, name_text, old_nickname != name_text])
+	if old_nickname != "" and old_nickname != name_text:
+		_log(">>> Calling change_nickname_to('%s')" % name_text)
+		CheddaBoards.change_nickname_to(name_text)
+	else:
+		_log(">>> Skipping nickname change (same name or first time)")
+	
+	# Login as anonymous with the nickname
+	_log(">>> Calling login_anonymous('%s')" % name_text)
+	CheddaBoards.login_anonymous(name_text)
+	
+	_log("Starting game as: %s (ID: %s)" % [anonymous_nickname, anonymous_player_id])
+	
+	# Go to game!
+	get_tree().change_scene_to_file(SCENE_GAME)
+
+func _on_cancel_name_pressed():
+	"""Cancel name entry, go back to login panel"""
+	_log("Name entry cancelled")
+	_show_login_panel()
+
+# ============================================================
+# CHEDDABOARDS SIGNAL HANDLERS
+# ============================================================
+
+func _on_login_success(nickname: String):
+	"""Login succeeded"""
+	_log("Login success: %s" % nickname)
+	_clear_ui_timeout()
+	is_logging_in = false
+	
+	_show_main_panel_loading()
+	waiting_for_profile = true
+	profile_load_attempts = 0
+	_request_profile_with_timeout()
+
+func _on_login_failed(reason: String):
+	"""Login failed"""
+	_log("Login failed: %s" % reason)
+	_clear_ui_timeout()
+	_set_status("Login failed: %s" % reason, true)
+	_enable_login_buttons(true)
+	_stop_all_timers()
+	is_logging_in = false
+
+func _on_login_timeout():
+	"""Login timeout from SDK"""
+	_log("Login timeout signal")
+	_clear_ui_timeout()
+	_set_status("Login took too long. Please try again.", true)
+	_enable_login_buttons(true)
+	_stop_all_timers()
+	is_logging_in = false
+
+func _on_profile_loaded(nickname: String, score: int, streak: int, achievements: Array):
+	"""Profile loaded from backend"""
+	_log("Profile loaded: %s (score: %d)" % [nickname, score])
+	
+	var profile = CheddaBoards.get_cached_profile()
+	if profile.is_empty():
+		return
+	
+	if main_panel.visible:
+		_update_main_panel_stats(profile)
+	
+	if waiting_for_profile:
+		waiting_for_profile = false
+		_stop_all_timers()
+		if not main_panel.visible:
+			_show_main_panel(profile)
+
+func _on_no_profile():
+	"""No profile found"""
+	_log("No profile signal")
+	
+	# Only show main panel for REAL accounts (Google/Apple/Chedda)
+	# Anonymous users stay on login panel until they explicitly play
+	if not CheddaBoards.has_account() and not is_logging_in:
+		_stop_all_timers()
+		waiting_for_profile = false
+		_show_login_panel()
+	elif is_logging_in:
+		pass  # Still logging in, ignore
+	else:
+		# Has real account but no profile - use defaults
+		_stop_all_timers()
+		waiting_for_profile = false
+		_show_main_panel({
+			"nickname": CheddaBoards.get_nickname(),
+			"score": 0,
+			"streak": 0,
+			"playCount": 0
+		})
+
+func _on_logout_success():
+	"""Logout completed"""
+	_log("Logout success")
+	is_logging_in = false
+	_show_login_panel()
+
+func _on_nickname_changed(new_nickname: String):
+	"""Nickname changed"""
+	_log("Nickname changed: %s" % new_nickname)
+	if main_panel.visible:
+		welcome_label.text = "Welcome, %s!" % new_nickname
+
+# ============================================================
+# MAIN PANEL BUTTON HANDLERS
+# ============================================================
+
+func _on_play_button_pressed():
+	"""Start game (logged in)"""
+	_log("Play pressed")
+	get_tree().change_scene_to_file(SCENE_GAME)
+
+func _on_change_nickname_pressed():
+	"""Change nickname"""
+	_log("Change nickname pressed")
+	CheddaBoards.change_nickname()
+
+func _on_leaderboard_pressed():
+	"""View leaderboard"""
+	_log("Leaderboard pressed")
+	get_tree().change_scene_to_file(SCENE_LEADERBOARD)
+
+func _on_achievements_pressed():
+	"""View achievements"""
+	_log("Achievements pressed")
+	get_tree().change_scene_to_file(SCENE_ACHIEVEMENTS)
+
+func _on_settings_pressed():
+	"""Open settings"""
+	_log("Settings pressed")
+	if FileAccess.file_exists(SCENE_SETTINGS):
+		get_tree().change_scene_to_file(SCENE_SETTINGS)
+
+func _on_logout_pressed():
+	"""Logout"""
+	_log("Logout pressed")
+	CheddaBoards.logout()
+
+# ============================================================
+# PUBLIC GETTERS (for Game scene to access)
+# ============================================================
+
+func get_anonymous_nickname() -> String:
+	"""Get the saved anonymous nickname"""
+	return anonymous_nickname
+
+func get_anonymous_player_id() -> String:
+	"""Get the anonymous player ID"""
+	return anonymous_player_id
+
+# ============================================================
+# LOGGING
+# ============================================================
+
+func _log(message: String):
+	"""Log with timestamp"""
+	if not debug_logging:
+		return
+	var entry = "[%d] %s" % [Time.get_ticks_msec(), message]
+	state_history.append(entry)
+	print("[MainMenu] %s" % message)
+
+func _dump_debug():
+	"""Dump debug info (F9)"""
+	print("")
+	print("========================================")
+	print("       MainMenu Debug v1.3.0           ")
+	print("========================================")
+	print(" State")
+	print("  - Is Logging In:   %s" % str(is_logging_in))
+	print("  - Waiting Profile: %s" % str(waiting_for_profile))
+	print("----------------------------------------")
+	print(" Anonymous Player")
+	print("  - Nickname:        %s" % anonymous_nickname)
+	print("  - Player ID:       %s" % anonymous_player_id)
+	print("----------------------------------------")
+	print(" CheddaBoards")
+	print("  - SDK Ready:       %s" % str(CheddaBoards.is_ready()))
+	print("  - Has Account:     %s" % str(CheddaBoards.has_account()))
+	print("  - Is Authenticated:%s" % str(CheddaBoards.is_authenticated()))
+	print("  - Is Anonymous:    %s" % str(CheddaBoards.is_anonymous()))
+	print("  - Nickname:        %s" % CheddaBoards.get_nickname())
+	print("========================================")
+	print("")
+
+# ============================================================
+# CLEANUP
+# ============================================================
+
+func _exit_tree():
+	"""Cleanup"""
+	_stop_all_timers()
