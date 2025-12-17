@@ -1,4 +1,4 @@
-# CheddaBoards.gd v1.2.0
+# CheddaBoards.gd v1.2.1
 # CheddaBoards integration for Godot 4.x
 # https://github.com/cheddatech/CheddaBoards-Godot
 # https://cheddaboards.com
@@ -72,8 +72,8 @@ signal request_failed(endpoint: String, error: String)
 var debug_logging: bool = true  # Enabled for debugging
 
 ## HTTP API Configuration (for native builds)
-const API_BASE_URL = "https://cheddaboards.com/api"
-var api_key: String = ""
+const API_BASE_URL = "https://api.cheddaboards.com"
+var api_key: String = "cb_cheddaclick_607242843"
 var _player_id: String = ""  # For native API auth
 
 # ============================================================
@@ -126,6 +126,8 @@ const PROFILE_REFRESH_COOLDOWN: float = 2.0
 
 var _http_request: HTTPRequest
 var _current_endpoint: String = ""
+var _http_busy: bool = false
+var _request_queue: Array = []  # Queue of pending requests
 
 # ============================================================
 # INITIALIZATION
@@ -135,13 +137,18 @@ func _ready() -> void:
 	_is_web = OS.get_name() == "Web"
 	_is_native = not _is_web
 	
+	# Always set up HTTP client (used for anonymous on both platforms)
+	_setup_http_client()
+	
 	if _is_web:
-		_log("Initializing CheddaBoards v1.2.0 (Web Mode)...")
+		_log("Initializing CheddaBoards v1.2.1 (Web Mode)...")
 		_start_polling()
 		_check_chedda_ready()
 	else:
-		_log("Initializing CheddaBoards v1.2.0 (Native/HTTP API Mode)...")
-		_setup_http_client()
+		_log("Initializing CheddaBoards v1.2.1 (Native/HTTP API Mode)...")
+		# Initialize player ID early (sanitizes OS.get_unique_id())
+		var pid = get_player_id()
+		_log("Device player ID: %s" % pid)
 		# For native, SDK is ready once HTTP client is set up
 		_init_complete = true
 		call_deferred("_emit_sdk_ready")
@@ -305,7 +312,8 @@ func _handle_web_response(response: Dictionary) -> void:
 
 		"getLeaderboard":
 			if success:
-				var leaderboard: Array = response.get("leaderboard", [])
+				# JS bridge sends "entries", HTTP API sends "leaderboard"
+				var leaderboard: Array = response.get("leaderboard", response.get("entries", []))
 				leaderboard_loaded.emit(leaderboard)
 
 		"getPlayerRank":
@@ -398,6 +406,14 @@ func _emit_http_success(data) -> void:
 				_update_cached_profile(data)
 			else:
 				no_profile.emit()
+		"change_nickname":
+			var new_nick = str(data.get("nickname", ""))
+			if new_nick != "":
+				_nickname = new_nick
+				if not _cached_profile.is_empty():
+					_cached_profile["nickname"] = new_nick
+				nickname_changed.emit(new_nick)
+				_log("Nickname changed to: %s" % new_nick)
 		"unlock_achievement":
 			var ach_id = str(data.get("achievementId", ""))
 			achievement_unlocked.emit(ach_id)
@@ -406,6 +422,10 @@ func _emit_http_success(data) -> void:
 			achievements_loaded.emit(achievements)
 		"game_info", "game_stats", "health":
 			_log("API response: %s" % str(data))
+	
+	# Process next queued request
+	_http_busy = false
+	_process_next_request()
 
 func _emit_http_failure(error: String) -> void:
 	"""Emit appropriate failure signal for HTTP responses"""
@@ -419,32 +439,78 @@ func _emit_http_failure(error: String) -> void:
 			rank_error.emit(error)
 		"player_profile":
 			no_profile.emit()
+		"change_nickname":
+			nickname_error.emit(error)
 		"unlock_achievement":
 			pass
 		"achievements":
 			achievements_loaded.emit([])
+	
+	# Process next queued request
+	_http_busy = false
+	_process_next_request()
 
 func _make_http_request(endpoint: String, method: int, body: Dictionary, request_type: String) -> void:
-	"""Make HTTP request for native builds"""
+	"""Make HTTP request for native builds (queued)"""
 	if api_key.is_empty():
-		push_error("[CheddaBoards] API key not set! Call set_api_key() first.")
-		request_failed.emit(endpoint, "API key not set")
+		_log("API key not set - skipping HTTP request to %s" % endpoint)
+		# Emit appropriate error signal based on request type
+		match request_type:
+			"submit_score":
+				score_error.emit("API key not set")
+			"player_profile":
+				no_profile.emit()
+			"leaderboard":
+				leaderboard_loaded.emit([])
+			"player_rank":
+				rank_error.emit("API key not set")
 		return
 	
-	_current_endpoint = request_type
+	# Queue the request
+	var request_data = {
+		"endpoint": endpoint,
+		"method": method,
+		"body": body,
+		"request_type": request_type
+	}
+	
+	if _http_busy:
+		_log("HTTP busy, queuing request: %s" % request_type)
+		_request_queue.append(request_data)
+		return
+	
+	_execute_http_request(request_data)
+
+func _execute_http_request(request_data: Dictionary) -> void:
+	"""Actually execute an HTTP request"""
+	_http_busy = true
+	_current_endpoint = request_data.request_type
 	
 	var headers = [
 		"Content-Type: application/json",
 		"X-API-Key: " + api_key
 	]
 	
-	var url = API_BASE_URL + endpoint
-	var json_body = JSON.stringify(body) if body.size() > 0 else ""
+	var url = API_BASE_URL + request_data.endpoint
+	var json_body = JSON.stringify(request_data.body) if request_data.body.size() > 0 else ""
 	
-	var error = _http_request.request(url, headers, method, json_body)
+	_log("HTTP %s: %s" % ["POST" if request_data.method == HTTPClient.METHOD_POST else "GET", url])
+	
+	var error = _http_request.request(url, headers, request_data.method, json_body)
 	if error != OK:
 		push_error("[CheddaBoards] HTTP request failed to start: %s" % error)
-		request_failed.emit(endpoint, "Request failed to start")
+		request_failed.emit(request_data.endpoint, "Request failed to start: %s" % error)
+		_http_busy = false
+		_process_next_request()
+
+func _process_next_request() -> void:
+	"""Process next queued request if any"""
+	if _request_queue.is_empty():
+		return
+	
+	var next_request = _request_queue.pop_front()
+	_log("Processing queued request: %s" % next_request.request_type)
+	_execute_http_request(next_request)
 
 # ============================================================
 # PROFILE MANAGEMENT
@@ -515,6 +581,13 @@ func is_ready() -> bool:
 	else:
 		return _init_complete
 
+## Check if SDK can communicate with backend (has credentials)
+func can_connect() -> bool:
+	if _is_web:
+		return _init_complete
+	else:
+		return _init_complete and not api_key.is_empty()
+
 ## Wait until SDK is ready (use with await)
 func wait_until_ready() -> void:
 	if is_ready():
@@ -558,15 +631,51 @@ func set_api_key(key: String) -> void:
 
 ## Set player ID for HTTP API authentication
 func set_player_id(player_id: String) -> void:
-	_player_id = player_id
-	_log("Player ID set: %s" % player_id)
+	_player_id = _sanitize_player_id(player_id)
+	_log("Player ID set: %s" % _player_id)
 
 ## Get current player ID (for native builds)
 func get_player_id() -> String:
 	if _player_id.is_empty():
-		# Generate a unique device ID as fallback
-		return OS.get_unique_id()
+		if _is_web:
+			# Web: Try to get device ID from JS template, fallback to random
+			var js_device_id = JavaScriptBridge.eval("window.deviceId || ''", true)
+			if js_device_id and str(js_device_id) != "":
+				_player_id = _sanitize_player_id(str(js_device_id))
+			else:
+				_player_id = "player_" + str(randi() % 1000000000)
+		else:
+			# Native: Use device unique ID
+			var raw_id = OS.get_unique_id()
+			_player_id = _sanitize_player_id(raw_id)
+		_log("Generated player ID: %s" % _player_id)
 	return _player_id
+
+## Sanitize player ID to match API requirements (1-100 alphanumeric, underscore, hyphen)
+func _sanitize_player_id(raw_id: String) -> String:
+	if raw_id.is_empty():
+		# Fallback: generate random ID
+		return "player_" + str(randi() % 1000000000)
+	
+	# Remove invalid characters (keep only alphanumeric, underscore, hyphen)
+	var sanitized = ""
+	for c in raw_id:
+		if c.is_valid_identifier() or c == "-" or c == "_":
+			sanitized += c
+	
+	# If empty after sanitizing, generate fallback
+	if sanitized.is_empty():
+		return "player_" + str(raw_id.hash()).replace("-", "")
+	
+	# Ensure it starts with a letter or underscore (not a number)
+	if sanitized[0].is_valid_int():
+		sanitized = "p_" + sanitized
+	
+	# Truncate to 100 characters max
+	if sanitized.length() > 100:
+		sanitized = sanitized.left(100)
+	
+	return sanitized
 
 # ============================================================
 # PUBLIC API - AUTHENTICATION
@@ -634,7 +743,7 @@ func logout() -> void:
 		logout_success.emit()
 		_log("Native logout")
 
-## Check if user is currently authenticated
+## Check if user is currently authenticated (any type including anonymous)
 func is_authenticated() -> bool:
 	if _is_web:
 		if not _init_complete:
@@ -645,9 +754,26 @@ func is_authenticated() -> bool:
 		# Native: Check if we have API key and player ID
 		return not api_key.is_empty()
 
+## Check if user has a REAL account (Google/Apple/Chedda - not anonymous)
+func has_account() -> bool:
+	if _is_web:
+		if not _init_complete:
+			return false
+		var result: Variant = JavaScriptBridge.eval("chedda_has_account()", true)
+		return bool(result)
+	else:
+		# Native: Check API key AND real auth type
+		return not api_key.is_empty() and _auth_type != "device" and _auth_type != "anonymous" and _auth_type != ""
+
 ## Check if using anonymous/device authentication
 func is_anonymous() -> bool:
-	return _auth_type == "device" or _auth_type == "anonymous"
+	if _is_web:
+		if not _init_complete:
+			return true  # Default to anonymous if not ready
+		var result: Variant = JavaScriptBridge.eval("chedda_is_anonymous()", true)
+		return bool(result)
+	else:
+		return _auth_type == "device" or _auth_type == "anonymous" or _auth_type == ""
 
 ## Get device ID for anonymous play (Web)
 func get_device_id() -> String:
@@ -662,28 +788,56 @@ func get_device_id() -> String:
 # ============================================================
 
 ## Login anonymously with device ID (no account required)
-func login_anonymous() -> void:
-	if _is_web:
-		if not _init_complete:
-			login_failed.emit("CheddaBoards not ready")
-			return
-		_log("Starting anonymous login...")
-		JavaScriptBridge.eval("chedda_login_anonymous()", true)
+## Optionally provide a custom nickname for leaderboard display
+## Uses HTTP API for both web and native (simpler, no JS SDK needed for anonymous)
+func login_anonymous(nickname: String = "") -> void:
+	# For anonymous users, always use HTTP API (works on both web and native)
+	_auth_type = "device"
+	var player_id = get_player_id()
+	
+	# Use provided nickname or generate one
+	if nickname != "":
+		_nickname = nickname
 	else:
-		# Native: Already "anonymous" with device ID
-		_auth_type = "device"
-		var player_id = get_player_id()
 		_nickname = "Player_" + player_id.left(6)
-		_cached_profile = {
-			"nickname": _nickname,
-			"score": 0,
-			"streak": 0,
-			"playCount": 0,
-			"achievements": [],
-			"deviceId": player_id
-		}
-		login_success.emit(_nickname)
-		profile_loaded.emit(_nickname, 0, 0, [])
+	
+	_cached_profile = {
+		"nickname": _nickname,
+		"score": 0,
+		"streak": 0,
+		"playCount": 0,
+		"achievements": [],
+		"deviceId": player_id
+	}
+	
+	_log("Anonymous login: %s (ID: %s)" % [_nickname, player_id])
+	login_success.emit(_nickname)
+	profile_loaded.emit(_nickname, 0, 0, [])
+
+## Set up anonymous player without emitting login signals
+## Useful when you just want to configure the player before gameplay
+func setup_anonymous_player(player_id: String = "", nickname: String = "") -> void:
+	if player_id != "":
+		set_player_id(player_id)
+	
+	var pid = get_player_id()
+	_auth_type = "device"
+	
+	if nickname != "":
+		_nickname = nickname
+	else:
+		_nickname = "Player_" + pid.left(6)
+	
+	_cached_profile = {
+		"nickname": _nickname,
+		"score": 0,
+		"streak": 0,
+		"playCount": 0,
+		"achievements": [],
+		"deviceId": pid
+	}
+	
+	_log("Anonymous player configured: %s (ID: %s)" % [_nickname, pid])
 
 # ============================================================
 # PUBLIC API - PROFILE MANAGEMENT
@@ -717,40 +871,82 @@ func change_nickname() -> void:
 		JavaScriptBridge.eval("chedda_change_nickname_prompt()", true)
 		_log("Nickname change requested")
 	else:
-		# Native: Could implement a popup or just emit error
-		nickname_error.emit("Nickname change not available in native builds")
+		# Native: Emit error - use change_nickname_to() instead
+		nickname_error.emit("Use change_nickname_to() for native builds")
+
+## Change nickname directly via HTTP API (for anonymous/native players)
+func change_nickname_to(new_nickname: String) -> void:
+	if new_nickname.length() < 2 or new_nickname.length() > 20:
+		nickname_error.emit("Nickname must be 2-20 characters")
+		return
+	
+	# Anonymous users always use HTTP API
+	if is_anonymous() or _is_native:
+		var url = "/players/%s/nickname" % get_player_id().uri_encode()
+		var body = { "nickname": new_nickname }
+		_make_http_request(url, HTTPClient.METHOD_PUT, body, "change_nickname")
+		_log("Nickname change requested (HTTP): %s" % new_nickname)
+	else:
+		# Authenticated web users - update locally (they use JS SDK popup)
+		_nickname = new_nickname
+		if not _cached_profile.is_empty():
+			_cached_profile["nickname"] = new_nickname
+		nickname_changed.emit(new_nickname)
+
+## Set nickname directly (for anonymous players)
+func set_nickname(new_nickname: String) -> void:
+	_nickname = new_nickname
+	if not _cached_profile.is_empty():
+		_cached_profile["nickname"] = new_nickname
+	_log("Nickname set to: %s" % new_nickname)
 
 # ============================================================
 # PUBLIC API - SCORES & LEADERBOARDS
 # ============================================================
 
 ## Submit score and streak to leaderboard
+## For anonymous players, nickname is included in the request
 func submit_score(score: int, streak: int = 0, rounds: int = -1) -> void:
 	if _is_submitting_score:
 		_log("Score submission already in progress")
 		return
 	
+	# Anonymous users always use HTTP API (both web and native)
+	if is_anonymous():
+		_is_submitting_score = true
+		var body = {
+			"playerId": get_player_id(),
+			"score": score,
+			"streak": streak,
+			"nickname": _nickname
+		}
+		if rounds >= 0:
+			body["rounds"] = rounds
+		_make_http_request("/scores", HTTPClient.METHOD_POST, body, "submit_score")
+		_log("Score submission (HTTP): %d points, %d streak, nickname: %s" % [score, streak, _nickname])
+		return
+	
+	# Authenticated users on web use JS SDK
 	if _is_web:
 		if not _init_complete:
 			_log("SDK not ready, waiting...")
-			# Try to wait a bit for init
 			await get_tree().create_timer(0.5).timeout
 			if not _init_complete:
 				score_error.emit("CheddaBoards not ready")
 				return
-		# Let JavaScript bridge handle auth check - it will return error if not authenticated
 		_is_submitting_score = true
 		var js_code: String = "chedda_submit_score(%d, %d)" % [score, streak]
 		_log("Calling JS: %s" % js_code)
 		JavaScriptBridge.eval(js_code, true)
 		_log("Score submission: %d points, %d streak" % [score, streak])
 	else:
-		# Native: Use HTTP API
+		# Native authenticated - use HTTP API
 		_is_submitting_score = true
 		var body = {
 			"playerId": get_player_id(),
 			"score": score,
-			"streak": streak
+			"streak": streak,
+			"nickname": _nickname
 		}
 		if rounds >= 0:
 			body["rounds"] = rounds
@@ -759,31 +955,37 @@ func submit_score(score: int, streak: int = 0, rounds: int = -1) -> void:
 
 ## Get leaderboard data
 func get_leaderboard(sort_by: String = "score", limit: int = 100) -> void:
+	# Anonymous users or native: use HTTP API
+	if is_anonymous() or _is_native:
+		var url = "/leaderboard?limit=%d&sort=%s" % [limit, sort_by]
+		_make_http_request(url, HTTPClient.METHOD_GET, {}, "leaderboard")
+		_log("Leaderboard requested (HTTP)")
+		return
+	
+	# Authenticated web users: use JS SDK
 	if _is_web:
 		if not _init_complete:
 			return
 		var js_code: String = "chedda_get_leaderboard('%s', %d)" % [sort_by, limit]
 		JavaScriptBridge.eval(js_code, true)
 		_log("Leaderboard requested (sort: %s, limit: %d)" % [sort_by, limit])
-	else:
-		# Native: Use HTTP API
-		var url = "/leaderboard?limit=%d&sort=%s" % [limit, sort_by]
-		_make_http_request(url, HTTPClient.METHOD_GET, {}, "leaderboard")
-		_log("Leaderboard requested (HTTP)")
 
 ## Get current player's rank on leaderboard
 func get_player_rank(sort_by: String = "score") -> void:
+	# Anonymous users or native: use HTTP API
+	if is_anonymous() or _is_native:
+		var url = "/players/%s/rank?sort=%s" % [get_player_id().uri_encode(), sort_by]
+		_make_http_request(url, HTTPClient.METHOD_GET, {}, "player_rank")
+		_log("Player rank requested (HTTP)")
+		return
+	
+	# Authenticated web users: use JS SDK
 	if _is_web:
 		if not _init_complete:
 			return
 		var js_code: String = "chedda_get_player_rank('%s')" % sort_by
 		JavaScriptBridge.eval(js_code, true)
 		_log("Player rank requested (sort: %s)" % sort_by)
-	else:
-		# Native: Use HTTP API
-		var url = "/players/%s/rank?sort=%s" % [get_player_id().uri_encode(), sort_by]
-		_make_http_request(url, HTTPClient.METHOD_GET, {}, "player_rank")
-		_log("Player rank requested (HTTP)")
 
 ## Get a player's full profile (Native API)
 func get_player_profile(player_id: String = "") -> void:
@@ -957,7 +1159,7 @@ func _get_profile_from_js() -> Dictionary:
 func debug_status() -> void:
 	print("")
 	print("╔══════════════════════════════════════════════╗")
-	print("║        CheddaBoards Debug Status v1.2.0      ║")
+	print("║        CheddaBoards Debug Status v1.2.1      ║")
 	print("╠══════════════════════════════════════════════╣")
 	print("║ Environment                                  ║")
 	print("║  - Platform:         %s" % ("Web" if _is_web else "Native").rpad(24) + "║")
