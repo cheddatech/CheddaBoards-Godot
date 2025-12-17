@@ -1,6 +1,6 @@
 [gd_scene load_steps=2 format=3 uid="uid://bgerdry16ck42"]
 
-[ext_resource type="Script" uid="uid://d1jkvfij3wvi4" path="res://AchievementsView.gd" id="1_0di1y"]
+[ext_resource type="Script" uid="uid://dlk38xvg8fg3x" path="res://AchievementsView.gd" id="1_0di1y"]
 
 [node name="AchievementsView" type="Control"]
 layout_mode = 3
@@ -74,7 +74,3 @@ custom_minimum_size = Vector2(200, 50)
 layout_mode = 2
 size_flags_horizontal = 4
 text = "Back to Menu"
-
-[node name="Camera2D" type="Camera2D" parent="."]
-anchor_mode = 0
-position_smoothing_enabled = true
