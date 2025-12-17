@@ -1,8 +1,22 @@
-# CheddaBoards Godot 4 SDK
+# CheddaBoards Godot 4 Template
 
-A complete, production-ready SDK for integrating [CheddaBoards](https://cheddaboards.com) into your Godot 4 game.
+A complete, production-ready **game template** with leaderboards, achievements, and authentication built in.
 
-**Zero servers. $0 for indie devs. 5-minute setup.**
+**Download → Add your game → Export. That's it.**
+
+**Zero servers. $0 for indie devs. Web, Windows, Mac, Linux, Mobile.**
+
+---
+
+## 📦 What's Included
+
+- **MainMenu** - Login screen with auth options, player profile display
+- **Game** - Example game scene (replace with yours!)
+- **Leaderboard** - Full leaderboard UI with rankings
+- **AchievementsView** - Achievement list with progress
+- **AchievementNotification** - Popup system for unlocks
+- **CheddaBoards SDK** - Core backend integration
+- **Achievements System** - Backend-synced achievements
 
 ---
 
@@ -55,7 +69,15 @@ A complete, production-ready SDK for integrating [CheddaBoards](https://cheddabo
 
 ## 🚀 Quick Start
 
-### Web Export (5 Minutes)
+### How It Works
+
+1. **Download** the template from Asset Library or GitHub
+2. **Open** in Godot 4.x
+3. **Run Setup Wizard** → Enter your Game ID & API key
+4. **Replace** `Game.tscn` with your actual game
+5. **Export** → Players get leaderboards & achievements!
+
+### Web Setup (5 Minutes)
 
 1. **Register your game** at [cheddaboards.com](https://cheddaboards.com)
 2. **Copy files** to your project:
@@ -453,23 +475,26 @@ func _on_exit_pressed():
 
 ---
 
-## 📁 Project Structure
+## 📁 Template Structure
 
 ```
-YourGame/
+CheddaBoards-Godot/
 ├── addons/
 │   └── cheddaboards/
 │       ├── CheddaBoards.gd       # Core SDK (Autoload)
 │       ├── Achievements.gd       # Achievement system (Autoload)
 │       ├── SetupWizard.gd        # Setup & validation tool
 │       └── icon.png
-├── template.html                 # Web export template
 ├── scenes/
-│   ├── MainMenu.tscn
-│   ├── Game.tscn
-│   ├── Leaderboard.tscn
-│   └── AchievementsView.tscn
-└── project.godot
+│   ├── MainMenu.tscn/.gd         # Login & profile UI
+│   ├── Game.tscn/.gd             # ← REPLACE WITH YOUR GAME
+│   ├── Leaderboard.tscn/.gd      # Leaderboard display
+│   ├── AchievementsView.tscn/.gd # Achievement list
+│   └── AchievementNotification.* # Unlock popups
+├── assets/                       # Sprites, fonts, etc.
+├── template.html                 # Web export template
+├── project.godot                 # Pre-configured project
+└── README.md
 ```
 
 ---
@@ -478,9 +503,6 @@ YourGame/
 
 - **Dashboard:** [cheddaboards.com](https://cheddaboards.com)
 - **GitHub:** [github.com/cheddatech/CheddaBoards-Godot](https://github.com/cheddatech/CheddaBoards-Godot)
-- **Example Games:** 
-  - [thecheesegame.online](https://thecheesegame.online) (Web)
-  - [cheddaclick.cheddagames.com](https://cheddaclick.cheddagames.com) (Web + Native)
 - **Support:** info@cheddaboards.com
 
 ---
