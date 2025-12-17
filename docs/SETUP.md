@@ -456,9 +456,6 @@ Now that it's working:
 
 - **Quick Start:** See QUICKSTART.md
 - **Full Documentation:** See README.md
-- **Example Games:**
-  - https://thecheesegame.online (Web)
-  - https://cheddaclick.cheddagames.com (Web + Native)
 - **Support:** info@cheddaboards.com
 
 ---
