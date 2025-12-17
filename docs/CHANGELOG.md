@@ -1,9 +1,110 @@
 # Changelog
 
-All notable changes to CheddaBoards Godot 4 Template will be documented in this file.
+All notable changes to CheddaBoards Godot 4 SDK will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+---
+
+## [1.2.1] - 2025-12-18
+
+### Native Platform Support & HTTP API
+
+**CheddaBoards now works on ALL platforms!** Windows, Mac, Linux, Mobile, and Web - same codebase, same API.
+
+### Added
+
+#### Native HTTP API Mode
+- **Full REST API support**: Native builds use HTTP API instead of JavaScript bridge
+- **Platform auto-detection**: SDK automatically uses correct mode (Web = JS bridge, Native = HTTP)
+- **API key authentication**: Secure API key for native/anonymous builds
+- **Request queuing**: Multiple requests handled gracefully, no more race conditions
+
+#### New CheddaBoards.gd Functions
+- `set_api_key(key)` - Set API key for HTTP authentication
+- `get_player_id()` - Get sanitized device/player ID
+- `set_player_id(id)` - Set custom player ID
+- `setup_anonymous_player(id, nickname)` - Configure anonymous player without signals
+- `get_player_profile(player_id)` - Fetch player profile via HTTP
+- `health_check()` - Verify API connection
+- `get_game_info()` - Get game metadata
+- `get_game_stats()` - Get game statistics
+
+#### API Endpoints Supported
+- `POST /scores` - Submit score
+- `GET /leaderboard` - Get leaderboard
+- `GET /players/{id}/profile` - Get player profile
+- `GET /players/{id}/rank` - Get player rank
+- `PUT /players/{id}/nickname` - Change nickname
+- `POST /achievements` - Unlock achievement
+- `GET /players/{id}/achievements` - Get achievements
+- `GET /health` - Health check
+
+#### New Signals
+- `request_failed(endpoint, error)` - HTTP request failure notification
+
+### Changed
+
+#### Hybrid Architecture
+- **Web exports**: Continue using JavaScript bridge for full ICP authentication
+- **Native exports**: Use HTTP API with API key authentication
+- **Anonymous play**: Works on BOTH web and native via HTTP API
+- Same GDScript code works on all platforms - SDK handles the difference
+
+#### CheddaBoards.gd Improvements
+- `is_authenticated()` - Now checks API key for native builds
+- `submit_score()` - Routes to HTTP or JS based on platform
+- `get_leaderboard()` - Works on native via HTTP API
+- `login_anonymous()` - Uses HTTP API on all platforms for consistency
+- Player ID sanitization (alphanumeric, underscore, hyphen only, max 100 chars)
+
+#### Documentation
+- README completely rewritten for multi-platform support
+- Added Native Export section
+- Added Platform Modes comparison table
+- Added API Key configuration guide
+- High-DPI display fix documented
+
+### Fixed
+
+#### High-DPI Display Support
+- Click/input offset on scaled displays (125%, 150%, etc.)
+- Add to Project Settings: Display → Window → DPI → Allow Hidpi: On
+
+#### HTTP Request Handling
+- Request queue prevents "HTTP busy" errors
+- Proper error propagation to correct signals
+- Timeout handling for failed requests
+
+#### Player ID Issues
+- OS.get_unique_id() sanitization (removes invalid characters)
+- Fallback ID generation if device ID unavailable
+- Ensures ID starts with letter (API requirement)
+
+### Technical Details
+
+**API Base URL**: `https://api.cheddaboards.com`
+**API Key Format**: `cb_yourgame_xxxxxxxxx`
+**Player ID Format**: 1-100 characters, alphanumeric + underscore + hyphen
+
+### Migration from v1.2.0
+
+1. **Update CheddaBoards.gd** - Replace with new version
+
+2. **Set API Key** (for native builds):
+   ```gdscript
+   # In CheddaBoards.gd
+   var api_key: String = "cb_your_api_key_here"
+   
+   # Or at runtime
+   CheddaBoards.set_api_key("cb_your_api_key_here")
+   ```
+
+3. **High-DPI fix** (if experiencing click offset):
+   - Project Settings → Display → Window → DPI → Allow Hidpi: On
+
+4. **No changes needed** for web-only games - fully backward compatible
 
 ---
 
@@ -216,21 +317,11 @@ First public release of the CheddaBoards Godot 4 Template.
 
 ---
 
-## [Unreleased]
-
-### Planned Features
-- Desktop export support (when CheddaBoards adds native SDKs)
-- Additional example achievements
-- More customization options
-- Video tutorial link
-- Community templates
-
----
-
 ## Version History
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| **v1.2.1** | 2025-12-18 | Native platform support, HTTP REST API, API key auth |
 | **v1.2.0** | 2025-12-15 | Anonymous play with device ID, play without login |
 | **v1.1.0** | 2025-12-03 | Setup Wizard v2.1, Asset Library structure, mainnet fix |
 | **v1.0.0** | 2025-11-02 | Initial public release |
@@ -238,6 +329,34 @@ First public release of the CheddaBoards Godot 4 Template.
 ---
 
 ## Upgrade Guide
+
+### From v1.2.0 to v1.2.1
+
+1. **Update CheddaBoards.gd** - Replace with new version (adds HTTP API support)
+
+2. **For Native builds, set API key**:
+   ```gdscript
+   # Option A: In CheddaBoards.gd directly
+   var api_key: String = "cb_your_api_key_here"
+   
+   # Option B: At runtime
+   func _ready():
+       CheddaBoards.set_api_key("cb_your_api_key_here")
+   ```
+
+3. **Fix high-DPI click offset** (if affected):
+   - Project Settings → Display → Window → DPI → Allow Hidpi: `On`
+
+4. **Web builds**: No changes required - fully backward compatible
+
+5. **Exit button for web** (optional):
+   ```gdscript
+   func _on_exit_pressed():
+       if OS.get_name() == "Web":
+           JavaScriptBridge.eval("window.location.href = 'https://yourdomain.com'")
+       else:
+           get_tree().quit()
+   ```
 
 ### From v1.1.0 to v1.2.0
 
@@ -293,14 +412,30 @@ First public release of the CheddaBoards Godot 4 Template.
    - Change Custom HTML Shell to `res://template.html`
    - Always export as `index.html`
 
-### From Nothing to v1.2.0
+### From Nothing to v1.2.1
+
 1. Download/clone from GitHub
 2. Copy `addons/cheddaboards/` folder to your project
-3. Copy `template.html` to your project root
+3. Copy `template.html` to your project root (web only)
 4. Run `File > Run > addons/cheddaboards/SetupWizard.gd`
 5. Enter your Game ID in the popup
-6. Export as `index.html` and test!
-7. Users can now play immediately without login!
+6. **For native**: Set API key in CheddaBoards.gd
+7. **For web**: Export as `index.html` and test!
+8. Users can play immediately on any platform!
+
+---
+
+## Roadmap
+
+### Planned Features
+- [ ] Unity SDK
+- [ ] Unreal Plugin
+- [ ] Full REST API documentation (OpenAPI/Swagger)
+- [ ] Self-hosting option
+- [ ] Analytics dashboard
+- [ ] Tournament/competition mode
+- [ ] Friend leaderboards
+- [ ] Video tutorials
 
 ---
 
@@ -309,7 +444,9 @@ First public release of the CheddaBoards Godot 4 Template.
 - **Documentation**: See README.md
 - **GitHub**: https://github.com/cheddatech/CheddaBoards-Godot
 - **CheddaBoards**: https://cheddaboards.com
-- **Example Game**: https://thecheesegame.online
+- **Example Games**: 
+  - https://thecheesegame.online (Web)
+  - https://cheddaclick.cheddagames.com (Web + Native)
 - **Contact**: info@cheddaboards.com
 
 ---
@@ -323,4 +460,6 @@ Found a bug? Have a feature request?
 
 ---
 
-**Thank you for using CheddaBoards!** Build. Own. Chedda.
+**Thank you for using CheddaBoards!** 🧀
+
+*Zero servers. $0 for indie devs. Any platform.*
