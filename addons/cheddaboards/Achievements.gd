@@ -1,4 +1,4 @@
-# Achievements.gd v1.2.0
+# Achievements.gd v1.3.0 - CheddaClick Edition
 # Backend-first achievement system with local caching
 # https://github.com/cheddatech/CheddaBoards-SDK
 # https://cheddaboards.com
@@ -13,10 +13,11 @@
 #
 #    # During game
 #    Achievements.check_score(current_score)
-#    Achievements.check_clutch(current_score, time_remaining)
+#    Achievements.check_clicks(total_clicks)
+#    Achievements.check_combo(current_combo)
 #
 #    # At game over
-#    Achievements.check_game_over(score, time_remaining)
+#    Achievements.check_game_over(score, clicks, max_combo)
 #    Achievements.increment_games_played()
 #    Achievements.submit_with_score(score, streak)
 #
@@ -62,27 +63,27 @@ const ACHIEVEMENTS = {
 	# GAMES PLAYED (6)
 	# ========================================
 	"games_1": {
-		"name": "First Slice",
-		"description": "Complete your very first cheese run."
+		"name": "First Click",
+		"description": "Complete your very first clicking session."
 	},
 	"games_5": {
-		"name": "Getting Hungry",
-		"description": "Play 5 games — the cheese addiction begins."
+		"name": "Getting Clicky",
+		"description": "Play 5 games — the clicking addiction begins."
 	},
 	"games_10": {
-		"name": "Cheese Curious",
+		"name": "Click Curious",
 		"description": "Play 10 games — developing a taste for chedda."
 	},
 	"games_20": {
-		"name": "Dairy Devotee",
+		"name": "Click Devotee",
 		"description": "Play 20 games — officially hooked on cheese."
 	},
 	"games_30": {
-		"name": "Fromage Fanatic",
+		"name": "Click Fanatic",
 		"description": "Play 30 games — cheese runs through your veins."
 	},
 	"games_50": {
-		"name": "Cheese Legend",
+		"name": "Click Legend",
 		"description": "Play 50 games — a true master of the wheel."
 	},
 	
@@ -93,59 +94,76 @@ const ACHIEVEMENTS = {
 		"name": "Cheese Nibbler",
 		"description": "Score 1,000 points in a single game."
 	},
-	"score_2000": {
+	"score_2500": {
 		"name": "Chedda Chaser",
-		"description": "Score 2,000 points — warming up nicely."
-	},
-	"score_3000": {
-		"name": "Gouda Grabber",
-		"description": "Score 3,000 points — now we're cooking."
+		"description": "Score 2,500 points — warming up nicely."
 	},
 	"score_5000": {
-		"name": "Brie Boss",
-		"description": "Score 5,000 points — serious cheese skills."
-	},
-	"score_7500": {
-		"name": "Parmesan Pro",
-		"description": "Score 7,500 points — elite tier unlocked."
+		"name": "Gouda Grabber",
+		"description": "Score 5,000 points — now we're cooking."
 	},
 	"score_10000": {
+		"name": "Brie Boss",
+		"description": "Score 10,000 points — serious cheese skills."
+	},
+	"score_25000": {
+		"name": "Parmesan Pro",
+		"description": "Score 25,000 points — elite tier unlocked."
+	},
+	"score_50000": {
 		"name": "The Big Cheese",
-		"description": "Score 10,000 points — absolute dairy dominance."
+		"description": "Score 50,000 points — absolute dairy dominance."
 	},
 	
 	# ========================================
-	# CLUTCH ACHIEVEMENTS (5)
-	# Score X points with 5 seconds or less remaining
+	# CLICK COUNT ACHIEVEMENTS (5)
+	# Total clicks in a single game
 	# ========================================
-	"clutch_500": {
-		"name": "Close Call Chedda",
-		"description": "Finish with 500+ points and ≤5 seconds left."
+	"clicks_100": {
+		"name": "Finger Warmer",
+		"description": "Click 100 times in a single game."
 	},
-	"clutch_1000": {
-		"name": "Last Bite",
-		"description": "Finish with 1,000+ points and ≤5 seconds left."
+	"clicks_250": {
+		"name": "Button Masher",
+		"description": "Click 250 times in a single game."
 	},
-	"clutch_2000": {
-		"name": "Buzzer Beater Brie",
-		"description": "Finish with 2,000+ points and ≤5 seconds left."
+	"clicks_500": {
+		"name": "Click Machine",
+		"description": "Click 500 times in a single game."
 	},
-	"clutch_3000": {
-		"name": "Photo Finish Fromage",
-		"description": "Finish with 3,000+ points and ≤5 seconds left."
+	"clicks_1000": {
+		"name": "Carpal Tunnel",
+		"description": "Click 1,000 times in a single game. RIP your mouse."
 	},
-	"clutch_5000": {
-		"name": "Miraculous Mozzarella",
-		"description": "Finish with 5,000+ points and ≤5 seconds left. Legendary."
+	"clicks_2000": {
+		"name": "Inhuman Clicker",
+		"description": "Click 2,000 times in a single game. Are you okay?"
 	},
 	
 	# ========================================
-	# STREAK / SPECIAL (Reserved for future)
+	# COMBO ACHIEVEMENTS (5)
+	# Max combo reached in a single game
 	# ========================================
-	# Add streak or special achievements here when ready
-	# Examples:
-	# "perfect_level": { "name": "Spotless", "description": "Complete a level collecting every cheese." },
-	# "speed_demon": { "name": "Speed Demon", "description": "Score 1000 points in the first 30 seconds." },
+	"combo_10": {
+		"name": "Combo Starter",
+		"description": "Reach a 10x combo."
+	},
+	"combo_25": {
+		"name": "Combo Builder",
+		"description": "Reach a 25x combo."
+	},
+	"combo_50": {
+		"name": "Combo Master",
+		"description": "Reach a 50x combo."
+	},
+	"combo_100": {
+		"name": "Combo King",
+		"description": "Reach a 100x combo. Unstoppable!"
+	},
+	"combo_200": {
+		"name": "Combo God",
+		"description": "Reach a 200x combo. Legendary clicking."
+	},
 }
 
 # ============================================================
@@ -174,7 +192,7 @@ var is_ready: bool = false
 var games_played: int = 0
 
 const SAVE_PATH = "user://achievements_cache.save"
-const CACHE_VERSION = 3  # Bumped for new structure
+const CACHE_VERSION = 4  # Bumped for CheddaClick
 
 # ============================================================
 # INITIALIZATION
@@ -249,182 +267,71 @@ func _on_profile_loaded(_nickname: String, _score: int, _streak: int, achievemen
 	if not profile.is_empty():
 		var backend_play_count = profile.get("playCount", 0)
 		if backend_play_count != games_played:
-			_log("🔄 Syncing games_played: local=%d → backend=%d" % [games_played, backend_play_count])
+			_log("🔄 Profile sync games_played: local=%d → backend=%d" % [games_played, backend_play_count])
 			games_played = backend_play_count
 	
 	_process_backend_achievements(achievements)
 
-func _process_backend_achievements(achievements: Array):
-	"""Process achievements array from backend"""
-	unlocked_achievements.clear()
+func _process_backend_achievements(backend_achievements: Array):
+	"""Process achievements from backend, merge with local"""
+	_log("Processing %d backend achievements" % backend_achievements.size())
 	
-	for ach in achievements:
-		var ach_id: String = ""
-		
-		if typeof(ach) == TYPE_DICTIONARY:
-			ach_id = str(ach.get("id", ""))
-		elif typeof(ach) == TYPE_STRING:
-			ach_id = ach
-		
-		if ach_id != "" and ACHIEVEMENTS.has(ach_id):
-			unlocked_achievements.append(ach_id)
+	# Backend is source of truth - start with backend list
+	var merged = backend_achievements.duplicate()
 	
+	# Add any pending local achievements not yet on backend
+	for local_id in pending_achievements:
+		if not merged.has(local_id):
+			merged.append(local_id)
+			_log("➕ Adding pending local: %s" % local_id)
+	
+	unlocked_achievements = merged
 	backend_synced = true
-	
-	# Save to cache (includes games_played which was synced earlier)
 	_save_local_cache()
 	
-	_log("✅ Synced %d achievements, %d games from backend" % [unlocked_achievements.size(), games_played])
+	_log("✅ Sync complete: %d total achievements" % unlocked_achievements.size())
 	achievements_synced.emit()
 	achievements_ready.emit()
 
 # ============================================================
-# ACHIEVEMENT UNLOCKING
+# CORE ACHIEVEMENT METHODS
 # ============================================================
 
-func unlock(achievement_id: String) -> bool:
-	"""Unlock a single achievement"""
+func unlock(achievement_id: String):
+	"""Unlock an achievement (locally, synced on next score submit)"""
 	if not ACHIEVEMENTS.has(achievement_id):
-		push_warning("[Achievements] Unknown achievement: %s" % achievement_id)
-		return false
+		_log("⚠️ Unknown achievement: %s" % achievement_id)
+		return
 	
 	if is_unlocked(achievement_id):
-		return false
+		return  # Already unlocked
 	
-	# Add to local unlocked list
+	_log("🏆 UNLOCKED: %s" % achievement_id)
+	
+	# Add to unlocked list
 	unlocked_achievements.append(achievement_id)
 	
-	var achievement = ACHIEVEMENTS[achievement_id]
-	var achievement_name = achievement.get("name", achievement_id)
-	var achievement_desc = achievement.get("description", "")
+	# Add to pending (to sync with backend on next submit)
+	if not pending_achievements.has(achievement_id):
+		pending_achievements.append(achievement_id)
 	
-	_log("🏆 Unlocked: %s" % achievement_name)
+	# Save locally
+	_save_local_cache()
 	
-	# Add to notification queue
+	# Get achievement name for signal
+	var achievement_name = ACHIEVEMENTS[achievement_id].get("name", achievement_id)
+	
+	# Queue notification
 	notification_queue.append({
 		"id": achievement_id,
-		"name": achievement_name,
-		"description": achievement_desc
+		"name": achievement_name
 	})
 	
 	# Emit signal
 	achievement_unlocked.emit(achievement_id, achievement_name)
-	
-	# Add to pending queue for backend submission
-	# NOTE: Don't send to backend immediately - new users won't have a profile yet
-	# All achievements are batched and sent with submit_with_score() at game over
-	pending_achievements.append({
-		"id": achievement_id,
-		"name": achievement_name,
-		"description": achievement_desc
-	})
-	
-	# Save local cache
-	_save_local_cache()
-	
-	return true
-
-## Alias for unlock() - more explicit name
-func unlock_achievement(achievement_id: String) -> bool:
-	return unlock(achievement_id)
-
-# ============================================================
-# NOTIFICATION QUEUE (For UI)
-# ============================================================
-
-func has_pending_notifications() -> bool:
-	"""Check if there are achievement notifications to display"""
-	return not notification_queue.is_empty()
-
-func get_next_notification() -> Dictionary:
-	"""Get next achievement notification (call this from your UI)"""
-	if notification_queue.is_empty():
-		return {}
-	return notification_queue.pop_front()
-
-func get_all_pending_notifications() -> Array:
-	"""Get all pending notifications and clear the queue"""
-	var notifications = notification_queue.duplicate()
-	notification_queue.clear()
-	return notifications
-
-func clear_notifications():
-	"""Clear all pending notifications"""
-	notification_queue.clear()
-
-# ============================================================
-# BATCH SUBMISSION (GAME OVER)
-# ============================================================
-
-func submit_with_score(score: int, streak: int):
-	"""Submit score - achievements are synced separately after profile exists"""
-	if not CheddaBoards.is_authenticated():
-		_log("Not authenticated - achievements cached locally")
-		CheddaBoards.submit_score(score, streak)
-		return
-	
-	_log("📤 Submitting score: %d (pending achievements: %d)" % [score, pending_achievements.size()])
-	
-	# Just submit the score - achievements will be synced via sync_pending_to_backend()
-	# after the score_submitted callback confirms the profile exists
-	CheddaBoards.submit_score(score, streak)
-
-## Alias for submit_with_score
-func submit_achievements_with_score(score: int, streak: int):
-	submit_with_score(score, streak)
-
-func sync_pending_to_backend():
-	"""Sync all pending achievements to backend - call this AFTER score submission succeeds"""
-	if not CheddaBoards.is_authenticated():
-		_log("Not authenticated - cannot sync achievements")
-		return
-	
-	if pending_achievements.is_empty():
-		_log("No pending achievements to sync")
-		return
-	
-	_log("🔄 Syncing %d achievements to backend..." % pending_achievements.size())
-	
-	# Send each achievement to backend
-	for ach in pending_achievements:
-		CheddaBoards.unlock_achievement(ach.id, ach.name, ach.description)
-	
-	_log("✅ Sent %d achievements to backend" % pending_achievements.size())
-	
-	# Clear pending queue
-	pending_achievements.clear()
-	_save_local_cache()
-
-# ============================================================
-# PROGRESS TRACKING
-# ============================================================
-
-func update_progress(achievement_id: String, current: int, total: int):
-	"""Update progress towards an achievement"""
-	if is_unlocked(achievement_id):
-		return
-	
-	progress_tracking[achievement_id] = {
-		"current": current,
-		"total": total
-	}
-	
-	progress_updated.emit(achievement_id, current, total)
-	
-	# Auto-unlock if target reached
-	if current >= total:
-		unlock(achievement_id)
-
-func get_progress(achievement_id: String) -> Dictionary:
-	"""Get progress for an achievement"""
-	return progress_tracking.get(achievement_id, {"current": 0, "total": 1})
-
-# ============================================================
-# CHECKING ACHIEVEMENTS
-# ============================================================
 
 func is_unlocked(achievement_id: String) -> bool:
-	"""Check if achievement is unlocked"""
+	"""Check if an achievement is unlocked"""
 	return unlocked_achievements.has(achievement_id)
 
 func get_unlocked_count() -> int:
@@ -436,29 +343,94 @@ func get_total_count() -> int:
 	return ACHIEVEMENTS.size()
 
 func get_unlocked_percentage() -> float:
-	"""Get percentage of achievements unlocked (0-100)"""
-	if ACHIEVEMENTS.is_empty():
+	"""Get percentage of achievements unlocked"""
+	if get_total_count() == 0:
 		return 0.0
-	return (float(unlocked_achievements.size()) / float(ACHIEVEMENTS.size())) * 100.0
-
-func get_unlocked_ids() -> Array:
-	"""Get array of unlocked achievement IDs"""
-	return unlocked_achievements.duplicate()
+	return (float(get_unlocked_count()) / float(get_total_count())) * 100.0
 
 # ============================================================
-# AUTOMATIC ACHIEVEMENT CHECKERS
+# PROGRESS TRACKING
 # ============================================================
 
-## Call this at the END of each game to increment and check games played
+func set_progress(achievement_id: String, current: int, total: int):
+	"""Set progress for a progressive achievement"""
+	if is_unlocked(achievement_id):
+		return  # Already unlocked
+	
+	progress_tracking[achievement_id] = {
+		"current": current,
+		"total": total
+	}
+	
+	progress_updated.emit(achievement_id, current, total)
+	
+	# Auto-unlock if complete
+	if current >= total:
+		unlock(achievement_id)
+
+func get_progress(achievement_id: String) -> Dictionary:
+	"""Get progress for an achievement"""
+	return progress_tracking.get(achievement_id, {"current": 0, "total": 0})
+
+# ============================================================
+# NOTIFICATION QUEUE
+# ============================================================
+
+func has_pending_notification() -> bool:
+	"""Check if there are notifications to show"""
+	return notification_queue.size() > 0
+
+func get_next_notification() -> Dictionary:
+	"""Get and remove next notification from queue"""
+	if notification_queue.is_empty():
+		return {}
+	return notification_queue.pop_front()
+
+func clear_notifications():
+	"""Clear all pending notifications"""
+	notification_queue.clear()
+
+# ============================================================
+# SCORE SUBMISSION WITH ACHIEVEMENTS
+# ============================================================
+
+func submit_with_score(score: int, streak: int = 0):
+	"""Submit score along with any pending achievements"""
+	if pending_achievements.is_empty():
+		_log("📤 Submitting score (no pending achievements)")
+		CheddaBoards.submit_score(score, streak)
+	else:
+		_log("📤 Submitting score with %d achievements: %s" % [
+			pending_achievements.size(), 
+			str(pending_achievements)
+		])
+		CheddaBoards.submit_score_with_achievements(score, streak, pending_achievements.duplicate())
+		
+		# Clear pending after submit
+		pending_achievements.clear()
+		_save_local_cache()
+
+# ============================================================
+# CHECK METHODS - Call these during gameplay
+# ============================================================
+
 func increment_games_played():
-	"""Increment games played counter and check achievements"""
+	"""Increment games played and check related achievements"""
 	games_played += 1
-	_save_local_cache()
 	_log("🎮 Games played: %d" % games_played)
+	_save_local_cache()
 	check_games_played()
 
 func check_games_played():
-	"""Check and unlock games played achievements"""
+	"""Check and unlock games-played achievements"""
+	# Update progress for games achievements
+	set_progress("games_50", games_played, 50)
+	set_progress("games_30", games_played, 30)
+	set_progress("games_20", games_played, 20)
+	set_progress("games_10", games_played, 10)
+	set_progress("games_5", games_played, 5)
+	
+	# Unlock in reverse order (highest first)
 	if games_played >= 50:
 		unlock("games_50")
 	if games_played >= 30:
@@ -474,48 +446,54 @@ func check_games_played():
 
 func check_score(score: int):
 	"""Check and unlock score-based achievements"""
+	if score >= 50000:
+		unlock("score_50000")
+	if score >= 25000:
+		unlock("score_25000")
 	if score >= 10000:
 		unlock("score_10000")
-	if score >= 7500:
-		unlock("score_7500")
 	if score >= 5000:
 		unlock("score_5000")
-	if score >= 3000:
-		unlock("score_3000")
-	if score >= 2000:
-		unlock("score_2000")
+	if score >= 2500:
+		unlock("score_2500")
 	if score >= 1000:
 		unlock("score_1000")
 
-func check_clutch(score: int, time_remaining: float):
-	"""Check and unlock clutch achievements (score with ≤5 seconds left)"""
-	if time_remaining > 5.0:
-		return  # Not a clutch situation
-	
-	_log("⏱️ Clutch check: %d points with %.1fs remaining" % [score, time_remaining])
-	
-	if score >= 5000:
-		unlock("clutch_5000")
-	if score >= 3000:
-		unlock("clutch_3000")
-	if score >= 2000:
-		unlock("clutch_2000")
-	if score >= 1000:
-		unlock("clutch_1000")
-	if score >= 500:
-		unlock("clutch_500")
+func check_clicks(clicks: int):
+	"""Check and unlock click-based achievements"""
+	if clicks >= 2000:
+		unlock("clicks_2000")
+	if clicks >= 1000:
+		unlock("clicks_1000")
+	if clicks >= 500:
+		unlock("clicks_500")
+	if clicks >= 250:
+		unlock("clicks_250")
+	if clicks >= 100:
+		unlock("clicks_100")
 
-func check_game_over(score: int, time_remaining: float = -1.0):
+func check_combo(combo: int):
+	"""Check and unlock combo-based achievements"""
+	if combo >= 200:
+		unlock("combo_200")
+	if combo >= 100:
+		unlock("combo_100")
+	if combo >= 50:
+		unlock("combo_50")
+	if combo >= 25:
+		unlock("combo_25")
+	if combo >= 10:
+		unlock("combo_10")
+
+func check_game_over(score: int, clicks: int = 0, max_combo: int = 0):
 	"""Check all end-of-game achievements at once"""
 	check_score(score)
 	
-	# Check clutch if time was provided
-	if time_remaining >= 0.0:
-		check_clutch(score, time_remaining)
-
-## Legacy alias for backward compatibility
-func check_score_achievements(score: int):
-	check_score(score)
+	if clicks > 0:
+		check_clicks(clicks)
+	
+	if max_combo > 0:
+		check_combo(max_combo)
 
 # ============================================================
 # GAMES PLAYED HELPERS
@@ -568,7 +546,7 @@ func get_unlocked_achievements() -> Array:
 	return unlocked
 
 func get_achievements_by_category(prefix: String) -> Array:
-	"""Get achievements by category prefix (e.g., 'games_', 'score_', 'clutch_')"""
+	"""Get achievements by category prefix (e.g., 'games_', 'score_', 'clicks_', 'combo_')"""
 	var filtered = []
 	for achievement_id in ACHIEVEMENTS.keys():
 		if achievement_id.begins_with(prefix):
@@ -657,7 +635,7 @@ func clear_local_cache():
 # ============================================================
 
 ## Set to true to enable verbose logging
-var debug_logging: bool = true  # Enabled by default for debugging sync issues
+var debug_logging: bool = true
 
 func _log(message: String):
 	"""Print log message if debug logging enabled"""
@@ -675,7 +653,7 @@ func debug_status():
 	
 	print("")
 	print("╔══════════════════════════════════════════════╗")
-	print("║         Achievements Debug v1.2.0            ║")
+	print("║      Achievements Debug v1.3.0 (Click)       ║")
 	print("╠══════════════════════════════════════════════╣")
 	print("║ Status                                       ║")
 	print("║  - Ready:            %s" % str(is_ready).rpad(24) + "║")
