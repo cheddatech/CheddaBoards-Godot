@@ -1,644 +1,358 @@
-# 🔧 CheddaBoards Troubleshooting Guide
+# 🔧 CheddaBoards Troubleshooting
 
-**Having issues? Find your platform, then your problem below!**
+**Find your problem, get the fix.**
+
+---
+
+## 🚨 Quick Fixes
+
+**90% of problems are solved by:**
+
+| Problem Type | Fix |
+|--------------|-----|
+| API/Native issues | Check API key is set correctly |
+| Web issues | Use web server (not file://), export as `index.html` |
+| Both | Run Setup Wizard, check Autoloads |
 
 ---
 
 ## 🧙 First: Run the Setup Wizard
 
-**Before anything else, run the wizard!** It auto-fixes most common issues.
+Before debugging manually, run the wizard:
 
 ```
 File → Run (Ctrl+Shift+X) → Select SetupWizard.gd
 ```
 
-The wizard will:
-- ✅ Auto-add missing Autoloads
-- ✅ Check all required files
-- ✅ Validate your Game ID
-- ✅ Show exactly what's wrong
-
-**Still having problems after running the wizard?** Find your issue below 👇
+It auto-fixes:
+- ✅ Missing Autoloads
+- ✅ Wrong Game ID
+- ✅ Export settings
 
 ---
 
-## 🚨 Quick Diagnosis
+## Find Your Issue
 
-**What platform are you on?**
-
-| Platform | Common Issues |
-|----------|---------------|
-| Web | [Browser Problems](#-browser-problems), [Login Problems](#-login-problems) |
-| Native (Win/Mac/Linux) | [API Key Problems](#-api-key-problems), [High-DPI Problems](#-high-dpi-problems) |
-| Both | [Project Problems](#-project-problems), [Score Problems](#-score-problems) |
-
-**What's not working?**
-
-| Problem | Jump to |
-|---------|---------|
-| Template won't open | [Project Problems](#-project-problems) |
-| API key errors (native) | [API Key Problems](#-api-key-problems) |
-| Clicks offset / wrong position | [High-DPI Problems](#-high-dpi-problems) |
-| Export fails | [Export Problems](#-export-problems) |
-| Blank screen in browser | [Browser Problems](#-browser-problems) |
-| Login not working | [Login Problems](#-login-problems) |
-| Scores not saving | [Score Problems](#-score-problems) |
-| Achievements broken | [Achievement Problems](#-achievement-problems) |
-| Leaderboard empty | [Leaderboard Problems](#-leaderboard-problems) |
+| What's broken? | Jump to |
+|----------------|---------|
+| API key errors | [API Key Issues](#-api-key-issues) |
+| Login not working | [Login Issues](#-login-issues) |
+| Scores not saving | [Score Issues](#-score-issues) |
+| Leaderboard empty | [Leaderboard Issues](#-leaderboard-issues) |
+| Web blank screen | [Web Issues](#-web-issues) |
+| Clicks offset | [Display Issues](#-display-issues) |
+| Achievements | [Achievement Issues](#-achievement-issues) |
 
 ---
 
-## 📂 Project Problems
+# 🔑 API Key Issues
 
-### Problem: Template won't open in Godot
+### "API key not set"
 
-**Are you using Godot 4.x?**
-```
-Godot 3.x → ❌ Won't work! Download Godot 4+
-Godot 4.x → ✅ Should work
-```
+**Cause:** Native builds require an API key.
 
-**Solution:**
-1. Download Godot 4.x from godotengine.org
-2. Open Godot → Import → Browse to `project.godot`
-3. Click "Import & Edit"
+**Fix:**
+1. Go to [cheddaboards.com/dashboard](https://cheddaboards.com/dashboard)
+2. Open your game → Generate API Key
+3. Copy the key (looks like `cb_your-game_xxxxxxxxx`)
+4. Set in CheddaBoards.gd:
 
----
-
-### Problem: "Autoload not found" error
-
-**Solution:** Run the Setup Wizard! It auto-adds missing autoloads.
-
-```
-File → Run → SetupWizard.gd
-```
-
-**Manual fix (if needed):**
-1. **Project → Project Settings → Autoload**
-2. Click **+** to add:
-
-| Path | Name |
-|------|------|
-| `res://addons/cheddaboards/CheddaBoards.gd` | `CheddaBoards` |
-| `res://addons/cheddaboards/Achievements.gd` | `Achievements` |
-
-3. Make sure both are **enabled** (checkbox)
-4. Names must be **exact** (case-sensitive)!
-
----
-
-### Problem: "CheddaBoards not ready" errors
-
-**Cause:** Using CheddaBoards before SDK is loaded
-
-**First:** Run the Setup Wizard to verify autoloads are configured.
-
-**Then** add this to your script:
 ```gdscript
-func _ready():
-    # Wait for SDK to initialize
-    await CheddaBoards.wait_until_ready()
-    
-    # Now safe to use
-    if CheddaBoards.is_authenticated():
-        print("Logged in!")
+var api_key: String = "cb_your-game_xxxxxxxxx"
 ```
 
----
+### "Invalid API key"
 
-## 🔑 API Key Problems
+**Cause:** Key doesn't match game or was revoked.
 
-### Problem: "API key not set" error
+**Fix:**
+1. Go to dashboard
+2. Check the key matches your game
+3. Generate a new key if needed
 
-**Cause:** Native builds require an API key
-
-**Solution:**
-1. Go to **cheddaboards.com**
-2. Go to your **Game Dashboard**
-3. Click **"Generate API Key"**
-4. Copy the key (looks like `cb_yourgame_xxxxxxxxx`)
-5. Open `addons/cheddaboards/CheddaBoards.gd`
-6. Find this line (around line 35):
-   ```gdscript
-   var api_key: String = ""
-   ```
-7. Change to:
-   ```gdscript
-   var api_key: String = "cb_your_api_key_here"
-   ```
-
-**Or set at runtime:**
-```gdscript
-func _ready():
-    CheddaBoards.set_api_key("cb_your_api_key_here")
-```
-
----
-
-### Problem: "Request failed" errors on native
+### "Request failed"
 
 **Checklist:**
-```
-[ ] API key is set correctly
-[ ] API key matches the game on dashboard
-[ ] Internet connection is working
-```
+- [ ] API key is correct
+- [ ] Internet connection works
+- [ ] Game is registered and active
 
 **Debug:**
 ```gdscript
-# Enable logging to see what's happening
 CheddaBoards.debug_logging = true
-
-# Check the request_failed signal
 CheddaBoards.request_failed.connect(func(endpoint, error):
-    print("Request to %s failed: %s" % [endpoint, error])
+    print("Failed: %s - %s" % [endpoint, error])
 )
 ```
 
 ---
 
-## 🖱️ High-DPI Problems
+# 🔐 Login Issues
 
-### Problem: Clicks are offset / wrong position
+### Which login works where?
 
-**Symptom:** You click on a button but it doesn't register, or you have to click below/above the actual button.
+| Method | Web | Native |
+|--------|-----|--------|
+| Anonymous | ✅ | ✅ |
+| Chedda ID | ✅ | ❌ |
+| Google | ✅* | ❌ |
+| Apple | ✅* | ❌ |
 
-**Cause:** Display scaling (125%, 150%, etc.) on Windows/Mac
+> \* Requires your own OAuth credentials
 
-**Solution:**
-1. **Project → Project Settings**
-2. **Display → Window → DPI**
-3. Set **Allow Hidpi:** `On`
+### "Not authenticated"
 
-**Alternative:** Add to your main script:
-```gdscript
-func _ready():
-    get_window().content_scale_factor = DisplayServer.screen_get_scale()
-```
+**Cause:** Trying to submit score without logging in.
 
----
-
-### Problem: UI looks tiny or huge on different displays
-
-**Solution:**
-1. **Project → Project Settings**
-2. **Display → Window → Stretch**
-3. Set **Mode:** `canvas_items`
-4. Set **Aspect:** `keep`
-
----
-
-## 📦 Export Problems
-
-### Problem: No "Web" export option
-
-**Solution:**
-1. **Project → Export**
-2. Click **Add...** → Select **Web**
-3. If prompted for templates → **Download and Install**
-4. Wait for download to complete
-5. Close and reopen Export dialog
-
----
-
-### Problem: Export fails
-
-**Check the error:**
-
-| Error | Solution |
-|-------|----------|
-| "Export template not found" | Editor → Manage Export Templates → Download |
-| "Can't write to folder" | Choose a different export folder |
-| "Custom HTML Shell not found" | Check path: `res://template.html` |
-
----
-
-### Problem: Forgot to set Custom HTML Shell (Web)
-
-**This is critical for web builds!** Without it, CheddaBoards won't work.
-
-**Solution:**
-1. **Project → Export → Web**
-2. Scroll to **HTML** section
-3. Set **Custom HTML Shell:** `res://template.html`
-4. Re-export
-
-💡 **Tip:** The Setup Wizard warns you if this isn't configured!
-
----
-
-## 🌐 Browser Problems
-
-### Problem: Blank page / nothing loads
-
-**How are you opening it?**
-
-```
-file:///path/to/index.html → ❌ WON'T WORK!
-http://localhost:8000     → ✅ Correct way
-```
-
-**Solution:**
-```bash
-# Navigate to your export folder
-cd path/to/exported/game
-
-# Start a web server
-python3 -m http.server 8000
-
-# Open in browser
-# http://localhost:8000
-```
-
----
-
-### Problem: CORS error in console
-
-**Cause:** Opening HTML file directly (file://)
-
-**Solution:** Use a web server (see above)
-
----
-
-### Problem: "CheddaBoards is not defined"
-
-**Cause:** HTML template not configured correctly
-
-**Solution:**
-1. Check you set **Custom HTML Shell** in export settings
-2. Verify `template.html` exists in project root
-3. Re-export the project
-
----
-
-### Problem: "Engine is not defined" error
-
-**Cause:** Export files not named `index.*`
-
-**Solution:** Re-export and save as `index.html` (not `MyGame.html`)
-
-The template expects `index.js` - other names will cause errors!
-
----
-
-## 🔐 Login Problems
-
-### Problem: Which login methods work?
-
-| Method | Web | Native | Setup Required |
-|--------|-----|--------|----------------|
-| **Anonymous** | ✅ | ✅ | Just API key |
-| **Chedda ID** | ✅ | ❌ | None - works out of box! |
-| **Google** | ✅ | ❌ | Your own OAuth credentials |
-| **Apple** | ✅ | ❌ | Your own OAuth credentials |
-
----
-
-### Problem: Login button does nothing (Web)
-
-**Checklist:**
-```
-[ ] Using web server (not file://)
-[ ] Popups allowed in browser
-[ ] Game ID configured (run Setup Wizard!)
-```
-
-**Solution:**
-1. Must use `http://` or `https://` (not `file://`)
-2. Allow popups for localhost in browser settings
-3. Try a different browser
-
----
-
-### Problem: Google/Apple login not working
-
-**Cause:** These require your own OAuth credentials
-
-**Solution:** 
-- Use **Chedda ID** or **Anonymous** login instead (work out of box!)
-- Or set up your own OAuth credentials in `template.html`:
-
-```javascript
-const CONFIG = {
-    // ...
-    GOOGLE_CLIENT_ID: 'your-client-id.apps.googleusercontent.com',
-    APPLE_SERVICE_ID: 'com.yourdomain.yourapp',
-};
-```
-
-See SETUP.md for full OAuth setup instructions.
-
----
-
-### Problem: Popup blocked
-
-**Solution:**
-1. Look for popup blocked icon in browser address bar
-2. Click it → Allow popups for this site
-3. Try login again
-
----
-
-### Problem: "Game not registered" error
-
-**Cause:** Game ID doesn't match
-
-**Solution:** Run the Setup Wizard and use the Game ID popup!
-
-```
-File → Run → SetupWizard.gd → Enter correct Game ID → Save
-```
-
----
-
-### Problem: Anonymous login not working (Native)
-
-**Checklist:**
-```
-[ ] API key is set in CheddaBoards.gd
-[ ] Using CheddaBoards.login_anonymous("PlayerName")
-[ ] Waiting for SDK ready first
-```
-
-**Correct code:**
+**Fix:**
 ```gdscript
 func _ready():
     await CheddaBoards.wait_until_ready()
-    CheddaBoards.login_anonymous("PlayerName")
+    CheddaBoards.login_anonymous("Player")  # Do this first!
+
+func _on_game_over(score, streak):
+    if CheddaBoards.is_authenticated():
+        CheddaBoards.submit_score(score, streak)
+    else:
+        print("Not logged in!")
 ```
 
----
-
-## 💾 Score Problems
-
-### Problem: "Not authenticated" error
-
-**Cause:** Trying to submit score without logging in
-
-**Solution:**
-```gdscript
-# For native - use anonymous login
-await CheddaBoards.wait_until_ready()
-CheddaBoards.login_anonymous("PlayerName")
-
-# Then submit
-if CheddaBoards.is_authenticated():
-    CheddaBoards.submit_score(score, streak)
-else:
-    print("Please login first!")
-```
-
----
-
-### Problem: Score submits but doesn't appear on leaderboard
-
-**Possible causes:**
-
-1. **Same score as before** - Leaderboard shows high scores only
-2. **Network delay** - Wait 5-10 seconds, then refresh
-3. **Wrong Game ID** - Run Setup Wizard to check!
-
-**Solution:**
-1. Submit a HIGHER score than your previous high
-2. Wait a few seconds
-3. Click Refresh on leaderboard
-4. Check console for errors
-
----
-
-### Problem: "Score submission failed" error
-
-**Solution:**
-```gdscript
-# Connect to error signal to see details
-CheddaBoards.score_error.connect(_on_score_error)
-
-func _on_score_error(reason: String):
-    print("Score failed: ", reason)
-```
-
----
-
-## 🏆 Achievement Problems
-
-### Problem: Achievements not unlocking
-
-**First:** Run the Setup Wizard to verify Achievements autoload exists!
+### Login button does nothing (Web)
 
 **Checklist:**
-```
-[ ] Achievements.gd in Autoload (wizard auto-adds this!)
-[ ] Logged in (authenticated)
-[ ] Achievement conditions met (score >= threshold)
+- [ ] Using http://localhost, not file://
+- [ ] Popups allowed in browser
+- [ ] Game ID set in template.html
+
+### Popup blocked
+
+1. Look for blocked popup icon in address bar
+2. Click → Allow popups for this site
+3. Try again
+
+### Google/Apple login not working
+
+**Cause:** These require your own OAuth credentials.
+
+**Quick fix:** Use Chedda ID or Anonymous instead - they work out of box!
+
+**Or:** Set up OAuth in template.html:
+```javascript
+GOOGLE_CLIENT_ID: 'your-client-id.apps.googleusercontent.com',
 ```
 
-**Solution:**
+---
+
+# 💾 Score Issues
+
+### Score not saving
+
+**Checklist:**
+- [ ] `is_authenticated()` returns true
+- [ ] API key is set (native)
+- [ ] No errors in console
+
+**Debug:**
 ```gdscript
-# Make sure you're calling the check methods
-Achievements.check_score(current_score)
-Achievements.check_combo(max_combo)
+CheddaBoards.score_error.connect(func(reason):
+    print("Score error: ", reason)
+)
+
+CheddaBoards.score_submitted.connect(func(score, streak):
+    print("Saved: %d, %d" % [score, streak])
+)
+```
+
+### Score saves but doesn't appear on leaderboard
+
+**Causes:**
+1. Score isn't higher than previous best
+2. Network delay - wait 5 seconds
+3. Wrong Game ID
+
+**Fix:** Submit a higher score, refresh leaderboard.
+
+### "Score rejected" or anti-cheat error
+
+**Cause:** Score exceeds game's anti-cheat limits.
+
+**Fix:** Check your game's rules on the dashboard. Default limits:
+- Max score per round: 5,000
+- Max streak delta: 200
+- Absolute score cap: 100,000
+
+---
+
+# 📊 Leaderboard Issues
+
+### Leaderboard is empty
+
+**Causes:**
+1. No scores submitted yet
+2. Wrong Game ID
+3. Network error
+
+**Fix:**
+1. Submit a test score first
+2. Run Setup Wizard to verify Game ID
+3. Check console for errors
+
+### Wrong data showing
+
+**Cause:** Wrong Game ID - each game has its own leaderboard.
+
+**Fix:** Verify Game ID in template.html or CheddaBoards.gd matches dashboard.
+
+---
+
+# 🌐 Web Issues
+
+### Blank screen / nothing loads
+
+**Cause:** Opening HTML file directly (file://)
+
+**Fix:** Use a web server:
+```bash
+cd your-export-folder
+python3 -m http.server 8000
+# Open http://localhost:8000
+```
+
+### "Engine is not defined"
+
+**Cause:** Export not named `index.html`
+
+**Fix:** Re-export and save as `index.html` (not MyGame.html)
+
+### "CheddaBoards is not defined"
+
+**Cause:** Custom HTML Shell not set.
+
+**Fix:**
+1. Project → Export → Web
+2. HTML section → Custom HTML Shell: `res://template.html`
+3. Re-export
+
+### CORS error
+
+**Cause:** Using file:// instead of http://
+
+**Fix:** Use local web server (see blank screen fix above)
+
+---
+
+# 🖥️ Display Issues
+
+### Clicks offset / wrong position
+
+**Cause:** High-DPI display scaling (125%, 150%)
+
+**Fix:**
+1. Project → Project Settings
+2. Display → Window → DPI
+3. **Allow Hidpi:** `On`
+
+### UI too small/large
+
+**Fix:**
+1. Display → Window → Stretch
+2. **Mode:** `canvas_items`
+3. **Aspect:** `keep`
+
+---
+
+# 🏆 Achievement Issues
+
+### Achievements not unlocking
+
+**Checklist:**
+- [ ] Achievements.gd in Autoloads
+- [ ] Player is authenticated
+- [ ] Calling the check methods
+
+**Fix:**
+```gdscript
+Achievements.check_score(score)
 Achievements.increment_games_played()
 ```
 
----
+### Achievements not saving
 
-### Problem: Achievement notification not showing
+**Cause:** Not syncing to backend.
 
-**Cause:** AchievementNotification node missing from scene
-
-**Solution:**
-1. Add `AchievementNotification` scene to your Game scene
-2. Make sure the node is **visible** in the Inspector
-3. Connect the signal if needed:
+**Fix:** Use `submit_with_score()`:
 ```gdscript
-Achievements.achievement_unlocked.connect(_on_achievement_unlocked)
-```
-
----
-
-### Problem: Achievements not saving / syncing
-
-**Solution:**
-1. Must be logged in to save achievements
-2. Use `Achievements.submit_with_score()` to sync:
-```gdscript
-# This submits score AND pending achievements
 Achievements.submit_with_score(score, streak)
 ```
 
 ---
 
-## 📊 Leaderboard Problems
+# 🐛 Debug Tools
 
-### Problem: Leaderboard is empty
-
-**Possible causes:**
-
-1. **No scores submitted yet** - Submit a test score first
-2. **Wrong Game ID / API key** - Run Setup Wizard to check!
-3. **Network error** - Check console for errors
-
-**Solution:**
-1. Play a game and submit a score
-2. Run Setup Wizard → verify Game ID
-3. Check console for `[CheddaBoards]` messages
-
----
-
-### Problem: Leaderboard shows wrong data
-
-**Cause:** Wrong Game ID
-
-**Solution:**
-1. Run the Setup Wizard
-2. Check the Game ID matches your game on cheddaboards.com
-3. Each game has its own separate leaderboard
-
----
-
-## 🚪 Exit Button Problems
-
-### Problem: Exit button doesn't work on web
-
-**Cause:** `get_tree().quit()` doesn't work in browsers
-
-**Solution:**
-```gdscript
-func _on_exit_pressed():
-    if OS.get_name() == "Web":
-        JavaScriptBridge.eval("window.location.href = 'https://yourdomain.com'")
-    else:
-        get_tree().quit()
-```
-
----
-
-## 🔄 Cache Problems
-
-### Problem: Changes not appearing
-
-**Nuclear option - clear everything:**
-
-1. Close browser completely
-2. Clear cache and cookies for localhost
-3. In Godot: Re-export the project
-4. Restart web server
-5. Open browser → Hard refresh (**Ctrl + Shift + R**)
-
----
-
-### Problem: Old profile data showing
-
-**Solution:**
-```gdscript
-# Force profile refresh
-CheddaBoards.refresh_profile()
-```
-
----
-
-## 🐛 Debug Tools
-
-### Setup Wizard
-
-Run anytime to check project health:
-```
-File → Run → SetupWizard.gd
-```
-
-### Debug Methods
+### Enable Logging
 
 ```gdscript
-# Print full CheddaBoards status
-CheddaBoards.debug_status()
-
-# Print achievement status
-Achievements.debug_status()
-
-# Enable verbose logging
 CheddaBoards.debug_logging = true
 Achievements.debug_logging = true
 ```
 
-### Keyboard Shortcuts (Add to Your Game)
+### Print Status
+
+```gdscript
+CheddaBoards.debug_status()
+Achievements.debug_status()
+```
+
+### Add Debug Keys
 
 ```gdscript
 func _input(event):
     if event is InputEventKey and event.pressed:
-        if event.keycode == KEY_F9:
-            CheddaBoards.debug_status()
-        if event.keycode == KEY_F10:
-            Achievements.debug_status()
+        match event.keycode:
+            KEY_F9: CheddaBoards.debug_status()
+            KEY_F10: Achievements.debug_status()
 ```
 
 ### Browser Console (Web)
 
-1. Press **F12**
-2. Go to **Console** tab
-3. Look for:
-   - `[CheddaBoards]` messages
-   - `[Achievements]` messages
-   - Red error messages
+1. Press F12
+2. Console tab
+3. Look for `[CheddaBoards]` messages
 
 ---
 
-## ✅ Pre-Flight Checklist
+# ✅ Pre-Flight Checklist
 
-### Web Builds
+### API/Native Build
 
-- [ ] Setup Wizard shows all green
-- [ ] Game ID configured (not default)
-- [ ] **Custom HTML Shell** set to `res://template.html`
+- [ ] API key set in CheddaBoards.gd
+- [ ] CheddaBoards in Autoloads
+- [ ] Using `login_anonymous()` before submitting
+- [ ] Allow Hidpi enabled (for high-DPI)
+
+### Web Build
+
+- [ ] Game ID set in template.html
+- [ ] Custom HTML Shell: `res://template.html`
 - [ ] Exported as `index.html`
-- [ ] Using **web server** (not file://)
-- [ ] Browser console shows **no red errors**
-
-### Native Builds
-
-- [ ] Setup Wizard shows all green
-- [ ] **API key** set in CheddaBoards.gd
-- [ ] Using `login_anonymous()` for auth
-- [ ] **Allow Hidpi** enabled (for high-DPI displays)
+- [ ] Testing with web server (not file://)
 
 ---
 
-## 🆘 Still Stuck?
+# 🆘 Still Stuck?
 
-### When asking for help, include:
+### Include This Info
 
-1. **Platform:** Web or Native (Win/Mac/Linux)?
-2. **Setup Wizard output** (copy from console)
-3. **Godot version** (e.g., 4.3.1)
-4. **Error messages** (screenshot or copy)
-5. **Output of** `CheddaBoards.debug_status()`
+1. **Platform:** Web or Native?
+2. **Godot version:** e.g., 4.3.1
+3. **Error message:** Screenshot or copy
+4. **Output of:** `CheddaBoards.debug_status()`
 
-### Where to get help:
+### Get Help
 
 - **Email:** info@cheddaboards.com
-- **GitHub Issues:** github.com/cheddatech/CheddaBoards-Godot
-- **Example Games:** 
-  - thecheesegame.online (Web)
-  - cheddaclick.cheddagames.com (Web + Native)
+- **GitHub:** [Issues](https://github.com/cheddatech/CheddaBoards-Godot/issues)
 
 ---
 
-## 💡 90% of Problems Are Fixed By:
-
-### Web
-1. 🧙 **Running the Setup Wizard**
-2. ✅ Using a web server (file:// doesn't work!)
-3. ✅ Correct Game ID
-4. ✅ Custom HTML Shell set in export
-5. ✅ Exported as `index.html`
-
-### Native
-1. 🧙 **Running the Setup Wizard**
-2. ✅ API key set in CheddaBoards.gd
-3. ✅ Using `login_anonymous()`
-4. ✅ Allow Hidpi enabled for high-DPI displays
-
-**Run the wizard, fix these basics, and you're golden!** 🎯
-
----
-
-**You got this!** 💪🧀
+**Most problems = API key (native) or web server (web). Check those first!** 🧀
