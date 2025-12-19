@@ -651,24 +651,25 @@ func get_player_id() -> String:
 		_log("Generated player ID: %s" % _player_id)
 	return _player_id
 
-## Sanitize player ID to match API requirements (1-100 alphanumeric, underscore, hyphen)
 func _sanitize_player_id(raw_id: String) -> String:
 	if raw_id.is_empty():
-		# Fallback: generate random ID
+		randomize()
 		return "player_" + str(randi() % 1000000000)
 	
 	# Remove invalid characters (keep only alphanumeric, underscore, hyphen)
 	var sanitized = ""
 	for c in raw_id:
-		if c.is_valid_identifier() or c == "-" or c == "_":
+		# Check if alphanumeric, underscore, or hyphen
+		if (c >= "a" and c <= "z") or (c >= "A" and c <= "Z") or (c >= "0" and c <= "9") or c == "_" or c == "-":
 			sanitized += c
 	
 	# If empty after sanitizing, generate fallback
 	if sanitized.is_empty():
-		return "player_" + str(raw_id.hash()).replace("-", "")
+		randomize()
+		return "player_" + str(abs(raw_id.hash()))
 	
 	# Ensure it starts with a letter or underscore (not a number)
-	if sanitized[0].is_valid_int():
+	if sanitized[0] >= "0" and sanitized[0] <= "9":
 		sanitized = "p_" + sanitized
 	
 	# Truncate to 100 characters max
@@ -1045,22 +1046,16 @@ func get_achievements(player_id: String = "") -> void:
 		_make_http_request(url, HTTPClient.METHOD_GET, {}, "achievements")
 		_log("Achievements requested (HTTP)")
 
-## Submit score with achievements in one call
-
-## Submit score with achievements in one call
 func submit_score_with_achievements(score: int, streak: int, achievements: Array) -> void:
 	if not is_authenticated():
 		_log("Not authenticated, cannot submit")
 		score_error.emit("Not authenticated")
 		return
-
 	if _is_submitting_score:
 		_log("Score submission already in progress")
 		return
-
 	_is_submitting_score = true
-	_log("Submitting score with %d achievements" % achievements.size())
-
+	
 	# Build achievement IDs array
 	var ach_ids: Array = []
 	for ach in achievements:
@@ -1070,17 +1065,10 @@ func submit_score_with_achievements(score: int, streak: int, achievements: Array
 			var ach_id = str(ach.get("id", ""))
 			if ach_id != "":
 				ach_ids.append(ach_id)
-
-	# Anonymous/native: use HTTP API
-	if is_anonymous() or _is_native:
-		for ach_id in ach_ids:
-			var body = {
-				"playerId": get_player_id(),
-				"achievementId": ach_id
-			}
-			_make_http_request("/achievements", HTTPClient.METHOD_POST, body, "unlock_achievement")
-			_log("Achievement unlock (HTTP): %s" % ach_id)
-		
+	
+	# Anonymous users (web or native): just submit score via HTTP, skip achievements for now
+	if is_anonymous():
+		_log("Anonymous user - submitting score only (achievements disabled)")
 		var score_body = {
 			"playerId": get_player_id(),
 			"score": score,
@@ -1089,14 +1077,32 @@ func submit_score_with_achievements(score: int, streak: int, achievements: Array
 		}
 		_make_http_request("/scores", HTTPClient.METHOD_POST, score_body, "submit_score")
 		return
-
-	# Authenticated web: pass achievements to JS bridge
+	
+	# Authenticated web: use JS bridge with achievements
 	if _is_web:
+		_log("Submitting score with %d achievements" % ach_ids.size())
 		var ach_json = JSON.stringify(ach_ids)
 		var js_code = "chedda_submit_score(%d, %d, %s)" % [score, streak, ach_json]
 		_log("Calling JS: %s" % js_code)
 		JavaScriptBridge.eval(js_code, true)
-		
+		return
+	
+	# Authenticated native: use HTTP with achievements
+	_log("Submitting score with %d achievements (HTTP)" % ach_ids.size())
+	for ach_id in ach_ids:
+		var body = {
+			"playerId": get_player_id(),
+			"achievementId": ach_id
+		}
+		_make_http_request("/achievements", HTTPClient.METHOD_POST, body, "unlock_achievement")
+	
+	var score_body = {
+		"playerId": get_player_id(),
+		"score": score,
+		"streak": streak,
+		"nickname": _nickname
+	}
+	_make_http_request("/scores", HTTPClient.METHOD_POST, score_body, "submit_score")
 # ============================================================
 # PUBLIC API - ANALYTICS
 # ============================================================
