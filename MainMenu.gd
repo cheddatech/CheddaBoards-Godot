@@ -491,11 +491,18 @@ func _show_main_panel(profile: Dictionary):
 	if name_entry_panel:
 		name_entry_panel.visible = false
 	
-	var nickname = str(profile.get("nickname", profile.get("username", "Player")))
+	var nickname = str(profile.get("nickname", ""))
+	if nickname.is_empty() or nickname == "Player":
+		nickname = CheddaBoards.get_nickname()
+	if (nickname.is_empty() or nickname == "Player") and not anonymous_nickname.is_empty():
+		nickname = anonymous_nickname
+	if nickname.is_empty():
+		nickname = "Player"
+	
 	var score = int(profile.get("score", profile.get("highScore", 0)))
 	var streak = int(profile.get("streak", profile.get("bestStreak", 0)))
 	var play_count = int(profile.get("playCount", profile.get("plays", 0)))
-	
+   	
 	welcome_label.text = "Welcome, %s!" % nickname
 	score_label.text = "High Score: %d" % score
 	streak_label.text = "Best Streak: %d" % streak
@@ -507,7 +514,15 @@ func _show_main_panel(profile: Dictionary):
 
 func _update_main_panel_stats(profile: Dictionary):
 	"""Update stats on main panel"""
-	var nickname = str(profile.get("nickname", "Player"))
+	var nickname = str(profile.get("nickname", ""))
+	# Treat "Player" as a default to override
+	if nickname.is_empty() or nickname == "Player":
+		nickname = CheddaBoards.get_nickname()
+	if (nickname.is_empty() or nickname == "Player") and not anonymous_nickname.is_empty():
+		nickname = anonymous_nickname
+	if nickname.is_empty():
+		nickname = "Player"
+	
 	var score = int(profile.get("score", 0))
 	var streak = int(profile.get("streak", 0))
 	var play_count = int(profile.get("playCount", 0))
@@ -519,7 +534,7 @@ func _update_main_panel_stats(profile: Dictionary):
 		plays_label.text = "Games Played: %d" % play_count
 	
 	_update_achievement_button()
-
+	
 func _update_achievement_button():
 	"""Update achievement button text"""
 	if not achievement_button:
@@ -901,3 +916,4 @@ func _dump_debug():
 func _exit_tree():
 	"""Cleanup"""
 	_stop_all_timers()
+
