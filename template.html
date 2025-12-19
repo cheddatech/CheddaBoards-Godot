@@ -112,15 +112,15 @@
       // Get Client ID from: https://console.cloud.google.com/
       // Leave empty '' to disable Google login
       // ─────────────────────────────────────────────────────────
-      GOOGLE_CLIENT_ID: '234150619335-rstln2jocm00kto32fe8nvrplpee9j1j.apps.googleusercontent.com',  // Your Google OAuth Client ID
+      GOOGLE_CLIENT_ID: '',  // Your Google OAuth Client ID
       
       // ─────────────────────────────────────────────────────────
       // OPTIONAL: Apple Sign-In
       // Get Service ID from: https://developer.apple.com/
       // Leave empty '' to disable Apple login
       // ─────────────────────────────────────────────────────────
-      APPLE_SERVICE_ID: 'com.cheddaboards',      // Your Apple Service ID
-      APPLE_REDIRECT_URI: 'https://cheddagames.com/cheddaclick/auth/apple',    // https://yourdomain.com/auth/apple
+      APPLE_SERVICE_ID: '',      // Your Apple Service ID
+      APPLE_REDIRECT_URI: '',    // https://yourdomain.com/auth/apple
       
       // ─────────────────────────────────────────────────────────
       // ANONYMOUS PLAY: Allow scores without login
@@ -165,8 +165,8 @@
     // DEVICE ID MANAGEMENT
     // ============================================================
     
-    function generateDeviceId() {
-      // Generate a unique device ID using crypto API
+   function generateDeviceId() {
+      // Generate a unique device ID using API
       const array = new Uint8Array(16);
       crypto.getRandomValues(array);
       return 'dev_' + Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
@@ -1260,4 +1260,5 @@
   </script>
 </body>
 </html>
+
 
