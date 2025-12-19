@@ -1,6 +1,6 @@
-# Achievements.gd v1.3.0 - CheddaClick Edition
+# Achievements.gd v1.3.1
 # Backend-first achievement system with local caching
-# https://github.com/cheddatech/CheddaBoards-SDK
+# https://github.com/cheddatech/CheddaBoards-Godot
 # https://cheddaboards.com
 #
 # Add to Project Settings > Autoload as "Achievements"
@@ -206,6 +206,7 @@ func _ready():
 	CheddaBoards.profile_loaded.connect(_on_profile_loaded)
 	CheddaBoards.logout_success.connect(_on_logout)
 	CheddaBoards.sdk_ready.connect(_on_sdk_ready)
+	CheddaBoards.login_success.connect(_on_login_success)
 	
 	_log("Initialized - %d cached achievements, %d games played" % [unlocked_achievements.size(), games_played])
 	
@@ -257,7 +258,13 @@ func sync_from_backend():
 	
 	var backend_achievements = profile.get("achievements", [])
 	_process_backend_achievements(backend_achievements)
-
+	
+func _on_login_success(_nickname: String):
+	"""Called when user logs in (including anonymous)"""
+	_log("User logged in - syncing achievements...")
+	if CheddaBoards.is_authenticated():
+		sync_from_backend()
+		
 func _on_profile_loaded(_nickname: String, _score: int, _streak: int, achievements: Array):
 	"""Called when CheddaBoards profile is loaded"""
 	_log("📊 Profile loaded with %d achievements" % achievements.size())
