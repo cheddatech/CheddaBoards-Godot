@@ -39,6 +39,8 @@ const SCENE_GAME: String = "res://Game.tscn"
 const SCENE_LEADERBOARD: String = "res://Leaderboard.tscn"
 const SCENE_ACHIEVEMENTS: String = "res://AchievementsView.tscn"
 const SCENE_SETTINGS: String = "res://Settings.tscn"
+const DEVICE_ID_FILE: String = "user://device_id.txt"
+
 
 const UI_TIMEOUT_DURATION: float = 40.0
 const PROFILE_TIMEOUT_DURATION: float = 10.0
@@ -210,22 +212,51 @@ func _input(event):
 # ============================================================
 # ANONYMOUS PLAYER SETUP
 # ============================================================
-
 func _setup_anonymous_player():
-	"""Setup anonymous player ID"""
+	"""Setup anonymous player ID - persistent across sessions"""
 	if OS.get_name() == "Web":
-		# Web: Try to get device ID from JS, fallback to random
-		var js_device_id = JavaScriptBridge.eval("window.deviceId || ''", true)
-		if js_device_id and str(js_device_id) != "":
+		# Web: Get device ID from JS bridge
+		var js_device_id = JavaScriptBridge.eval("chedda_get_device_id()", true)
+		if js_device_id and str(js_device_id) != "" and str(js_device_id) != "null":
 			anonymous_player_id = str(js_device_id)
 		else:
-			anonymous_player_id = "player_" + str(randi())
+			anonymous_player_id = _get_or_create_native_device_id()
 	else:
-		# Native: Use device unique ID
-		anonymous_player_id = OS.get_unique_id()
-		if anonymous_player_id.is_empty():
-			anonymous_player_id = "player_" + str(randi())
+		# Native: Use persistent device ID
+		anonymous_player_id = _get_or_create_native_device_id()
+	
 	_log("Anonymous player ID: %s" % anonymous_player_id)
+
+func _get_or_create_native_device_id() -> String:
+	"""Get existing device ID or create new one (persisted to file)"""
+	# Try to load existing
+	if FileAccess.file_exists(DEVICE_ID_FILE):
+		var file = FileAccess.open(DEVICE_ID_FILE, FileAccess.READ)
+		if file:
+			var stored_id = file.get_line().strip_edges()
+			file.close()
+			if stored_id != "":
+				return stored_id
+	
+	# Generate new unique ID
+	randomize()
+	var new_id = "dev_%s%08x" % [
+		Time.get_unix_time_from_system(),
+		randi()
+	]
+	
+	# Try OS unique ID as fallback component
+	var os_id = OS.get_unique_id()
+	if not os_id.is_empty():
+		new_id = "dev_" + os_id.sha256_text().substr(0, 32)
+	
+	# Save it
+	var file = FileAccess.open(DEVICE_ID_FILE, FileAccess.WRITE)
+	if file:
+		file.store_line(new_id)
+		file.close()
+	
+	return new_id
 
 func _load_player_data():
 	"""Load saved player data (anonymous nickname)"""
@@ -491,18 +522,11 @@ func _show_main_panel(profile: Dictionary):
 	if name_entry_panel:
 		name_entry_panel.visible = false
 	
-	var nickname = str(profile.get("nickname", ""))
-	if nickname.is_empty() or nickname == "Player":
-		nickname = CheddaBoards.get_nickname()
-	if (nickname.is_empty() or nickname == "Player") and not anonymous_nickname.is_empty():
-		nickname = anonymous_nickname
-	if nickname.is_empty():
-		nickname = "Player"
-	
+	var nickname = str(profile.get("nickname", profile.get("username", "Player")))
 	var score = int(profile.get("score", profile.get("highScore", 0)))
 	var streak = int(profile.get("streak", profile.get("bestStreak", 0)))
 	var play_count = int(profile.get("playCount", profile.get("plays", 0)))
-   	
+	
 	welcome_label.text = "Welcome, %s!" % nickname
 	score_label.text = "High Score: %d" % score
 	streak_label.text = "Best Streak: %d" % streak
@@ -514,15 +538,7 @@ func _show_main_panel(profile: Dictionary):
 
 func _update_main_panel_stats(profile: Dictionary):
 	"""Update stats on main panel"""
-	var nickname = str(profile.get("nickname", ""))
-	# Treat "Player" as a default to override
-	if nickname.is_empty() or nickname == "Player":
-		nickname = CheddaBoards.get_nickname()
-	if (nickname.is_empty() or nickname == "Player") and not anonymous_nickname.is_empty():
-		nickname = anonymous_nickname
-	if nickname.is_empty():
-		nickname = "Player"
-	
+	var nickname = str(profile.get("nickname", "Player"))
 	var score = int(profile.get("score", 0))
 	var streak = int(profile.get("streak", 0))
 	var play_count = int(profile.get("playCount", 0))
@@ -534,7 +550,7 @@ func _update_main_panel_stats(profile: Dictionary):
 		plays_label.text = "Games Played: %d" % play_count
 	
 	_update_achievement_button()
-	
+
 func _update_achievement_button():
 	"""Update achievement button text"""
 	if not achievement_button:
@@ -916,4 +932,5 @@ func _dump_debug():
 func _exit_tree():
 	"""Cleanup"""
 	_stop_all_timers()
+
 
