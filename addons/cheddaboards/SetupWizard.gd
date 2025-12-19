@@ -1,13 +1,14 @@
 @tool
 extends EditorScript
 
-# CheddaBoards Ultimate Setup Wizard v2.1
+# CheddaBoards Ultimate Setup Wizard v2.2
 # Run via: File → Run (or Ctrl+Shift+X)
 # Performs all checks, auto-fixes, AND interactive configuration!
 
 const TEMPLATE_HTML_PATH = "res://template.html"
 const PROJECT_GODOT_PATH = "res://project.godot"
 const ADDON_PATH = "res://addons/cheddaboards/"
+const CHEDDABOARDS_GD_PATH = "res://addons/cheddaboards/CheddaBoards.gd"
 
 # Track issues for summary
 var warnings: Array[String] = []
@@ -25,6 +26,7 @@ func _run():
 	_check_godot_version()
 	_check_autoloads()
 	_check_required_files()
+	_check_api_key()
 	_check_cheddaboards_config()
 	_check_project_settings()
 	_check_export_preset()
@@ -33,8 +35,8 @@ func _run():
 	# Print summary
 	_print_summary()
 	
-	# Interactive Game ID configuration
-	_interactive_game_id_config()
+	# Interactive configuration (Game ID + API Key)
+	_interactive_config()
 	
 	# Print next steps
 	_print_next_steps()
@@ -46,7 +48,7 @@ func _run():
 func _print_header():
 	print("")
 	print("╔══════════════════════════════════════════════════════════════╗")
-	print("║         🧀 CheddaBoards Ultimate Setup Wizard v2.1          ║")
+	print("║         🧀 CheddaBoards Ultimate Setup Wizard v2.2          ║")
 	print("║                                                              ║")
 	print("║  Automated checks • Auto-fixes • Configuration validation   ║")
 	print("╚══════════════════════════════════════════════════════════════╝")
@@ -90,23 +92,26 @@ func _print_next_steps():
 	print("                      📋 NEXT STEPS")
 	print("═══════════════════════════════════════════════════════════════")
 	print("")
-	print("  1. Configure Game ID (if not done):")
-	print("     • Sign up at https://cheddaboards.com")
-	print("     • Create a game in the dashboard")
-	print("     • Edit template.html → replace 'catch-the-cheese'")
+	print("  1. Register at https://cheddaboards.com/dashboard")
+	print("     • Sign in with Internet Identity, Google, or Apple")
+	print("     • Create a game → Get your Game ID")
+	print("     • Generate API Key → Get your API Key")
 	print("")
-	print("  2. Export to Web:")
-	print("     • Project → Export → Web → Export Project")
+	print("  2. Run this wizard again to enter your credentials")
+	print("     • Or manually edit template.html (Game ID)")
+	print("     • Or manually edit CheddaBoards.gd (API Key)")
 	print("")
-	print("  3. Test locally:")
+	print("  3. Export & Test:")
+	print("     • Web: Project → Export → Web → Export Project")
+	print("     • Native: Just export! API key handles auth")
+	print("")
+	print("  4. Test locally (web):")
 	print("     • cd to export folder")
 	print("     • python3 -m http.server 8000")
 	print("     • Open http://localhost:8000")
 	print("")
-	print("  4. Test the login flow and gameplay!")
 	print("")
-	print("")
-	print("  🧀 CheddaBoards: https://cheddaboards.com")
+	print("  🧀 Dashboard: https://cheddaboards.com/dashboard")
 	print("")
 
 # ============================================================
@@ -198,6 +203,27 @@ func _check_required_files():
 				print("   ── Optional ──")
 				has_optional = true
 			print("   ✅ %s" % file_path.get_file())
+
+func _check_api_key():
+	_print_section("API Key (CheddaBoards.gd)")
+	
+	var api_key = _get_current_api_key()
+	
+	if api_key.is_empty():
+		print("   ⚠️  API Key not set")
+		print("      → Required for native builds")
+		print("      → Get one at cheddaboards.com/dashboard")
+		warnings.append("API Key not set - required for native/anonymous play")
+	elif api_key.begins_with("cb_"):
+		# Extract game name from key for display
+		var parts = api_key.split("_")
+		if parts.size() >= 2:
+			print("   ✅ API Key set: cb_%s_***" % parts[1])
+		else:
+			print("   ✅ API Key set: %s***" % api_key.substr(0, 6))
+	else:
+		print("   ⚠️  API Key format looks wrong (should start with cb_)")
+		warnings.append("API Key format may be incorrect")
 
 func _check_cheddaboards_config():
 	_print_section("CheddaBoards.gd Configuration")
@@ -340,78 +366,98 @@ func _print_section(title: String):
 	print("│")
 
 # ============================================================
-# INTERACTIVE GAME ID CONFIGURATION
+# INTERACTIVE CONFIGURATION (Game ID + API Key)
 # ============================================================
 
-func _interactive_game_id_config():
-	"""Interactive Game ID configuration via popup"""
-	var current_id = _get_current_game_id()
-	
-	if current_id.is_empty():
-		print("\n⚠️  No Game ID found - please add GAME_ID to template.html")
-		return
+func _interactive_config():
+	"""Interactive configuration via popup"""
+	var current_game_id = _get_current_game_id()
+	var current_api_key = _get_current_api_key()
 	
 	# Show current config
 	print("")
 	print("═══════════════════════════════════════════════════════════════")
-	print("                    🎮 GAME ID CONFIGURATION")
+	print("                    🎮 CONFIGURATION")
 	print("═══════════════════════════════════════════════════════════════")
 	print("")
-	print("   Current Game ID: '%s'" % current_id)
-	
-	if current_id == "catch-the-cheese":
-		print("   Status: ⚠️  Default (OK for testing)")
+	print("   Game ID (template.html): '%s'" % current_game_id)
+	if current_api_key.is_empty():
+		print("   API Key (CheddaBoards.gd): Not set")
 	else:
-		print("   Status: ✅ Custom Game ID configured")
-	
+		print("   API Key (CheddaBoards.gd): %s***" % current_api_key.substr(0, min(15, current_api_key.length())))
 	print("")
 	
-	# Show popup to edit Game ID
-	_show_game_id_dialog(current_id)
+	# Show popup to edit both
+	_show_config_dialog(current_game_id, current_api_key)
 
-func _show_game_id_dialog(current_id: String):
-	"""Show a dialog to edit Game ID"""
+func _show_config_dialog(current_game_id: String, current_api_key: String):
+	"""Show a dialog to edit Game ID and API Key"""
 	var editor = get_editor_interface()
 	var base_control = editor.get_base_control()
 	
 	# Create dialog
 	var dialog = AcceptDialog.new()
-	dialog.title = "🧀 CheddaBoards - Set Game ID"
+	dialog.title = "🧀 CheddaBoards Configuration"
 	dialog.dialog_hide_on_ok = false
 	
 	# Create content
 	var vbox = VBoxContainer.new()
-	vbox.custom_minimum_size = Vector2(400, 0)
+	vbox.custom_minimum_size = Vector2(450, 0)
 	
-	# Current ID label
-	var current_label = Label.new()
-	current_label.text = "Current: %s" % current_id
-	if current_id == "catch-the-cheese":
-		current_label.text += " (default)"
-	vbox.add_child(current_label)
+	# === GAME ID SECTION ===
+	var game_id_header = Label.new()
+	game_id_header.text = "Game ID (for web builds)"
+	game_id_header.add_theme_font_size_override("font_size", 14)
+	vbox.add_child(game_id_header)
+	
+	var game_id_current = Label.new()
+	game_id_current.text = "Current: %s" % current_game_id
+	if current_game_id == "catch-the-cheese":
+		game_id_current.text += " (default)"
+	game_id_current.add_theme_font_size_override("font_size", 11)
+	game_id_current.modulate = Color(0.7, 0.7, 0.7)
+	vbox.add_child(game_id_current)
+	
+	var game_id_input = LineEdit.new()
+	game_id_input.text = current_game_id
+	game_id_input.placeholder_text = "my-game-id"
+	vbox.add_child(game_id_input)
 	
 	# Spacer
-	var spacer = Control.new()
-	spacer.custom_minimum_size = Vector2(0, 10)
-	vbox.add_child(spacer)
+	var spacer1 = Control.new()
+	spacer1.custom_minimum_size = Vector2(0, 15)
+	vbox.add_child(spacer1)
 	
-	# Input label
-	var input_label = Label.new()
-	input_label.text = "Enter new Game ID:"
-	vbox.add_child(input_label)
+	# === API KEY SECTION ===
+	var api_key_header = Label.new()
+	api_key_header.text = "API Key (for native + anonymous play)"
+	api_key_header.add_theme_font_size_override("font_size", 14)
+	vbox.add_child(api_key_header)
 	
-	# Input field
-	var input = LineEdit.new()
-	input.text = current_id
-	input.placeholder_text = "my-game-id"
-	input.select_all_on_focus = true
-	vbox.add_child(input)
+	var api_key_current = Label.new()
+	if current_api_key.is_empty():
+		api_key_current.text = "Current: Not set"
+	else:
+		api_key_current.text = "Current: %s***" % current_api_key.substr(0, min(15, current_api_key.length()))
+	api_key_current.add_theme_font_size_override("font_size", 11)
+	api_key_current.modulate = Color(0.7, 0.7, 0.7)
+	vbox.add_child(api_key_current)
+	
+	var api_key_input = LineEdit.new()
+	api_key_input.text = current_api_key
+	api_key_input.placeholder_text = "cb_your-game_xxxxxxxxx"
+	vbox.add_child(api_key_input)
+	
+	# Spacer
+	var spacer2 = Control.new()
+	spacer2.custom_minimum_size = Vector2(0, 10)
+	vbox.add_child(spacer2)
 	
 	# Help text
 	var help = Label.new()
-	help.text = "\n💡 Get your Game ID at cheddaboards.com\n   (letters, numbers, dashes, underscores only)"
-	help.add_theme_font_size_override("font_size", 12)
-	help.modulate = Color(0.7, 0.7, 0.7)
+	help.text = "💡 Get both at cheddaboards.com/dashboard\n   1. Register/sign in\n   2. Create a game → Copy Game ID\n   3. Generate API Key → Copy API Key"
+	help.add_theme_font_size_override("font_size", 11)
+	help.modulate = Color(0.6, 0.8, 0.6)
 	vbox.add_child(help)
 	
 	# Status label for errors
@@ -428,40 +474,68 @@ func _show_game_id_dialog(current_id: String):
 	
 	# Handle OK pressed
 	dialog.confirmed.connect(func():
-		var new_id = input.text.strip_edges()
+		var new_game_id = game_id_input.text.strip_edges()
+		var new_api_key = api_key_input.text.strip_edges()
 		
-		# Validate
-		if new_id.is_empty():
-			status.text = "❌ Game ID cannot be empty"
-			return
+		var had_error = false
+		var changes_made = false
 		
-		if " " in new_id:
-			status.text = "❌ No spaces allowed"
-			return
+		# Validate and save Game ID
+		if new_game_id != current_game_id:
+			if new_game_id.is_empty():
+				status.text = "❌ Game ID cannot be empty"
+				had_error = true
+			elif " " in new_game_id:
+				status.text = "❌ Game ID: No spaces allowed"
+				had_error = true
+			else:
+				var valid_chars = RegEx.new()
+				valid_chars.compile("^[a-zA-Z0-9_-]+$")
+				if not valid_chars.search(new_game_id):
+					status.text = "❌ Game ID: Invalid characters"
+					had_error = true
+				elif _set_game_id(new_game_id):
+					changes_made = true
+				else:
+					status.text = "❌ Failed to save Game ID"
+					had_error = true
 		
-		var valid_chars = RegEx.new()
-		valid_chars.compile("^[a-zA-Z0-9_-]+$")
-		if not valid_chars.search(new_id):
-			status.text = "❌ Invalid characters"
-			return
+		# Validate and save API Key
+		if not had_error and new_api_key != current_api_key:
+			if new_api_key.is_empty():
+				# Empty is OK - just means no API key
+				if _set_api_key(""):
+					changes_made = true
+			elif not new_api_key.begins_with("cb_"):
+				status.text = "❌ API Key should start with 'cb_'"
+				had_error = true
+			elif _set_api_key(new_api_key):
+				changes_made = true
+			else:
+				status.text = "❌ Failed to save API Key"
+				had_error = true
 		
-		# Save it
-		if _set_game_id(new_id):
+		if not had_error:
 			dialog.hide()
 			dialog.queue_free()
-			print("   ✅ Game ID saved: %s" % new_id)
-		else:
-			status.text = "❌ Failed to save"
+			if changes_made:
+				print("   ✅ Configuration saved!")
+			else:
+				print("   ℹ️  No changes made")
 	)
 	
 	dialog.canceled.connect(func():
 		dialog.queue_free()
-		print("   ℹ️  Game ID unchanged")
+		print("   ℹ️  Configuration unchanged")
 	)
 	
 	base_control.add_child(dialog)
 	dialog.popup_centered()
-	input.grab_focus()
+	game_id_input.grab_focus()
+
+# ============================================================
+# GAME ID FUNCTIONS
+# ============================================================
 
 func _get_current_game_id() -> String:
 	"""Extract current Game ID from template.html"""
@@ -484,21 +558,6 @@ func _get_current_game_id() -> String:
 func _set_game_id(new_game_id: String) -> bool:
 	"""Update Game ID in template.html"""
 	new_game_id = new_game_id.strip_edges()
-	
-	# Validation
-	if new_game_id.is_empty():
-		print("   ❌ Game ID cannot be empty")
-		return false
-	
-	if " " in new_game_id:
-		print("   ❌ Game ID cannot contain spaces")
-		return false
-	
-	var valid_chars = RegEx.new()
-	valid_chars.compile("^[a-zA-Z0-9_-]+$")
-	if not valid_chars.search(new_game_id):
-		print("   ❌ Game ID can only contain letters, numbers, - and _")
-		return false
 	
 	if not FileAccess.file_exists(TEMPLATE_HTML_PATH):
 		print("   ❌ template.html not found")
@@ -531,7 +590,71 @@ func _set_game_id(new_game_id: String) -> bool:
 	file.store_string(new_content)
 	file.close()
 	
-	print("   ✅ Game ID updated to: %s" % new_game_id)
+	print("   ✅ Game ID updated: %s" % new_game_id)
+	return true
+
+# ============================================================
+# API KEY FUNCTIONS
+# ============================================================
+
+func _get_current_api_key() -> String:
+	"""Extract current API Key from CheddaBoards.gd"""
+	if not FileAccess.file_exists(CHEDDABOARDS_GD_PATH):
+		return ""
+	
+	var file = FileAccess.open(CHEDDABOARDS_GD_PATH, FileAccess.READ)
+	if not file:
+		return ""
+	
+	var content = file.get_as_text()
+	file.close()
+	
+	# Match: var api_key: String = "xxx" or var api_key = "xxx"
+	var regex = RegEx.new()
+	regex.compile('var\\s+api_key[^=]*=\\s*["\']([^"\']*)["\']')
+	var result = regex.search(content)
+	
+	return result.get_string(1) if result else ""
+
+func _set_api_key(new_api_key: String) -> bool:
+	"""Update API Key in CheddaBoards.gd"""
+	new_api_key = new_api_key.strip_edges()
+	
+	if not FileAccess.file_exists(CHEDDABOARDS_GD_PATH):
+		print("   ❌ CheddaBoards.gd not found")
+		return false
+	
+	# Read current content
+	var file = FileAccess.open(CHEDDABOARDS_GD_PATH, FileAccess.READ)
+	if not file:
+		print("   ❌ Could not read CheddaBoards.gd")
+		return false
+	
+	var content = file.get_as_text()
+	file.close()
+	
+	# Replace API Key - handle both typed and untyped declarations
+	var regex = RegEx.new()
+	regex.compile('(var\\s+api_key[^=]*=\\s*)["\'][^"\']*["\']')
+	var new_content = regex.sub(content, '$1"%s"' % new_api_key)
+	
+	if new_content == content:
+		print("   ⚠️  Could not find api_key to replace in CheddaBoards.gd")
+		return false
+	
+	# Write back
+	file = FileAccess.open(CHEDDABOARDS_GD_PATH, FileAccess.WRITE)
+	if not file:
+		print("   ❌ Could not write to CheddaBoards.gd")
+		return false
+	
+	file.store_string(new_content)
+	file.close()
+	
+	if new_api_key.is_empty():
+		print("   ✅ API Key cleared")
+	else:
+		print("   ✅ API Key updated: %s***" % new_api_key.substr(0, min(15, new_api_key.length())))
 	return true
 
 # ============================================================
@@ -568,7 +691,9 @@ func get_project_status() -> Dictionary:
 		"has_cheddaboards_gd": FileAccess.file_exists(ADDON_PATH + "CheddaBoards.gd"),
 		"has_export_preset": FileAccess.file_exists("res://export_presets.cfg"),
 		"game_id": _get_current_game_id(),
-		"using_default_game_id": _get_current_game_id() == "catch-the-cheese"
+		"api_key": _get_current_api_key(),
+		"using_default_game_id": _get_current_game_id() == "catch-the-cheese",
+		"has_api_key": not _get_current_api_key().is_empty()
 	}
 
 func is_ready_to_export() -> bool:
@@ -581,4 +706,13 @@ func is_ready_to_export() -> bool:
 		status.has_cheddaboards_gd and
 		status.has_export_preset and
 		not status.game_id.is_empty()
+	)
+
+func is_ready_for_native() -> bool:
+	"""Check if project is ready for native export"""
+	var status = get_project_status()
+	return (
+		status.has_cheddaboards_autoload and
+		status.has_cheddaboards_gd and
+		status.has_api_key
 	)
