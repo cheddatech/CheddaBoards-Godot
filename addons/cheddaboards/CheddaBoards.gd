@@ -1048,7 +1048,6 @@ func get_achievements(player_id: String = "") -> void:
 ## Submit score with achievements in one call
 
 ## Submit score with achievements in one call
-## Submit score with achievements in one call
 func submit_score_with_achievements(score: int, streak: int, achievements: Array) -> void:
 	if not is_authenticated():
 		_log("Not authenticated, cannot submit")
@@ -1059,28 +1058,45 @@ func submit_score_with_achievements(score: int, streak: int, achievements: Array
 		_log("Score submission already in progress")
 		return
 
+	_is_submitting_score = true
 	_log("Submitting score with %d achievements" % achievements.size())
 
-	# Unlock each achievement first (works for both web and native)
+	# Build achievement IDs array
+	var ach_ids: Array = []
 	for ach in achievements:
-		var ach_id: String = ""
-		var ach_name: String = ""
-		var ach_desc: String = ""
-		
-		# Handle both string IDs and dictionaries
 		if typeof(ach) == TYPE_STRING:
-			ach_id = ach
+			ach_ids.append(ach)
 		elif typeof(ach) == TYPE_DICTIONARY:
-			ach_id = str(ach.get("id", ""))
-			ach_name = str(ach.get("name", ""))
-			ach_desc = str(ach.get("description", ""))
+			var ach_id = str(ach.get("id", ""))
+			if ach_id != "":
+				ach_ids.append(ach_id)
+
+	# Anonymous/native: use HTTP API
+	if is_anonymous() or _is_native:
+		for ach_id in ach_ids:
+			var body = {
+				"playerId": get_player_id(),
+				"achievementId": ach_id
+			}
+			_make_http_request("/achievements", HTTPClient.METHOD_POST, body, "unlock_achievement")
+			_log("Achievement unlock (HTTP): %s" % ach_id)
 		
-		if ach_id != "":
-			_log("Unlocking achievement: %s" % ach_id)
-			unlock_achievement(ach_id, ach_name, ach_desc)
-	
-	# Then submit score
-	submit_score(score, streak)
+		var score_body = {
+			"playerId": get_player_id(),
+			"score": score,
+			"streak": streak,
+			"nickname": _nickname
+		}
+		_make_http_request("/scores", HTTPClient.METHOD_POST, score_body, "submit_score")
+		return
+
+	# Authenticated web: pass achievements to JS bridge
+	if _is_web:
+		var ach_json = JSON.stringify(ach_ids)
+		var js_code = "chedda_submit_score(%d, %d, %s)" % [score, streak, ach_json]
+		_log("Calling JS: %s" % js_code)
+		JavaScriptBridge.eval(js_code, true)
+		
 # ============================================================
 # PUBLIC API - ANALYTICS
 # ============================================================
