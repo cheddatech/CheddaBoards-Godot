@@ -1046,6 +1046,9 @@ func get_achievements(player_id: String = "") -> void:
 		_log("Achievements requested (HTTP)")
 
 ## Submit score with achievements in one call
+
+## Submit score with achievements in one call
+## Submit score with achievements in one call
 func submit_score_with_achievements(score: int, streak: int, achievements: Array) -> void:
 	if not is_authenticated():
 		_log("Not authenticated, cannot submit")
@@ -1056,19 +1059,28 @@ func submit_score_with_achievements(score: int, streak: int, achievements: Array
 		_log("Score submission already in progress")
 		return
 
-	# First unlock achievements
+	_log("Submitting score with %d achievements" % achievements.size())
+
+	# Unlock each achievement first (works for both web and native)
 	for ach in achievements:
-		if typeof(ach) == TYPE_DICTIONARY:
-			var ach_id: String = str(ach.get("id", ""))
-			var ach_name: String = str(ach.get("name", ""))
-			var ach_desc: String = str(ach.get("description", ""))
-			if ach_id != "":
-				unlock_achievement(ach_id, ach_name, ach_desc)
+		var ach_id: String = ""
+		var ach_name: String = ""
+		var ach_desc: String = ""
+		
+		# Handle both string IDs and dictionaries
+		if typeof(ach) == TYPE_STRING:
+			ach_id = ach
+		elif typeof(ach) == TYPE_DICTIONARY:
+			ach_id = str(ach.get("id", ""))
+			ach_name = str(ach.get("name", ""))
+			ach_desc = str(ach.get("description", ""))
+		
+		if ach_id != "":
+			_log("Unlocking achievement: %s" % ach_id)
+			unlock_achievement(ach_id, ach_name, ach_desc)
 	
 	# Then submit score
 	submit_score(score, streak)
-	_log("Score + %d achievements submitted" % achievements.size())
-
 # ============================================================
 # PUBLIC API - ANALYTICS
 # ============================================================
