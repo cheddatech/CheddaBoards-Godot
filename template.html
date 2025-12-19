@@ -89,7 +89,7 @@
     // ============================================================
     // CheddaBoards Godot 4 Template v1.2.0
     // WITH DEVICE ID / ANONYMOUS PLAY SUPPORT
-    // https://github.com/cheddatech/CheddaBoards-SDK
+    // https://github.com/cheddatech/CheddaBoards-Godot
     // https://cheddaboards.com
     // ============================================================
 
@@ -100,7 +100,7 @@
       // ─────────────────────────────────────────────────────────
       // REQUIRED: Your Game ID from https://cheddaboards.com
       // ─────────────────────────────────────────────────────────
-      GAME_ID: 'best-game',  // CHANGE THIS
+      GAME_ID: 'cheddaclick',  // CHANGE THIS
       
       // ─────────────────────────────────────────────────────────
       // CheddaBoards canister (same for all games)
@@ -112,15 +112,15 @@
       // Get Client ID from: https://console.cloud.google.com/
       // Leave empty '' to disable Google login
       // ─────────────────────────────────────────────────────────
-      GOOGLE_CLIENT_ID: '',  // Your Google OAuth Client ID
+      GOOGLE_CLIENT_ID: '234150619335-rstln2jocm00kto32fe8nvrplpee9j1j.apps.googleusercontent.com',  // Your Google OAuth Client ID
       
       // ─────────────────────────────────────────────────────────
       // OPTIONAL: Apple Sign-In
       // Get Service ID from: https://developer.apple.com/
       // Leave empty '' to disable Apple login
       // ─────────────────────────────────────────────────────────
-      APPLE_SERVICE_ID: '',      // Your Apple Service ID
-      APPLE_REDIRECT_URI: '',    // https://yourdomain.com/auth/apple
+      APPLE_SERVICE_ID: 'com.cheddaboards',      // Your Apple Service ID
+      APPLE_REDIRECT_URI: 'https://cheddagames.com/cheddaclick/auth/apple',    // https://yourdomain.com/auth/apple
       
       // ─────────────────────────────────────────────────────────
       // ANONYMOUS PLAY: Allow scores without login
@@ -344,6 +344,7 @@
     
     /**
      * Check if user is authenticated (includes anonymous/device auth)
+     * Used for: Can we submit scores?
      */
     window.chedda_is_auth = function() {
       // Check SDK auth first
@@ -355,6 +356,35 @@
         return true;
       }
       return false;
+    };
+    
+    /**
+     * Check if user has a REAL account (Google/Apple/Chedda)
+     * Used for: Should we show the logged-in menu?
+     */
+    window.chedda_has_account = function() {
+      // Only return true if SDK is authenticated with a real provider
+      if (chedda && chedda.isAuthenticated()) {
+        // Check auth type - device/anonymous don't count as "real" accounts
+        if (authType === 'device' || authType === 'anonymous' || authType === '') {
+          return false;
+        }
+        return true;
+      }
+      return false;
+    };
+    
+    /**
+     * Check if user is anonymous (device ID only, no real account)
+     * Used for: Should we show login panel vs profile panel?
+     */
+    window.chedda_is_anonymous = function() {
+      // If SDK has real auth, not anonymous
+      if (chedda && chedda.isAuthenticated() && authType && authType !== 'device' && authType !== 'anonymous') {
+        return false;
+      }
+      // Otherwise, user is anonymous (even if they have device ID)
+      return true;
     };
     
     /**
@@ -667,6 +697,20 @@
       }
     };
 
+    window.chedda_has_account = function() {
+      // Has a real account (Google/Apple/Chedda ID) - not anonymous
+      if (!chedda) return false;
+      const authType = chedda.getAuthType();
+      return authType === 'google' || authType === 'apple' || authType === 'cheddaId';
+    };
+
+    window.chedda_is_anonymous = function() {
+      // Playing anonymously with device ID
+      if (!chedda) return true;
+      if (!chedda.isAuthenticated()) return true;
+      const authType = chedda.getAuthType();
+      return !authType || authType === 'device' || authType === 'anonymous';
+    };
     /**
      * Submit score to leaderboard
      * Supports both authenticated users and anonymous (device ID) users
@@ -820,6 +864,7 @@
     isSubmittingScore = false;
   }
 };
+
     /**
      * Get leaderboard entries (no auth required for viewing)
      */
