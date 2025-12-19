@@ -68,9 +68,8 @@ func _ready():
 		status_label.text = "Connecting..."
 		await CheddaBoards.wait_until_ready()
 	
-	# Get current player's nickname for highlighting (if logged in)
-	if CheddaBoards.is_authenticated():
-		current_player_nickname = CheddaBoards.get_nickname()
+	# Get current player's nickname for highlighting
+	current_player_nickname = _get_player_nickname()
 	
 	# Connect buttons
 	refresh_button.pressed.connect(_on_refresh_pressed)
@@ -142,6 +141,27 @@ func _update_sort_buttons():
 	sort_by_score_button.disabled = is_loading or current_sort_by == "score"
 	sort_by_streak_button.disabled = is_loading or current_sort_by == "streak"
 
+func _get_player_nickname() -> String:
+	"""Get player nickname with proper fallbacks for anonymous players"""
+	# First try CheddaBoards
+	var nickname = CheddaBoards.get_nickname()
+	
+	# If it's "Player", check local save file (anonymous players)
+	if nickname == "Player" or nickname.is_empty():
+		var save_path = "user://player_data.save"
+		if FileAccess.file_exists(save_path):
+			var file = FileAccess.open(save_path, FileAccess.READ)
+			if file:
+				var data = file.get_var()
+				file.close()
+				if data is Dictionary and data.has("nickname"):
+					var saved_nickname = data.get("nickname", "")
+					if not saved_nickname.is_empty():
+						print("[Leaderboard] Using saved nickname: %s" % saved_nickname)
+						return saved_nickname
+	
+	return nickname
+	
 # ============================================================
 # TIMEOUT HANDLING
 # ============================================================
