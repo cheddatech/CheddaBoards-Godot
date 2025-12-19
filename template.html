@@ -671,128 +671,155 @@
      * Submit score to leaderboard
      * Supports both authenticated users and anonymous (device ID) users
      */
-    window.chedda_submit_score = async function(score, streak) {
-      if (isSubmittingScore) {
-        console.log('[Bridge] Score submission already in progress');
-        return;
+   window.chedda_submit_score = async function(score, streak, achievements = []) {
+  if (isSubmittingScore) {
+    console.log('[Bridge] Score submission already in progress');
+    return;
+  }
+  
+  try {
+    isSubmittingScore = true;
+    console.log('[Bridge] Score submission:', score, streak);
+    console.log('[Bridge] Achievements to unlock:', achievements);
+    console.log('[Bridge] Auth type:', authType, 'isAuthenticated:', chedda?.isAuthenticated());
+    
+    let result = null;
+    
+    // Check if user is authenticated with SDK
+    if (chedda && chedda.isAuthenticated()) {
+      console.log('[Bridge] Submitting via authenticated session...');
+      
+      // Unlock achievements first
+      if (achievements && achievements.length > 0) {
+        console.log('[Bridge] Unlocking %d achievements...', achievements.length);
+        for (const achId of achievements) {
+          try {
+            const achResult = await chedda.unlockAchievement(achId);
+            console.log('[Bridge] Achievement unlocked:', achId, achResult);
+          } catch (e) {
+            console.error('[Bridge] Achievement unlock failed:', achId, e);
+          }
+        }
       }
       
-      try {
-        isSubmittingScore = true;
-        console.log('[Bridge] Score submission:', score, streak);
-        console.log('[Bridge] Auth type:', authType, 'isAuthenticated:', chedda?.isAuthenticated());
-        
-        let result = null;
-        
-        // Check if user is authenticated with SDK
-        if (chedda && chedda.isAuthenticated()) {
-          console.log('[Bridge] Submitting via authenticated session...');
-          result = await chedda.submitScore(score, streak);
-        }
-        // Check for anonymous/device play
-        else if (CONFIG.ALLOW_ANONYMOUS_PLAY) {
-          console.log('[Bridge] Submitting via device ID...');
-          
-          // Auto-login anonymously if not already
-          if (!deviceId) {
-            getOrCreateDeviceId();
-          }
-          
-          // Try SDK anonymous submit if available
-          if (chedda && chedda.submitScoreAnonymous) {
-            result = await chedda.submitScoreAnonymous(deviceId, score, streak);
-          } 
-          // Try regular submit with device ID as player identifier
-          else if (chedda && chedda.submitScore) {
-            // Some SDKs accept device ID submissions
-            try {
-              result = await chedda.submitScore(score, streak, { deviceId: deviceId });
-            } catch (e) {
-              console.log('[Bridge] SDK submit failed, using local storage');
-            }
-          }
-          
-          // Fallback: Store locally for anonymous users
-          if (!result || result.err) {
-            console.log('[Bridge] Using local score storage for anonymous user');
-            
-            // Update local profile
-            if (currentProfile) {
-              if (score > (currentProfile.score || 0)) {
-                currentProfile.score = score;
-              }
-              if (streak > (currentProfile.streak || 0)) {
-                currentProfile.streak = streak;
-              }
-              currentProfile.playCount = (currentProfile.playCount || 0) + 1;
-              saveProfileToLocalStorage(currentProfile);
-            }
-            
-            result = { ok: true, local: true };
-          }
-        } else {
-          responseQueue.push({
-            action: 'submitScore',
-            success: false,
-            error: 'Not authenticated - login required'
-          });
-          return;
-        }
-        
-        console.log('[Bridge] Score submission result:', result);
-        
-        // Check if submission succeeded
-        const success = result && (
-          result.ok !== undefined || 
-          result.success === true || 
-          result.local === true ||
-          (typeof result === 'object' && !result.err && !result.error)
-        );
-        
-        if (success) {
-          console.log('[Bridge] Score submitted successfully');
-          
-          responseQueue.push({
-            action: 'submitScore',
-            success: true,
-            score: score,
-            streak: streak,
-            profile: currentProfile,
-            local: result.local || false
-          });
-          
-          // Refresh profile in background if authenticated
-          if (chedda && chedda.isAuthenticated()) {
-            cachedProfileData = null;
-            lastProfileFetch = 0;
-            chedda.getProfile().then(profile => {
-              if (profile) {
-                currentProfile = sanitizeProfileData(profile, true);
-                saveProfileToLocalStorage(currentProfile);
-              }
-            }).catch(console.warn);
-          }
-        } else {
-          const errorMsg = result?.err || result?.error || 'Score submission failed';
-          console.error('[Bridge] Score submission failed:', errorMsg);
-          responseQueue.push({
-            action: 'submitScore',
-            success: false,
-            error: errorMsg
-          });
-        }
-      } catch (error) {
-        console.error('[Bridge] Score submission error:', error);
-        responseQueue.push({
-          action: 'submitScore',
-          success: false,
-          error: error.message
-        });
-      } finally {
-        isSubmittingScore = false;
+      // Submit score
+      result = await chedda.submitScore(score, streak);
+    }
+    // Check for anonymous/device play
+    else if (CONFIG.ALLOW_ANONYMOUS_PLAY) {
+      console.log('[Bridge] Submitting via device ID...');
+      
+      // Auto-login anonymously if not already
+      if (!deviceId) {
+        getOrCreateDeviceId();
       }
-    };
-
+      
+      // Try SDK anonymous submit if available
+      if (chedda && chedda.submitScoreAnonymous) {
+        result = await chedda.submitScoreAnonymous(deviceId, score, streak);
+      } 
+      // Try regular submit with device ID as player identifier
+      else if (chedda && chedda.submitScore) {
+        try {
+          result = await chedda.submitScore(score, streak, { deviceId: deviceId });
+        } catch (e) {
+          console.log('[Bridge] SDK submit failed, using local storage');
+        }
+      }
+      
+      // Fallback: Store locally for anonymous users
+      if (!result || result.err) {
+        console.log('[Bridge] Using local score storage for anonymous user');
+        
+        // Update local profile
+        if (currentProfile) {
+          if (score > (currentProfile.score || 0)) {
+            currentProfile.score = score;
+          }
+          if (streak > (currentProfile.streak || 0)) {
+            currentProfile.streak = streak;
+          }
+          currentProfile.playCount = (currentProfile.playCount || 0) + 1;
+          
+          // Store achievements locally for anonymous
+          if (achievements && achievements.length > 0) {
+            if (!currentProfile.achievements) {
+              currentProfile.achievements = [];
+            }
+            for (const achId of achievements) {
+              if (!currentProfile.achievements.includes(achId)) {
+                currentProfile.achievements.push(achId);
+              }
+            }
+          }
+          
+          saveProfileToLocalStorage(currentProfile);
+        }
+        
+        result = { ok: true, local: true };
+      }
+    } else {
+      responseQueue.push({
+        action: 'submitScore',
+        success: false,
+        error: 'Not authenticated - login required'
+      });
+      return;
+    }
+    
+    console.log('[Bridge] Score submission result:', result);
+    
+    // Check if submission succeeded
+    const success = result && (
+      result.ok !== undefined || 
+      result.success === true || 
+      result.local === true ||
+      (typeof result === 'object' && !result.err && !result.error)
+    );
+    
+    if (success) {
+      console.log('[Bridge] Score submitted successfully');
+      
+      responseQueue.push({
+        action: 'submitScore',
+        success: true,
+        score: score,
+        streak: streak,
+        profile: currentProfile,
+        local: result.local || false
+      });
+      
+      // Refresh profile in background if authenticated
+      if (chedda && chedda.isAuthenticated()) {
+        cachedProfileData = null;
+        lastProfileFetch = 0;
+        chedda.getProfile().then(profile => {
+          if (profile) {
+            currentProfile = sanitizeProfileData(profile, true);
+            saveProfileToLocalStorage(currentProfile);
+          }
+        }).catch(console.warn);
+      }
+    } else {
+      const errorMsg = result?.err || result?.error || 'Score submission failed';
+      console.error('[Bridge] Score submission failed:', errorMsg);
+      responseQueue.push({
+        action: 'submitScore',
+        success: false,
+        error: errorMsg
+      });
+    }
+  } catch (error) {
+    console.error('[Bridge] Score submission error:', error);
+    responseQueue.push({
+      action: 'submitScore',
+      success: false,
+      error: error.message
+    });
+  } finally {
+    isSubmittingScore = false;
+  }
+};
     /**
      * Get leaderboard entries (no auth required for viewing)
      */
@@ -1188,3 +1215,4 @@
   </script>
 </body>
 </html>
+
