@@ -1,4 +1,13 @@
+<p align="center">
+  <img src="addons/cheddaboards/cheddaboards_logo.png" alt="CheddaBoards" width="128">
+</p>
+
 # CheddaBoards Godot 4 Template
+
+<p align="center">
+  <img src="screenshots/cheddaboards1.png" alt="CheddaBoards Screenshot" width="400">
+  <img src="screenshots/cheddaboards2.png" alt="CheddaBoards Screenshot" width="400">
+</p>
 
 A complete game template with leaderboards, achievements, and authentication built in.
 
