@@ -469,16 +469,15 @@ func _show_login_panel():
 		direct_play_button.text = "PLAY NOW"
 
 func _show_name_entry_panel():
-	"""Show name entry panel for anonymous play"""
 	login_panel.visible = false
 	main_panel.visible = false
 	name_entry_panel.visible = true
 	
-	# Pre-fill with saved nickname if exists
+	# Pre-fill with saved nickname or generate unique default
 	if not anonymous_nickname.is_empty():
 		name_line_edit.text = anonymous_nickname
 	else:
-		name_line_edit.text = ""
+		name_line_edit.text = _generate_default_name()
 	
 	name_line_edit.placeholder_text = "Enter your name..."
 	name_status_label.text = ""
@@ -663,9 +662,15 @@ func _is_mobile_web() -> bool:
 	""", true)
 	return bool(is_mobile)
 
+func _generate_default_name() -> String:
+	"""Generate a unique default name like 'Rider_4829'"""
+	randomize()
+	var suffix = str(randi() % 10000).pad_zeros(4)
+	return "Rider_%s" % suffix
+	
 func _show_mobile_name_prompt():
 	"""Show native prompt for mobile web users"""
-	var default_name = anonymous_nickname if anonymous_nickname != "" else "Player"
+	var default_name = anonymous_nickname if anonymous_nickname != "" else _generate_default_name()
 	var js_code = "prompt('Enter your name:', '%s')" % default_name.replace("'", "\\'")
 	var result = JavaScriptBridge.eval(js_code, true)
 	
@@ -680,16 +685,15 @@ func _show_mobile_name_prompt():
 		JavaScriptBridge.eval("alert('Name must be %d-%d characters')" % [MIN_NAME_LENGTH, MAX_NAME_LENGTH], true)
 		return
 	
-	# Same logic as _on_confirm_name_pressed()
-	var old_nickname = anonymous_nickname
+	# Save locally
 	anonymous_nickname = name_text
 	_save_player_data()
 	
 	CheddaBoards.set_player_id(anonymous_player_id)
 	
-	if old_nickname != "" and old_nickname != name_text:
-		_log("Updating nickname on backend: %s -> %s" % [old_nickname, name_text])
-		CheddaBoards.change_nickname_to(name_text)
+	# ALWAYS sync nickname to backend (ensures it's set correctly)
+	_log(">>> Calling change_nickname_to('%s')" % name_text)
+	CheddaBoards.change_nickname_to(name_text)
 	
 	CheddaBoards.login_anonymous(name_text)
 	_log("Starting game as: %s (ID: %s)" % [anonymous_nickname, anonymous_player_id])
@@ -726,9 +730,7 @@ func _on_confirm_name_pressed():
 		name_status_label.add_theme_color_override("font_color", Color.RED)
 		return
 	
-	var old_nickname = anonymous_nickname
-	
-	# Save the nickname
+	# Save the nickname locally
 	anonymous_nickname = name_text
 	_save_player_data()
 	
@@ -736,13 +738,9 @@ func _on_confirm_name_pressed():
 	CheddaBoards.set_player_id(anonymous_player_id)
 	_log("Set player ID to: %s" % anonymous_player_id)
 	
-	# If returning player with different name, update on backend
-	_log("Checking nickname change: old='%s' new='%s' different=%s" % [old_nickname, name_text, old_nickname != name_text])
-	if old_nickname != "" and old_nickname != name_text:
-		_log(">>> Calling change_nickname_to('%s')" % name_text)
-		CheddaBoards.change_nickname_to(name_text)
-	else:
-		_log(">>> Skipping nickname change (same name or first time)")
+	# ALWAYS sync nickname to backend (ensures it's set correctly)
+	_log(">>> Calling change_nickname_to('%s')" % name_text)
+	CheddaBoards.change_nickname_to(name_text)
 	
 	# Login as anonymous with the nickname
 	_log(">>> Calling login_anonymous('%s')" % name_text)
