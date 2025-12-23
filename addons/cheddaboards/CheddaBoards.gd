@@ -73,7 +73,7 @@ var debug_logging: bool = true  # Enabled for debugging
 
 ## HTTP API Configuration (for native builds)
 const API_BASE_URL = "https://api.cheddaboards.com"
-var api_key: String = "cb_cheddaclick_607242843"
+var api_key: String = ""                                     ## add api key here
 var _player_id: String = ""  # For native API auth
 
 # ============================================================
