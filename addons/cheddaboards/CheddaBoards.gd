@@ -91,7 +91,7 @@ var _init_attempts: int = 0
 
 var _auth_type: String = ""
 var _cached_profile: Dictionary = {}
-var _nickname: String = "Player"
+var _nickname: String = ""
 
 # ============================================================
 # PERFORMANCE OPTIMIZATION
@@ -275,10 +275,10 @@ func _handle_web_response(response: Dictionary) -> void:
 				var profile: Dictionary = response.get("profile", {})
 				if profile and not profile.is_empty():
 					_update_cached_profile(profile)
-					var nickname: String = str(profile.get("nickname", "Player"))
+					var nickname: String = str(profile.get("nickname", _get_default_nickname()))
 					login_success.emit(nickname)
 				else:
-					login_success.emit("Player")
+					login_success.emit(_get_default_nickname())
 			else:
 				var error: String = str(response.get("error", "Unknown error"))
 				login_failed.emit(error)
@@ -523,7 +523,7 @@ func _update_cached_profile(profile: Dictionary) -> void:
 
 	_cached_profile = profile
 
-	var nickname: String = str(profile.get("nickname", profile.get("username", "Player")))
+	var nickname: String = str(profile.get("nickname", profile.get("username", _get_default_nickname())))
 	var score: int = int(profile.get("score", profile.get("highScore", 0)))
 	var streak: int = int(profile.get("streak", profile.get("bestStreak", 0)))
 	var achievements: Array = profile.get("achievements", [])
@@ -594,11 +594,15 @@ func wait_until_ready() -> void:
 		return
 	await sdk_ready
 
+## Generate a unique default nickname using player ID
+func _get_default_nickname() -> String:
+	return "Player_" + get_player_id().left(6)
+
 ## Get current player's nickname
 func get_nickname() -> String:
 	if _cached_profile.is_empty():
-		return _nickname if _nickname != "" else "Player"
-	return str(_cached_profile.get("nickname", "Player"))
+		return _nickname if _nickname != "" else _get_default_nickname()
+	return str(_cached_profile.get("nickname", _get_default_nickname()))
 
 ## Get current player's high score
 func get_high_score() -> int:
@@ -697,7 +701,7 @@ func login_internet_identity(nickname: String = "") -> void:
 		if api_key.is_empty():
 			login_failed.emit("API key not set")
 			return
-		_nickname = nickname if nickname != "" else "Player"
+		_nickname = nickname if nickname != "" else _get_default_nickname()
 		_auth_type = "api_key"
 		login_success.emit(_nickname)
 		_log("Native login (API key mode)")
@@ -740,7 +744,7 @@ func logout() -> void:
 	else:
 		_cached_profile = {}
 		_auth_type = ""
-		_nickname = "Player"
+		_nickname = ""
 		logout_success.emit()
 		_log("Native logout")
 
@@ -919,12 +923,12 @@ func submit_score(score: int, streak: int = 0, rounds: int = -1) -> void:
 			"playerId": get_player_id(),
 			"score": score,
 			"streak": streak,
-			"nickname": _nickname
+			"nickname": _nickname if _nickname != "" else _get_default_nickname()
 		}
 		if rounds >= 0:
 			body["rounds"] = rounds
 		_make_http_request("/scores", HTTPClient.METHOD_POST, body, "submit_score")
-		_log("Score submission (HTTP): %d points, %d streak, nickname: %s" % [score, streak, _nickname])
+		_log("Score submission (HTTP): %d points, %d streak, nickname: %s" % [score, streak, body["nickname"]])
 		return
 	
 	# Authenticated users on web use JS SDK
@@ -947,7 +951,7 @@ func submit_score(score: int, streak: int = 0, rounds: int = -1) -> void:
 			"playerId": get_player_id(),
 			"score": score,
 			"streak": streak,
-			"nickname": _nickname
+			"nickname": _nickname if _nickname != "" else _get_default_nickname()
 		}
 		if rounds >= 0:
 			body["rounds"] = rounds
@@ -1073,7 +1077,7 @@ func submit_score_with_achievements(score: int, streak: int, achievements: Array
 			"playerId": get_player_id(),
 			"score": score,
 			"streak": streak,
-			"nickname": _nickname
+			"nickname": _nickname if _nickname != "" else _get_default_nickname()
 		}
 		_make_http_request("/scores", HTTPClient.METHOD_POST, score_body, "submit_score")
 		return
@@ -1100,7 +1104,7 @@ func submit_score_with_achievements(score: int, streak: int, achievements: Array
 		"playerId": get_player_id(),
 		"score": score,
 		"streak": streak,
-		"nickname": _nickname
+		"nickname": _nickname if _nickname != "" else _get_default_nickname()
 	}
 	_make_http_request("/scores", HTTPClient.METHOD_POST, score_body, "submit_score")
 # ============================================================
