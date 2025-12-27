@@ -21,7 +21,7 @@ extends Control
 # CONFIGURATION
 # ============================================================
 
-const GAME_DURATION: float = 60.0
+const GAME_DURATION: float = 30.0
 const BASE_POINTS: int = 100
 const COMBO_DECAY_TIME: float = 2.0
 const MAX_COMBO_MULTIPLIER: int = 10
