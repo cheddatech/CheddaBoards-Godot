@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.2] - 2025-12-27
+
+### Fixed
+
+- Default nickname now generates unique "Player_abc123" instead of generic "Player" to prevent duplicate leaderboard entries
+
+---
+
 ## [1.2.1] - 2025-12-18
 
 ### Native Platform Support & HTTP API
@@ -321,6 +329,7 @@ First public release of the CheddaBoards Godot 4 Template.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| **v1.2.2** | 2025-12-27 | Unique default nicknames fix |
 | **v1.2.1** | 2025-12-18 | Native platform support, HTTP REST API, API key auth |
 | **v1.2.0** | 2025-12-15 | Anonymous play with device ID, play without login |
 | **v1.1.0** | 2025-12-03 | Setup Wizard v2.1, Asset Library structure, mainnet fix |
@@ -329,6 +338,11 @@ First public release of the CheddaBoards Godot 4 Template.
 ---
 
 ## Upgrade Guide
+
+### From v1.2.1 to v1.2.2
+
+1. **Update CheddaBoards.gd** - Replace with new version
+2. No other changes required - existing "Player" names will now show as unique IDs
 
 ### From v1.2.0 to v1.2.1
 
@@ -412,7 +426,7 @@ First public release of the CheddaBoards Godot 4 Template.
    - Change Custom HTML Shell to `res://template.html`
    - Always export as `index.html`
 
-### From Nothing to v1.2.1
+### From Nothing to v1.2.2
 
 1. Download/clone from GitHub
 2. Copy `addons/cheddaboards/` folder to your project
