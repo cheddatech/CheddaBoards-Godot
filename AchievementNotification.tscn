@@ -1,6 +1,6 @@
 [gd_scene load_steps=2 format=3 uid="uid://dt1mgh2gutj6k"]
 
-[ext_resource type="Script" uid="uid://bnnwvigmoxelg" path="res://AchievementNotification.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://dlqhhckb1bpav" path="res://AchievementNotification.gd" id="1_script"]
 
 [node name="AchievementNotification" type="Control"]
 layout_mode = 3
@@ -44,7 +44,7 @@ stretch_mode = 5
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.84, 0, 1)
 theme_override_font_sizes/font_size = 24
-text = "🏆 Achievement Unlocked!"
+text = "Achievement Unlocked!"
 horizontal_alignment = 1
 
 [node name="DescriptionLabel" type="Label" parent="Panel/MarginContainer/VBoxContainer"]
@@ -53,4 +53,3 @@ theme_override_font_sizes/font_size = 16
 text = "Achievement description goes here"
 horizontal_alignment = 1
 autowrap_mode = 2
-
