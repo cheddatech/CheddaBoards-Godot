@@ -1,4 +1,4 @@
-# Achievements.gd v1.3.1
+# Achievements.gd v1.4.0
 # Backend-first achievement system with local caching
 # https://github.com/cheddatech/CheddaBoards-Godot
 # https://cheddaboards.com
@@ -15,6 +15,7 @@
 #    Achievements.check_score(current_score)
 #    Achievements.check_clicks(total_clicks)
 #    Achievements.check_combo(current_combo)
+#    Achievements.check_level(current_level)
 #
 #    # At game over
 #    Achievements.check_game_over(score, clicks, max_combo)
@@ -85,6 +86,30 @@ const ACHIEVEMENTS = {
 	"games_50": {
 		"name": "Click Legend",
 		"description": "Play 50 games — a true master of the wheel."
+	},
+	
+	# ========================================
+	# LEVEL MILESTONES (5)
+	# ========================================
+	"level_2": {
+		"name": "Warming Up",
+		"description": "Reach Level 2 in a single game."
+	},
+	"level_3": {
+		"name": "Getting Serious",
+		"description": "Reach Level 3 — the cheese is heating up."
+	},
+	"level_4": {
+		"name": "Chedda Hunter",
+		"description": "Reach Level 4 — you're in the zone."
+	},
+	"level_5": {
+		"name": "Cheese Master",
+		"description": "Reach Level 5 — ultimate cheese domination!"
+	},
+	"level_5_fast": {
+		"name": "Speed Runner",
+		"description": "Reach Level 5 with 15+ seconds remaining."
 	},
 	
 	# ========================================
@@ -191,8 +216,11 @@ var is_ready: bool = false
 ## Games played counter (persisted locally, synced via profile)
 var games_played: int = 0
 
+## Track time remaining for speed achievements (set by Game.gd)
+var current_time_remaining: float = 0.0
+
 const SAVE_PATH = "user://achievements_cache.save"
-const CACHE_VERSION = 4  # Bumped for CheddaClick
+const CACHE_VERSION = 5  # Bumped for level achievements
 
 # ============================================================
 # INITIALIZATION
@@ -451,6 +479,24 @@ func check_games_played():
 	if games_played >= 1:
 		unlock("games_1")
 
+func check_level(level: int, time_remaining: float = -1.0):
+	"""Check and unlock level-based achievements"""
+	# Store time for speed achievement checks
+	if time_remaining >= 0:
+		current_time_remaining = time_remaining
+	
+	if level >= 5:
+		unlock("level_5")
+		# Check speed achievement - reached level 5 with 15+ seconds left
+		if current_time_remaining >= 15.0:
+			unlock("level_5_fast")
+	if level >= 4:
+		unlock("level_4")
+	if level >= 3:
+		unlock("level_3")
+	if level >= 2:
+		unlock("level_2")
+
 func check_score(score: int):
 	"""Check and unlock score-based achievements"""
 	if score >= 50000:
@@ -553,7 +599,7 @@ func get_unlocked_achievements() -> Array:
 	return unlocked
 
 func get_achievements_by_category(prefix: String) -> Array:
-	"""Get achievements by category prefix (e.g., 'games_', 'score_', 'clicks_', 'combo_')"""
+	"""Get achievements by category prefix (e.g., 'games_', 'score_', 'level_', 'clicks_', 'combo_')"""
 	var filtered = []
 	for achievement_id in ACHIEVEMENTS.keys():
 		if achievement_id.begins_with(prefix):
@@ -630,6 +676,7 @@ func _reset_state():
 	notification_queue = []
 	backend_synced = false
 	games_played = 0
+	current_time_remaining = 0.0
 
 func clear_local_cache():
 	"""Clear local cache (for logout or testing)"""
@@ -660,7 +707,7 @@ func debug_status():
 	
 	print("")
 	print("╔══════════════════════════════════════════════╗")
-	print("║      Achievements Debug v1.3.0 (Click)       ║")
+	print("║      Achievements Debug v1.4.0 (Levels)      ║")
 	print("╠══════════════════════════════════════════════╣")
 	print("║ Status                                       ║")
 	print("║  - Ready:            %s" % str(is_ready).rpad(24) + "║")
