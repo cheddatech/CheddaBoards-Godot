@@ -1,4 +1,4 @@
-# MainMenu.gd v1.3.0
+# MainMenu.gd v1.4.0
 # Main menu with authentication flow, profile display, and anonymous name entry
 # - Login panel: PLAY NOW (with name entry), Leaderboard, and login buttons
 # - Name entry panel: For anonymous players to set their display name
@@ -26,6 +26,14 @@
 #   - WelcomeLabel, ScoreLabel, StreakLabel, PlaysLabel
 #   - PlayButton, LeaderboardButton, AchievementsButton
 #   - ChangeNicknameButton, LogoutButton
+#
+# ============================================================
+# DEBUG SHORTCUTS
+# ============================================================
+# F6 - Submit 5 random test scores (for testing leaderboard)
+# F7 - Submit 1 random test score
+# F8 - Force profile refresh
+# F9 - Debug status dump
 #
 # ============================================================
 
@@ -182,7 +190,7 @@ func _ready():
 	status_label.text = "Connecting..."
 	_enable_login_buttons(false)
 	
-	_log("MainMenu v1.3.0 initialized")
+	_log("MainMenu v1.4.0 initialized")
 	
 	# Check if SDK already ready
 	if CheddaBoards.is_ready():
@@ -201,6 +209,12 @@ func _input(event):
 	"""Debug keyboard shortcuts"""
 	if event is InputEventKey and event.pressed:
 		match event.keycode:
+			KEY_F6:
+				_test_submit_bulk_scores(5)
+				get_viewport().set_input_as_handled()
+			KEY_F7:
+				_test_submit_random_score()
+				get_viewport().set_input_as_handled()
 			KEY_F8:
 				_log("Force profile refresh (F8)")
 				CheddaBoards.refresh_profile()
@@ -663,10 +677,10 @@ func _is_mobile_web() -> bool:
 	return bool(is_mobile)
 
 func _generate_default_name() -> String:
-	"""Generate a unique default name like 'Rider_4829'"""
+	"""Generate a unique default name like 'Player_4829'"""
 	randomize()
 	var suffix = str(randi() % 10000).pad_zeros(4)
-	return "Rider_%s" % suffix
+	return "Player_%s" % suffix
 	
 func _show_mobile_name_prompt():
 	"""Show native prompt for mobile web users"""
@@ -889,6 +903,36 @@ func get_anonymous_player_id() -> String:
 	return anonymous_player_id
 
 # ============================================================
+# DEBUG / TESTING (F6, F7)
+# ============================================================
+
+func _test_submit_random_score():
+	"""F7 - Submit single random score for testing leaderboard"""
+	randomize()
+	var test_name = "Test_%04d" % (randi() % 10000)
+	var test_score = randi_range(500, 7000)
+	var test_streak = randi_range(1, 10)
+	var test_id = "test_%d_%d" % [Time.get_unix_time_from_system(), randi() % 10000]
+	
+	CheddaBoards.set_player_id(test_id)
+	CheddaBoards.login_anonymous(test_name)
+	CheddaBoards.submit_score(test_score, test_streak)
+	
+	_log("TEST: %s submitted %d pts (streak: %d)" % [test_name, test_score, test_streak])
+	_set_status("Test: %s - %d pts" % [test_name, test_score], false)
+
+func _test_submit_bulk_scores(count: int = 5):
+	"""F6 - Submit multiple random scores for testing"""
+	_log("TEST: Submitting %d random scores..." % count)
+	_set_status("Submitting %d test scores..." % count, false)
+	
+	for i in count:
+		await get_tree().create_timer(0.3).timeout
+		_test_submit_random_score()
+	
+	_log("TEST: Bulk submission complete")
+
+# ============================================================
 # LOGGING
 # ============================================================
 
@@ -904,7 +948,7 @@ func _dump_debug():
 	"""Dump debug info (F9)"""
 	print("")
 	print("========================================")
-	print("       MainMenu Debug v1.3.0           ")
+	print("       MainMenu Debug v1.4.0           ")
 	print("========================================")
 	print(" State")
 	print("  - Is Logging In:   %s" % str(is_logging_in))
@@ -920,6 +964,12 @@ func _dump_debug():
 	print("  - Is Authenticated:%s" % str(CheddaBoards.is_authenticated()))
 	print("  - Is Anonymous:    %s" % str(CheddaBoards.is_anonymous()))
 	print("  - Nickname:        %s" % CheddaBoards.get_nickname())
+	print("----------------------------------------")
+	print(" Debug Shortcuts")
+	print("  - F6: Submit 5 random test scores")
+	print("  - F7: Submit 1 random test score")
+	print("  - F8: Force profile refresh")
+	print("  - F9: This debug dump")
 	print("========================================")
 	print("")
 
