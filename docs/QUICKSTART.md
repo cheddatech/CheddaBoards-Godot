@@ -166,6 +166,29 @@ if CheddaBoards.is_authenticated():
 
 ---
 
+## 📊 Multiple Scoreboards (v1.3.0+)
+
+Run weekly competitions alongside all-time high scores:
+
+```gdscript
+# Get specific scoreboard
+CheddaBoards.get_scoreboard("weekly-scoreboard", 100)
+CheddaBoards.get_scoreboard("all-time", 100)
+
+# View last week's results
+CheddaBoards.get_last_archived_scoreboard("weekly-scoreboard", 100)
+
+CheddaBoards.archived_scoreboard_loaded.connect(_on_archive)
+
+func _on_archive(archive_id, config, entries):
+    if entries.size() > 0:
+        print("Last week's winner: %s 👑" % entries[0].nickname)
+```
+
+> 📖 **Full guide:** [TIMED_SCOREBOARDS.md](TIMED_SCOREBOARDS.md)
+
+---
+
 ## 🏆 Quick Achievements (Optional)
 
 ```gdscript
@@ -174,6 +197,19 @@ func _on_game_over(score, streak):
     Achievements.check_game_over(score, 0, streak)
     Achievements.submit_with_score(score, streak)
 ```
+
+---
+
+## 🐛 Debug Shortcuts
+
+Press during development:
+
+| Key | Action |
+|-----|--------|
+| F6 | Submit 5 random test scores |
+| F7 | Submit 1 random test score |
+| F8 | Force profile refresh |
+| F9 | Debug status dump |
 
 ---
 
@@ -193,10 +229,10 @@ func _on_game_over(score, streak):
 
 | Doc | Description |
 |-----|-------------|
-| [API_QUICKSTART.md](API_QUICKSTART.md) | API-only integration, all platforms |
+| [API_QUICKSTART.md](API_QUICKSTART.md) | Full API reference |
+| [TIMED_SCOREBOARDS.md](TIMED_SCOREBOARDS.md) | Weekly/daily competitions & archives |
 | [SETUP.md](SETUP.md) | Detailed setup guide |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common problems & solutions |
-| [README.md](README.md) | Full SDK documentation |
 
 ---
 
@@ -204,7 +240,7 @@ func _on_game_over(score, streak):
 
 - **Dashboard:** [cheddaboards.com/dashboard](https://cheddaboards.com/dashboard)
 - **GitHub:** [github.com/cheddatech/CheddaBoards-Godot](https://github.com/cheddatech/CheddaBoards-Godot)
-- **Example:** [cheddagames.com/cheddaclick](https://cheddagames.com/cheddaclick)
+- **Example:** [cheddaclick.cheddagames.com](https://cheddaclick.cheddagames.com)
 
 ---
 
