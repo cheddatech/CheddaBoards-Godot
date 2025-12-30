@@ -185,6 +185,53 @@ Set your **GAME_ID** to match what you registered.
 
 ---
 
+## 📊 Timed Scoreboards Setup (v1.3.0+)
+
+Run weekly/daily competitions with automatic archiving.
+
+### 1. Create Scoreboards in Dashboard
+
+1. Go to [cheddaboards.com/dashboard](https://cheddaboards.com/dashboard)
+2. Select your game → **Scoreboards**
+3. Click **Add Scoreboard**
+
+**Example scoreboards:**
+
+| ID | Name | Reset Period |
+|----|------|--------------|
+| `all-time` | All Time | Never |
+| `weekly-scoreboard` | Weekly Challenge | Weekly |
+| `daily-challenge` | Daily Challenge | Daily |
+
+### 2. Configure Leaderboard UI
+
+In `Leaderboard.gd`, set your scoreboard IDs:
+
+```gdscript
+const SCOREBOARD_ALL_TIME: String = "all-time"
+const SCOREBOARD_WEEKLY: String = "weekly-scoreboard"
+```
+
+### 3. Use Multiple Scoreboards
+
+```gdscript
+# Get specific scoreboard
+CheddaBoards.get_scoreboard("weekly-scoreboard", 100)
+
+# View last week's results
+CheddaBoards.get_last_archived_scoreboard("weekly-scoreboard", 100)
+
+CheddaBoards.archived_scoreboard_loaded.connect(_on_archive)
+
+func _on_archive(archive_id, config, entries):
+    if entries.size() > 0:
+        print("Last week's winner: %s 👑" % entries[0].nickname)
+```
+
+> 📖 **Full guide:** [TIMED_SCOREBOARDS.md](TIMED_SCOREBOARDS.md)
+
+---
+
 ## 🔐 Authentication Deep Dive
 
 ### What Works Out of Box
@@ -243,6 +290,10 @@ const ACHIEVEMENTS = {
     
     # Streaks
     "streak_10": {"name": "On Fire", "desc": "10 streak"},
+    
+    # Levels (v1.3.0+)
+    "level_2": {"name": "Level 2", "desc": "Reach Level 2"},
+    "level_5": {"name": "Master", "desc": "Reach Level 5"},
 }
 ```
 
@@ -258,7 +309,42 @@ func _on_game_over(score: int, streak: int):
     
     # Submit score WITH achievements
     Achievements.submit_with_score(score, streak)
+
+func _on_level_up(level: int):
+    # Check level achievements (v1.3.0+)
+    Achievements.check_level(level)
 ```
+
+---
+
+## 🛡️ Anti-Cheat Setup (Optional)
+
+In the dashboard, set limits to prevent cheating:
+
+| Setting | Recommended | Description |
+|---------|-------------|-------------|
+| Max Score Per Submission | `200000` | Single game max |
+| Max Streak Per Submission | `10` | Max combo/streak |
+| Absolute Score Cap | `500000` | Lifetime max (or blank) |
+| Absolute Streak Cap | `10` | Matches game code |
+
+Base these on your game's mechanics. Start generous, then tighten based on real data.
+
+---
+
+## 🐛 Debug Shortcuts
+
+Press during development:
+
+| Key | Action |
+|-----|--------|
+| F6 | Submit 5 random test scores |
+| F7 | Submit 1 random test score |
+| F8 | Force profile refresh |
+| F9 | Debug status dump |
+| F10 | Achievement debug (if available) |
+
+These are built into MainMenu.gd and Game.gd.
 
 ---
 
@@ -300,7 +386,7 @@ YourGame/
 └── project.godot
 ```
 
-### Web SDK
+### Web SDK (Full)
 
 ```
 YourGame/
@@ -311,7 +397,10 @@ YourGame/
 │       └── SetupWizard.gd
 ├── template.html            ← Game ID set ✓
 ├── scenes/
-│   └── Game.tscn
+│   ├── MainMenu.tscn
+│   ├── Game.tscn
+│   ├── Leaderboard.tscn
+│   └── AchievementsView.tscn
 └── project.godot
 ```
 
@@ -334,13 +423,34 @@ YourGame/
 - [ ] Custom HTML Shell set in export settings
 - [ ] Tested with local web server
 
+### Timed Scoreboards (Optional)
+- [ ] Scoreboards created in dashboard
+- [ ] Scoreboard IDs set in Leaderboard.gd
+- [ ] Leaderboard.tscn updated with period buttons
+
+### Anti-Cheat (Optional)
+- [ ] Score limits set in dashboard
+- [ ] Limits match your game mechanics
+
+---
+
+## 📚 More Documentation
+
+| Doc | Description |
+|-----|-------------|
+| [QUICKSTART.md](QUICKSTART.md) | Fast setup guide |
+| [API_QUICKSTART.md](API_QUICKSTART.md) | Full API reference |
+| [TIMED_SCOREBOARDS.md](TIMED_SCOREBOARDS.md) | Weekly/daily competitions |
+| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common problems & solutions |
+| [CHANGELOG.md](CHANGELOG.md) | Version history |
+
 ---
 
 ## 🔗 Resources
 
 - **Dashboard:** [cheddaboards.com/dashboard](https://cheddaboards.com/dashboard)
 - **GitHub:** [github.com/cheddatech/CheddaBoards-Godot](https://github.com/cheddatech/CheddaBoards-Godot)
-- **Troubleshooting:** [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
+- **Example:** [cheddaclick.cheddagames.com](https://cheddagames.com/cheddaclick)
 
 ---
 
