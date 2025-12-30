@@ -322,7 +322,7 @@ var name = CheddaBoards.get_nickname()
 CheddaBoards.set_nickname("NewName")
 
 # Change nickname via API (persists to backend)
-CheddaBoards.change_nickname_to("NewName")
+CheddaBoards.change_nickname("NewName")
 CheddaBoards.nickname_changed.connect(func(n): print("Now known as: ", n))
 CheddaBoards.nickname_error.connect(func(e): print("Error: ", e))
 
@@ -621,7 +621,7 @@ CheddaBoards-Godot/
 
 - **Dashboard**: [cheddaboards.com](https://cheddaboards.com)
 - **GitHub**: [github.com/cheddatech/CheddaBoards-Godot](https://github.com/cheddatech/CheddaBoards-Godot)
-- **Example**: [cheddaclick.cheddagames.com](https://cheddaclick.cheddagames.com)
+- **Example**: [cheddaclick.cheddagames.com](https://cheddagames.com/cheddaclick)
 - **Support**: info@cheddaboards.com
 
 ---
