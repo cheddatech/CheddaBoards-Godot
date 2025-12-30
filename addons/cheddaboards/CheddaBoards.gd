@@ -85,8 +85,8 @@ var debug_logging: bool = true
 
 ## HTTP API Configuration (for native builds)
 const API_BASE_URL = "https://api.cheddaboards.com"
-var api_key: String = ""  ## Your API key
-var game_id: String = ""  ## Your game ID for scoreboard operations
+var api_key: String = "cb_test-game_350355445"  ## Your API key
+var game_id: String = "test-game"  ## Your game ID for scoreboard operations
 var _player_id: String = ""
 var _session_token: String = ""  ## For OAuth session-based auth
 
