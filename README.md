@@ -22,8 +22,8 @@ Zero servers. $0 for indie devs. Web, Windows, Mac, Linux, Mobile.
 | Scene | Description |
 |-------|-------------|
 | MainMenu | Login screen with auth options and player profile display |
-| Game | Example game scene (replace with yours!) |
-| Leaderboard | Full leaderboard UI with rankings |
+| Game | Example clicker game with levels & time extension |
+| Leaderboard | Full leaderboard UI with time periods & archives |
 | AchievementsView | Achievement list with progress |
 | AchievementNotification | Popup system for unlocks |
 | CheddaBoards SDK | Core backend integration |
@@ -54,6 +54,9 @@ Session persistence works across page reloads.
 ### Leaderboards
 
 - Global leaderboard with rankings
+- **Multiple scoreboards** - All Time, Weekly, Daily, Monthly
+- **Timed competitions** - Auto-reset with archives
+- **View past winners** - Last week's champion, hall of fame
 - Sort by score or streak
 - Player rank display
 - Custom nicknames for anonymous players
@@ -64,6 +67,7 @@ Session persistence works across page reloads.
 - Configurable achievement definitions
 - Backend-first architecture
 - Automatic unlocking based on score/streak/games played
+- **Level achievements** - Unlock for reaching game levels
 - Popup notifications
 - Offline support with local caching
 - Multi-device sync
@@ -266,6 +270,48 @@ func _on_rank(rank: int, score: int, streak: int, total: int):
     print("You are #%d of %d players!" % [rank, total])
 ```
 
+### Multiple Scoreboards (v1.3.0+)
+
+```gdscript
+# Get specific scoreboard
+CheddaBoards.get_scoreboard("weekly-scoreboard", 100)
+CheddaBoards.get_scoreboard("all-time", 100)
+
+CheddaBoards.scoreboard_loaded.connect(_on_scoreboard)
+
+func _on_scoreboard(scoreboard_id: String, config: Dictionary, entries: Array):
+    print("Loaded %s with %d entries" % [scoreboard_id, entries.size()])
+```
+
+### Scoreboard Archives (v1.3.0+)
+
+View past competition results:
+
+```gdscript
+# Get last week's results
+CheddaBoards.get_last_archived_scoreboard("weekly-scoreboard", 100)
+
+# Convenience functions
+CheddaBoards.get_last_week_scoreboard()
+CheddaBoards.get_yesterday_scoreboard()
+CheddaBoards.get_last_month_scoreboard()
+
+CheddaBoards.archived_scoreboard_loaded.connect(_on_archive)
+
+func _on_archive(archive_id: String, config: Dictionary, entries: Array):
+    if entries.size() > 0:
+        var winner = entries[0]
+        print("Last week's champion: %s with %d pts! 👑" % [winner.nickname, winner.score])
+
+# List all available archives
+CheddaBoards.get_scoreboard_archives("weekly-scoreboard")
+
+CheddaBoards.archives_list_loaded.connect(_on_archives_list)
+
+func _on_archives_list(scoreboard_id: String, archives: Array):
+    print("Found %d archived periods" % archives.size())
+```
+
 ### Nickname Management
 
 ```gdscript
@@ -280,8 +326,9 @@ CheddaBoards.change_nickname_to("NewName")
 CheddaBoards.nickname_changed.connect(func(n): print("Now known as: ", n))
 CheddaBoards.nickname_error.connect(func(e): print("Error: ", e))
 
-# Web only - opens popup
+# Web only - opens popup (or pass name directly)
 CheddaBoards.change_nickname()
+CheddaBoards.change_nickname("NewName")
 ```
 
 ### Achievements
@@ -297,6 +344,7 @@ Achievements.unlock("first_game")
 Achievements.check_score(current_score)
 Achievements.check_combo(max_combo)
 Achievements.check_clicks(total_clicks)
+Achievements.check_level(current_level)  # v1.3.0+
 
 # At game over - check all + increment games
 Achievements.increment_games_played()
@@ -347,6 +395,15 @@ const CONFIG = {
 };
 ```
 
+### Scoreboard Configuration
+
+In `Leaderboard.gd`, set your scoreboard IDs:
+
+```gdscript
+const SCOREBOARD_ALL_TIME: String = "all-time"
+const SCOREBOARD_WEEKLY: String = "weekly-scoreboard"
+```
+
 ### Project Settings
 
 For high-DPI display support:
@@ -387,6 +444,17 @@ signal leaderboard_loaded(entries: Array)
 signal player_rank_loaded(rank: int, score: int, streak: int, total_players: int)
 signal rank_error(reason: String)
 
+# Scoreboards (v1.3.0+)
+signal scoreboard_loaded(scoreboard_id: String, config: Dictionary, entries: Array)
+signal scoreboard_rank_loaded(scoreboard_id: String, rank: int, score: int, streak: int, total: int)
+signal scoreboard_error(reason: String)
+
+# Archives (v1.3.0+)
+signal archives_list_loaded(scoreboard_id: String, archives: Array)
+signal archived_scoreboard_loaded(archive_id: String, config: Dictionary, entries: Array)
+signal archive_stats_loaded(total_archives: int, by_scoreboard: Dictionary)
+signal archive_error(reason: String)
+
 # Achievements
 signal achievement_unlocked(achievement_id: String)
 signal achievements_loaded(achievements: Array)
@@ -425,12 +493,30 @@ const ACHIEVEMENTS = {
     # Combo/Streak
     "combo_10": {"name": "Combo Starter", "description": "Reach 10x combo"},
     "combo_50": {"name": "Combo Master", "description": "Reach 50x combo"},
+    
+    # Levels (v1.3.0+)
+    "level_2": {"name": "Level 2", "description": "Reach Level 2"},
+    "level_3": {"name": "Level 3", "description": "Reach Level 3"},
+    "level_5": {"name": "Master", "description": "Reach Level 5"},
+    "level_5_fast": {"name": "Speed Demon", "description": "Reach Level 5 in under 60 seconds"},
 }
 ```
 
 ---
 
 ## Debugging
+
+### Debug Shortcuts
+
+Built into MainMenu.gd and Game.gd:
+
+| Key | Action |
+|-----|--------|
+| F6 | Submit 5 random test scores |
+| F7 | Submit 1 random test score |
+| F8 | Force profile refresh |
+| F9 | Debug status dump |
+| F10 | Achievement debug status |
 
 ### Debug Methods
 
@@ -444,19 +530,6 @@ CheddaBoards.debug_logging = true
 Achievements.debug_logging = true
 ```
 
-### Keyboard Shortcuts
-
-Add to your game for quick debugging:
-
-```gdscript
-func _input(event):
-    if event is InputEventKey and event.pressed:
-        if event.keycode == KEY_F9:
-            CheddaBoards.debug_status()
-        if event.keycode == KEY_F10:
-            Achievements.debug_status()
-```
-
 ### Common Issues
 
 | Issue | Solution |
@@ -467,6 +540,7 @@ func _input(event):
 | Click offset on high-DPI | Enable "Allow Hidpi" in Project Settings |
 | Web: "Engine not defined" | Export must be named `index.html` |
 | Web: Blank screen | Use local server, not `file://` |
+| Scoreboard not found | Check scoreboard ID matches dashboard exactly |
 
 ---
 
@@ -511,15 +585,35 @@ CheddaBoards-Godot/
 │       └── icon.png
 ├── scenes/
 │   ├── MainMenu.tscn/.gd         # Login & profile UI
-│   ├── Game.tscn/.gd             # ← REPLACE WITH YOUR GAME
-│   ├── Leaderboard.tscn/.gd      # Leaderboard display
+│   ├── Game.tscn/.gd             # Example game with levels
+│   ├── Leaderboard.tscn/.gd      # Leaderboard with archives
 │   ├── AchievementsView.tscn/.gd # Achievement list
 │   └── AchievementNotification.* # Unlock popups
 ├── assets/                       # Sprites, fonts, etc.
 ├── template.html                 # Web export template
 ├── project.godot                 # Pre-configured project
+├── docs/
+│   ├── QUICKSTART.md
+│   ├── API_QUICKSTART.md
+│   ├── SETUP.md
+│   ├── TIMED_SCOREBOARDS.md
+│   ├── TROUBLESHOOTING.md
+│   └── CHANGELOG.md
 └── README.md
 ```
+
+---
+
+## Documentation
+
+| Doc | Description |
+|-----|-------------|
+| [QUICKSTART.md](docs/QUICKSTART.md) | Fast 3-5 minute setup |
+| [API_QUICKSTART.md](docs/API_QUICKSTART.md) | Full API reference |
+| [SETUP.md](docs/SETUP.md) | Detailed setup guide |
+| [TIMED_SCOREBOARDS.md](docs/TIMED_SCOREBOARDS.md) | Weekly/daily competitions & archives |
+| [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Common problems & solutions |
+| [CHANGELOG.md](docs/CHANGELOG.md) | Version history |
 
 ---
 
@@ -527,17 +621,21 @@ CheddaBoards-Godot/
 
 - **Dashboard**: [cheddaboards.com](https://cheddaboards.com)
 - **GitHub**: [github.com/cheddatech/CheddaBoards-Godot](https://github.com/cheddatech/CheddaBoards-Godot)
+- **Example**: [cheddaclick.cheddagames.com](https://cheddaclick.cheddagames.com)
 - **Support**: info@cheddaboards.com
 
 ---
 
 ## Version History
 
-| Version | Changes |
-|---------|---------|
-| v1.2.1 | Native HTTP API support, anonymous login, API key auth |
-| v1.1.0 | Achievement system, Setup Wizard |
-| v1.0.0 | Initial release - Web only |
+| Version | Date | Changes |
+|---------|------|---------|
+| v1.3.0 | 2025-12-30 | Timed scoreboards, archives, level system, debug shortcuts |
+| v1.2.2 | 2025-12-27 | Unique default nicknames |
+| v1.2.1 | 2025-12-18 | Native HTTP API support, anonymous login, API key auth |
+| v1.2.0 | 2025-12-15 | Anonymous play with device ID |
+| v1.1.0 | 2025-12-03 | Setup Wizard, Asset Library structure |
+| v1.0.0 | 2025-11-02 | Initial release - Web only |
 
 ---
 
@@ -547,6 +645,4 @@ MIT License - Use freely in your games!
 
 ---
 
-**Ready to add leaderboards to your game?**
-
-Start at [cheddaboards.com](https://cheddaboards.com) 🚀
+**Built with 🧀 by [CheddaTech](https://cheddatech.com)**
