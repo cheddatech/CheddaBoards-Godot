@@ -1,6 +1,6 @@
 [gd_scene load_steps=5 format=3 uid="uid://cuvkn80vfc7mq"]
 
-[ext_resource type="Script" uid="uid://t0yeoi0pqnx2" path="res://Leaderboard.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://bpee76p2xng5k" path="res://Leaderboard.gd" id="1_script"]
 [ext_resource type="Texture2D" uid="uid://c4ifusj1tgphd" path="res://addons/cheddaboards/icon.png" id="2_an2gi"]
 [ext_resource type="FontFile" uid="uid://cctneumd3ufx5" path="res://fonts/ZeroCool.ttf" id="2_mruqn"]
 [ext_resource type="Theme" uid="uid://cg1jdv7rfyi22" path="res://fonts/Buttons.tres" id="3_xtqbn"]
@@ -48,7 +48,7 @@ theme_override_constants/separation = 10
 layout_mode = 2
 theme_override_fonts/font = ExtResource("2_mruqn")
 theme_override_font_sizes/font_size = 64
-text = "Leaderboard"
+text = "Chedda boards"
 horizontal_alignment = 1
 
 [node name="RefreshButton" type="Button" parent="MarginContainer/VBoxContainer/HeaderContainer"]
@@ -59,23 +59,66 @@ theme = ExtResource("3_xtqbn")
 theme_override_font_sizes/font_size = 24
 text = "Refresh"
 
+[node name="TimeContainer" type="HBoxContainer" parent="MarginContainer/VBoxContainer/HeaderContainer"]
+layout_mode = 2
+theme_override_constants/separation = 10
+alignment = 1
+
+[node name="AllTimeButton" type="Button" parent="MarginContainer/VBoxContainer/HeaderContainer/TimeContainer"]
+custom_minimum_size = Vector2(140, 50)
+layout_mode = 2
+theme = ExtResource("3_xtqbn")
+theme_override_font_sizes/font_size = 22
+text = "All Time"
+
+[node name="WeeklyButton" type="Button" parent="MarginContainer/VBoxContainer/HeaderContainer/TimeContainer"]
+custom_minimum_size = Vector2(140, 50)
+layout_mode = 2
+theme = ExtResource("3_xtqbn")
+theme_override_font_sizes/font_size = 22
+disabled = true
+text = "Weekly"
+
+[node name="PeriodContainer" type="HBoxContainer" parent="MarginContainer/VBoxContainer/HeaderContainer"]
+layout_mode = 2
+theme_override_constants/separation = 10
+alignment = 1
+
+[node name="CurrentButton" type="Button" parent="MarginContainer/VBoxContainer/HeaderContainer/PeriodContainer"]
+custom_minimum_size = Vector2(160, 50)
+layout_mode = 2
+theme = ExtResource("3_xtqbn")
+theme_override_font_sizes/font_size = 22
+disabled = true
+text = "Current"
+
+[node name="LastPeriodButton" type="Button" parent="MarginContainer/VBoxContainer/HeaderContainer/PeriodContainer"]
+custom_minimum_size = Vector2(160, 50)
+layout_mode = 2
+theme = ExtResource("3_xtqbn")
+theme_override_font_sizes/font_size = 22
+text = "Last Week"
+
 [node name="SortContainer" type="HBoxContainer" parent="MarginContainer/VBoxContainer/HeaderContainer"]
 layout_mode = 2
 theme_override_constants/separation = 10
 alignment = 1
 
 [node name="SortByScoreButton" type="Button" parent="MarginContainer/VBoxContainer/HeaderContainer/SortContainer"]
-custom_minimum_size = Vector2(150, 60)
+visible = false
+custom_minimum_size = Vector2(150, 50)
 layout_mode = 2
 theme = ExtResource("3_xtqbn")
-theme_override_font_sizes/font_size = 24
+theme_override_font_sizes/font_size = 22
+disabled = true
 text = "By Score"
 
 [node name="SortByStreakButton" type="Button" parent="MarginContainer/VBoxContainer/HeaderContainer/SortContainer"]
-custom_minimum_size = Vector2(150, 60)
+visible = false
+custom_minimum_size = Vector2(150, 50)
 layout_mode = 2
 theme = ExtResource("3_xtqbn")
-theme_override_font_sizes/font_size = 24
+theme_override_font_sizes/font_size = 22
 text = "By Combo"
 
 [node name="HSeparator" type="HSeparator" parent="MarginContainer/VBoxContainer"]
