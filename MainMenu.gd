@@ -112,6 +112,9 @@ var profile_poll_attempts: int = 0
 var anonymous_nickname: String = ""
 var anonymous_player_id: String = ""
 
+# Test mode flag
+var _is_test_submission: bool = false
+
 # ============================================================
 # TIMERS
 # ============================================================
@@ -780,6 +783,11 @@ func _on_login_success(nickname: String):
 	_clear_ui_timeout()
 	is_logging_in = false
 	
+	# Skip UI changes for test submissions
+	if _is_test_submission:
+		_is_test_submission = false
+		return
+	
 	_show_main_panel_loading()
 	waiting_for_profile = true
 	profile_load_attempts = 0
@@ -914,6 +922,8 @@ func _test_submit_random_score():
 	var test_streak = randi_range(1, 10)
 	var test_id = "test_%d_%d" % [Time.get_unix_time_from_system(), randi() % 10000]
 	
+	# Set flag to prevent UI change on login
+	_is_test_submission = true
 	CheddaBoards.set_player_id(test_id)
 	CheddaBoards.login_anonymous(test_name)
 	CheddaBoards.submit_score(test_score, test_streak)
@@ -927,7 +937,7 @@ func _test_submit_bulk_scores(count: int = 5):
 	_set_status("Submitting %d test scores..." % count, false)
 	
 	for i in count:
-		await get_tree().create_timer(2.0).timeout
+		await get_tree().create_timer(2.0).timeout  # 1.5s delay to avoid rate limiting
 		_test_submit_random_score()
 	
 	_log("TEST: Bulk submission complete")
