@@ -752,9 +752,8 @@ func _on_confirm_name_pressed():
 	CheddaBoards.set_player_id(anonymous_player_id)
 	_log("Set player ID to: %s" % anonymous_player_id)
 	
-	# ALWAYS sync nickname to backend (ensures it's set correctly)
 	_log(">>> Calling change_nickname_to('%s')" % name_text)
-	CheddaBoards.change_nickname_to(name_text)
+	CheddaBoards.change_nickname(name_text)
 	
 	# Login as anonymous with the nickname
 	_log(">>> Calling login_anonymous('%s')" % name_text)
