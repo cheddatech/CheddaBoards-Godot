@@ -706,8 +706,8 @@ func _show_mobile_name_prompt():
 	CheddaBoards.set_player_id(anonymous_player_id)
 	
 	# ALWAYS sync nickname to backend (ensures it's set correctly)
-	_log(">>> Calling change_nickname_to('%s')" % name_text)
-	CheddaBoards.change_nickname_to(name_text)
+	_log(">>> Calling change_nickname('%s')" % name_text)
+	CheddaBoards.change_nickname(name_text)
 	
 	CheddaBoards.login_anonymous(name_text)
 	_log("Starting game as: %s (ID: %s)" % [anonymous_nickname, anonymous_player_id])
@@ -752,7 +752,8 @@ func _on_confirm_name_pressed():
 	CheddaBoards.set_player_id(anonymous_player_id)
 	_log("Set player ID to: %s" % anonymous_player_id)
 	
-	_log(">>> Calling change_nickname_to('%s')" % name_text)
+	# ALWAYS sync nickname to backend (ensures it's set correctly)
+	_log(">>> Calling change_nickname('%s')" % name_text)
 	CheddaBoards.change_nickname(name_text)
 	
 	# Login as anonymous with the nickname
@@ -979,7 +980,3 @@ func _dump_debug():
 func _exit_tree():
 	"""Cleanup"""
 	_stop_all_timers()
-
-
-
-
