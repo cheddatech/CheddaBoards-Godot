@@ -1,4 +1,4 @@
-# CheddaBoards.gd v1.2.1
+# CheddaBoards.gd v1.4.0
 # CheddaBoards integration for Godot 4.x
 # https://github.com/cheddatech/CheddaBoards-Godot
 # https://cheddaboards.com
@@ -50,12 +50,24 @@ signal no_profile()
 signal nickname_changed(new_nickname: String)
 signal nickname_error(reason: String)
 
-# --- Scores & Leaderboards ---
+# --- Scores & Leaderboards (Legacy) ---
 signal score_submitted(score: int, streak: int)
 signal score_error(reason: String)
 signal leaderboard_loaded(entries: Array)
 signal player_rank_loaded(rank: int, score: int, streak: int, total_players: int)
 signal rank_error(reason: String)
+
+# --- Scoreboards (NEW - Time-based) ---
+signal scoreboards_loaded(scoreboards: Array)
+signal scoreboard_loaded(scoreboard_id: String, config: Dictionary, entries: Array)
+signal scoreboard_rank_loaded(scoreboard_id: String, rank: int, score: int, streak: int, total: int)
+signal scoreboard_error(reason: String)
+
+# --- Scoreboard Archives (NEW v1.4.0) ---
+signal archives_list_loaded(scoreboard_id: String, archives: Array)
+signal archived_scoreboard_loaded(archive_id: String, config: Dictionary, entries: Array)
+signal archive_stats_loaded(total_archives: int, by_scoreboard: Array)
+signal archive_error(reason: String)
 
 # --- Achievements ---
 signal achievement_unlocked(achievement_id: String)
@@ -69,12 +81,14 @@ signal request_failed(endpoint: String, error: String)
 # ============================================================
 
 ## Set to true to enable verbose logging
-var debug_logging: bool = true  # Enabled for debugging
+var debug_logging: bool = true
 
 ## HTTP API Configuration (for native builds)
 const API_BASE_URL = "https://api.cheddaboards.com"
-var api_key: String = ""                                     ## add api key here
-var _player_id: String = ""  # For native API auth
+var api_key: String = ""  ## Your API key
+var game_id: String = ""  ## Your game ID for scoreboard operations
+var _player_id: String = ""
+var _session_token: String = ""  ## For OAuth session-based auth
 
 # ============================================================
 # PLATFORM DETECTION
@@ -126,8 +140,9 @@ const PROFILE_REFRESH_COOLDOWN: float = 2.0
 
 var _http_request: HTTPRequest
 var _current_endpoint: String = ""
+var _current_meta: Dictionary = {}  # Extra metadata for response handling
 var _http_busy: bool = false
-var _request_queue: Array = []  # Queue of pending requests
+var _request_queue: Array = []
 
 # ============================================================
 # INITIALIZATION
@@ -137,19 +152,16 @@ func _ready() -> void:
 	_is_web = OS.get_name() == "Web"
 	_is_native = not _is_web
 	
-	# Always set up HTTP client (used for anonymous on both platforms)
 	_setup_http_client()
 	
 	if _is_web:
-		_log("Initializing CheddaBoards v1.2.1 (Web Mode)...")
+		_log("Initializing CheddaBoards v1.4.0 (Web Mode)...")
 		_start_polling()
 		_check_chedda_ready()
 	else:
-		_log("Initializing CheddaBoards v1.2.1 (Native/HTTP API Mode)...")
-		# Initialize player ID early (sanitizes OS.get_unique_id())
+		_log("Initializing CheddaBoards v1.4.0 (Native/HTTP API Mode)...")
 		var pid = get_player_id()
 		_log("Device player ID: %s" % pid)
-		# For native, SDK is ready once HTTP client is set up
 		_init_complete = true
 		call_deferred("_emit_sdk_ready")
 
@@ -157,7 +169,6 @@ func _emit_sdk_ready() -> void:
 	sdk_ready.emit()
 
 func _setup_http_client() -> void:
-	"""Setup HTTP client for native builds"""
 	_http_request = HTTPRequest.new()
 	add_child(_http_request)
 	_http_request.request_completed.connect(_on_http_request_completed)
@@ -167,7 +178,6 @@ func _setup_http_client() -> void:
 # ============================================================
 
 func _check_chedda_ready() -> void:
-	"""Check if CheddaBoards SDK is loaded and ready (Web)"""
 	if not _is_web or _is_checking_auth:
 		return
 
@@ -209,7 +219,6 @@ func _check_chedda_ready() -> void:
 # ============================================================
 
 func _start_polling() -> void:
-	"""Start polling for responses from JavaScript"""
 	if _poll_timer:
 		return
 
@@ -221,7 +230,6 @@ func _start_polling() -> void:
 	_log("Started polling timer (interval: %ss)" % POLL_INTERVAL)
 
 func _check_for_responses() -> void:
-	"""Poll JavaScript for queued responses"""
 	if not _is_web or not _init_complete:
 		return
 
@@ -250,7 +258,6 @@ func _check_for_responses() -> void:
 # ============================================================
 
 func _handle_web_response(response: Dictionary) -> void:
-	"""Process responses from JavaScript bridge"""
 	var action: String = str(response.get("action", ""))
 	var success: bool = bool(response.get("success", false))
 
@@ -312,7 +319,6 @@ func _handle_web_response(response: Dictionary) -> void:
 
 		"getLeaderboard":
 			if success:
-				# JS bridge sends "entries", HTTP API sends "leaderboard"
 				var leaderboard: Array = response.get("leaderboard", response.get("entries", []))
 				leaderboard_loaded.emit(leaderboard)
 
@@ -350,7 +356,6 @@ func _handle_web_response(response: Dictionary) -> void:
 # ============================================================
 
 func _on_http_request_completed(result: int, response_code: int, headers: PackedStringArray, body: PackedByteArray) -> void:
-	"""Handle HTTP API responses for native builds"""
 	if result != HTTPRequest.RESULT_SUCCESS:
 		push_error("[CheddaBoards] Request failed with result %d" % result)
 		request_failed.emit(_current_endpoint, "Network error")
@@ -385,27 +390,30 @@ func _on_http_request_completed(result: int, response_code: int, headers: Packed
 	_emit_http_success(data)
 
 func _emit_http_success(data) -> void:
-	"""Emit appropriate success signal for HTTP responses"""
 	match _current_endpoint:
 		"submit_score":
 			_is_submitting_score = false
 			var score_val = int(data.get("score", 0))
 			var streak_val = int(data.get("streak", 0))
 			score_submitted.emit(score_val, streak_val)
+		
 		"leaderboard":
 			var entries = data.get("leaderboard", [])
 			leaderboard_loaded.emit(entries)
+		
 		"player_rank":
 			var rank = int(data.get("rank", 0))
 			var score_val = int(data.get("score", 0))
 			var streak_val = int(data.get("streak", 0))
 			var total = int(data.get("totalPlayers", 0))
 			player_rank_loaded.emit(rank, score_val, streak_val, total)
+		
 		"player_profile":
 			if data and not data.is_empty():
 				_update_cached_profile(data)
 			else:
 				no_profile.emit()
+		
 		"change_nickname":
 			var new_nick = str(data.get("nickname", ""))
 			if new_nick != "":
@@ -414,21 +422,68 @@ func _emit_http_success(data) -> void:
 					_cached_profile["nickname"] = new_nick
 				nickname_changed.emit(new_nick)
 				_log("Nickname changed to: %s" % new_nick)
+		
 		"unlock_achievement":
 			var ach_id = str(data.get("achievementId", ""))
 			achievement_unlocked.emit(ach_id)
+		
 		"achievements":
 			var achievements = data.get("achievements", [])
 			achievements_loaded.emit(achievements)
+		
+		# --- SCOREBOARD RESPONSES ---
+		"list_scoreboards":
+			var scoreboards = data.get("scoreboards", [])
+			scoreboards_loaded.emit(scoreboards)
+			_log("Loaded %d scoreboards" % scoreboards.size())
+		
+		"get_scoreboard":
+			var sb_id = _current_meta.get("scoreboard_id", "")
+			var config = data.get("config", {})
+			var entries = data.get("entries", [])
+			scoreboard_loaded.emit(sb_id, config, entries)
+			_log("Loaded scoreboard '%s' with %d entries" % [sb_id, entries.size()])
+		
+		"scoreboard_rank":
+			var sb_id = _current_meta.get("scoreboard_id", "")
+			var found = data.get("found", false)
+			if found:
+				var rank = int(data.get("rank", 0))
+				var score_val = int(data.get("score", 0))
+				var streak_val = int(data.get("streak", 0))
+				var total = int(data.get("totalPlayers", 0))
+				scoreboard_rank_loaded.emit(sb_id, rank, score_val, streak_val, total)
+			else:
+				scoreboard_rank_loaded.emit(sb_id, 0, 0, 0, int(data.get("totalPlayers", 0)))
+		
+		# --- ARCHIVE RESPONSES (NEW v1.4.0) ---
+		"list_archives":
+			var sb_id = _current_meta.get("scoreboard_id", "")
+			var archives = data.get("archives", [])
+			archives_list_loaded.emit(sb_id, archives)
+			_log("Loaded %d archives for '%s'" % [archives.size(), sb_id])
+		
+		"get_archive", "get_last_archive":
+			var archive_id = data.get("archiveId", _current_meta.get("archive_id", ""))
+			var config = data.get("config", {})
+			var entries = data.get("entries", [])
+			archived_scoreboard_loaded.emit(archive_id, config, entries)
+			_log("Loaded archive '%s' with %d entries" % [archive_id, entries.size()])
+		
+		"archive_stats":
+			var total = int(data.get("totalArchives", 0))
+			var by_sb = data.get("byScoreboard", [])
+			archive_stats_loaded.emit(total, by_sb)
+			_log("Archive stats: %d total archives" % total)
+		
 		"game_info", "game_stats", "health":
 			_log("API response: %s" % str(data))
 	
-	# Process next queued request
+	_current_meta = {}
 	_http_busy = false
 	_process_next_request()
 
 func _emit_http_failure(error: String) -> void:
-	"""Emit appropriate failure signal for HTTP responses"""
 	match _current_endpoint:
 		"submit_score":
 			_is_submitting_score = false
@@ -445,16 +500,37 @@ func _emit_http_failure(error: String) -> void:
 			pass
 		"achievements":
 			achievements_loaded.emit([])
+		"list_scoreboards":
+			scoreboards_loaded.emit([])
+			scoreboard_error.emit(error)
+		"get_scoreboard":
+			var sb_id = _current_meta.get("scoreboard_id", "")
+			scoreboard_loaded.emit(sb_id, {}, [])
+			scoreboard_error.emit(error)
+		"scoreboard_rank":
+			var sb_id = _current_meta.get("scoreboard_id", "")
+			scoreboard_rank_loaded.emit(sb_id, 0, 0, 0, 0)
+			scoreboard_error.emit(error)
+		# --- ARCHIVE FAILURES (NEW v1.4.0) ---
+		"list_archives":
+			var sb_id = _current_meta.get("scoreboard_id", "")
+			archives_list_loaded.emit(sb_id, [])
+			archive_error.emit(error)
+		"get_archive", "get_last_archive":
+			var archive_id = _current_meta.get("archive_id", "")
+			archived_scoreboard_loaded.emit(archive_id, {}, [])
+			archive_error.emit(error)
+		"archive_stats":
+			archive_stats_loaded.emit(0, [])
+			archive_error.emit(error)
 	
-	# Process next queued request
+	_current_meta = {}
 	_http_busy = false
 	_process_next_request()
 
-func _make_http_request(endpoint: String, method: int, body: Dictionary, request_type: String) -> void:
-	"""Make HTTP request for native builds (queued)"""
+func _make_http_request(endpoint: String, method: int, body: Dictionary, request_type: String, meta: Dictionary = {}) -> void:
 	if api_key.is_empty():
 		_log("API key not set - skipping HTTP request to %s" % endpoint)
-		# Emit appropriate error signal based on request type
 		match request_type:
 			"submit_score":
 				score_error.emit("API key not set")
@@ -464,14 +540,18 @@ func _make_http_request(endpoint: String, method: int, body: Dictionary, request
 				leaderboard_loaded.emit([])
 			"player_rank":
 				rank_error.emit("API key not set")
+			"list_scoreboards", "get_scoreboard":
+				scoreboard_error.emit("API key not set")
+			"list_archives", "get_archive", "get_last_archive", "archive_stats":
+				archive_error.emit("API key not set")
 		return
 	
-	# Queue the request
 	var request_data = {
 		"endpoint": endpoint,
 		"method": method,
 		"body": body,
-		"request_type": request_type
+		"request_type": request_type,
+		"meta": meta
 	}
 	
 	if _http_busy:
@@ -482,14 +562,22 @@ func _make_http_request(endpoint: String, method: int, body: Dictionary, request
 	_execute_http_request(request_data)
 
 func _execute_http_request(request_data: Dictionary) -> void:
-	"""Actually execute an HTTP request"""
 	_http_busy = true
 	_current_endpoint = request_data.request_type
+	_current_meta = request_data.get("meta", {})
 	
 	var headers = [
 		"Content-Type: application/json",
 		"X-API-Key: " + api_key
 	]
+	
+	# Add session token if available (for OAuth users)
+	if not _session_token.is_empty():
+		headers.append("X-Session-Token: " + _session_token)
+	
+	# Add game ID header if set
+	if not game_id.is_empty():
+		headers.append("X-Game-ID: " + game_id)
 	
 	var url = API_BASE_URL + request_data.endpoint
 	var json_body = JSON.stringify(request_data.body) if request_data.body.size() > 0 else ""
@@ -504,7 +592,6 @@ func _execute_http_request(request_data: Dictionary) -> void:
 		_process_next_request()
 
 func _process_next_request() -> void:
-	"""Process next queued request if any"""
 	if _request_queue.is_empty():
 		return
 	
@@ -517,7 +604,6 @@ func _process_next_request() -> void:
 # ============================================================
 
 func _update_cached_profile(profile: Dictionary) -> void:
-	"""Update the cached profile and emit signal"""
 	if profile.is_empty():
 		return
 
@@ -537,7 +623,6 @@ func _update_cached_profile(profile: Dictionary) -> void:
 # ============================================================
 
 func _start_login_timeout() -> void:
-	"""Start timeout timer for login attempts"""
 	_clear_login_timeout()
 	
 	_login_timeout_timer = Timer.new()
@@ -549,14 +634,12 @@ func _start_login_timeout() -> void:
 	_log("Login timeout started (%.1fs)" % LOGIN_TIMEOUT_DURATION)
 
 func _clear_login_timeout() -> void:
-	"""Clear login timeout timer"""
 	if _login_timeout_timer:
 		_login_timeout_timer.stop()
 		_login_timeout_timer.queue_free()
 		_login_timeout_timer = null
 
 func _on_login_timeout() -> void:
-	"""Handle login timeout"""
 	_log("Login timeout - no response received")
 	login_timeout.emit()
 	_login_timeout_timer = null
@@ -566,7 +649,6 @@ func _on_login_timeout() -> void:
 # ============================================================
 
 func _log(message: String) -> void:
-	"""Print log message if debug logging is enabled"""
 	if debug_logging:
 		print("[CheddaBoards] %s" % message)
 
@@ -574,82 +656,76 @@ func _log(message: String) -> void:
 # PUBLIC API - UTILITIES
 # ============================================================
 
-## Check if CheddaBoards is fully initialized and ready
 func is_ready() -> bool:
 	if _is_web:
 		return _is_web and _init_complete
 	else:
 		return _init_complete
 
-## Check if SDK can communicate with backend (has credentials)
 func can_connect() -> bool:
 	if _is_web:
 		return _init_complete
 	else:
 		return _init_complete and not api_key.is_empty()
 
-## Wait until SDK is ready (use with await)
 func wait_until_ready() -> void:
 	if is_ready():
 		return
 	await sdk_ready
 
-## Generate a unique default nickname using player ID
 func _get_default_nickname() -> String:
 	return "Player_" + get_player_id().left(6)
 
-## Get current player's nickname
 func get_nickname() -> String:
 	if _cached_profile.is_empty():
 		return _nickname if _nickname != "" else _get_default_nickname()
 	return str(_cached_profile.get("nickname", _get_default_nickname()))
 
-## Get current player's high score
 func get_high_score() -> int:
 	if _cached_profile.is_empty():
 		return 0
 	return int(_cached_profile.get("score", 0))
 
-## Get current player's best streak
 func get_best_streak() -> int:
 	if _cached_profile.is_empty():
 		return 0
 	return int(_cached_profile.get("streak", 0))
 
-## Get the cached profile data
 func get_cached_profile() -> Dictionary:
 	return _cached_profile
 
-## Get the authentication type
 func get_auth_type() -> String:
 	return _auth_type
 
 # ============================================================
-# PUBLIC API - CONFIGURATION (Native)
+# PUBLIC API - CONFIGURATION
 # ============================================================
 
-## Set the API key for HTTP API (native builds)
 func set_api_key(key: String) -> void:
 	api_key = key
 	_log("API key set")
 
-## Set player ID for HTTP API authentication
+func set_game_id(id: String) -> void:
+	game_id = id
+	_log("Game ID set: %s" % id)
+
+func set_session_token(token: String) -> void:
+	_session_token = token
+	_log("Session token set")
+
 func set_player_id(player_id: String) -> void:
 	_player_id = _sanitize_player_id(player_id)
 	_log("Player ID set: %s" % _player_id)
 
-## Get current player ID (for native builds)
 func get_player_id() -> String:
 	if _player_id.is_empty():
 		if _is_web:
-			# Web: Try to get device ID from JS template, fallback to random
 			var js_device_id = JavaScriptBridge.eval("window.deviceId || ''", true)
 			if js_device_id and str(js_device_id) != "":
 				_player_id = _sanitize_player_id(str(js_device_id))
 			else:
 				_player_id = "player_" + str(randi() % 1000000000)
 		else:
-			# Native: Use device unique ID
 			var raw_id = OS.get_unique_id()
 			_player_id = _sanitize_player_id(raw_id)
 		_log("Generated player ID: %s" % _player_id)
@@ -660,23 +736,18 @@ func _sanitize_player_id(raw_id: String) -> String:
 		randomize()
 		return "player_" + str(randi() % 1000000000)
 	
-	# Remove invalid characters (keep only alphanumeric, underscore, hyphen)
 	var sanitized = ""
 	for c in raw_id:
-		# Check if alphanumeric, underscore, or hyphen
 		if (c >= "a" and c <= "z") or (c >= "A" and c <= "Z") or (c >= "0" and c <= "9") or c == "_" or c == "-":
 			sanitized += c
 	
-	# If empty after sanitizing, generate fallback
 	if sanitized.is_empty():
 		randomize()
 		return "player_" + str(abs(raw_id.hash()))
 	
-	# Ensure it starts with a letter or underscore (not a number)
 	if sanitized[0] >= "0" and sanitized[0] <= "9":
 		sanitized = "p_" + sanitized
 	
-	# Truncate to 100 characters max
 	if sanitized.length() > 100:
 		sanitized = sanitized.left(100)
 	
@@ -686,7 +757,6 @@ func _sanitize_player_id(raw_id: String) -> String:
 # PUBLIC API - AUTHENTICATION
 # ============================================================
 
-## Log in with Internet Identity (Web only - passwordless)
 func login_internet_identity(nickname: String = "") -> void:
 	if _is_web:
 		if not _init_complete:
@@ -697,7 +767,6 @@ func login_internet_identity(nickname: String = "") -> void:
 		_log("Internet Identity login requested")
 		_start_login_timeout()
 	else:
-		# Native: Use API key auth with player ID
 		if api_key.is_empty():
 			login_failed.emit("API key not set")
 			return
@@ -706,11 +775,9 @@ func login_internet_identity(nickname: String = "") -> void:
 		login_success.emit(_nickname)
 		_log("Native login (API key mode)")
 
-## Alias for login_internet_identity
 func login_chedda_id(nickname: String = "") -> void:
 	login_internet_identity(nickname)
 
-## Log in with Google (Web only)
 func login_google() -> void:
 	if _is_web:
 		if not _init_complete:
@@ -722,7 +789,6 @@ func login_google() -> void:
 	else:
 		login_failed.emit("Google login only available in web builds")
 
-## Log in with Apple (Web only)
 func login_apple() -> void:
 	if _is_web:
 		if not _init_complete:
@@ -734,7 +800,21 @@ func login_apple() -> void:
 	else:
 		login_failed.emit("Apple login only available in web builds")
 
-## Log out the current user
+func login_anonymous(nickname: String = "") -> void:
+	if _is_web:
+		if not _init_complete:
+			login_failed.emit("CheddaBoards not ready")
+			return
+		var safe_nickname: String = nickname.replace("'", "\\'").replace('"', '\\"')
+		JavaScriptBridge.eval("chedda_login_anonymous('%s')" % safe_nickname, true)
+		_log("Anonymous login requested")
+		_start_login_timeout()
+	else:
+		_nickname = nickname if nickname != "" else _get_default_nickname()
+		_auth_type = "anonymous"
+		login_success.emit(_nickname)
+		_log("Anonymous login (native)")
+
 func logout() -> void:
 	if _is_web:
 		if not _init_complete:
@@ -744,11 +824,10 @@ func logout() -> void:
 	else:
 		_cached_profile = {}
 		_auth_type = ""
-		_nickname = ""
+		_session_token = ""
 		logout_success.emit()
-		_log("Native logout")
+		_log("Logged out (native)")
 
-## Check if user is currently authenticated (any type including anonymous)
 func is_authenticated() -> bool:
 	if _is_web:
 		if not _init_complete:
@@ -756,218 +835,122 @@ func is_authenticated() -> bool:
 		var result: Variant = JavaScriptBridge.eval("chedda_is_auth()", true)
 		return bool(result)
 	else:
-		# Native: Check if we have API key and player ID
-		return not api_key.is_empty()
+		return not api_key.is_empty() or not _session_token.is_empty()
 
-## Check if user has a REAL account (Google/Apple/Chedda - not anonymous)
-func has_account() -> bool:
-	if _is_web:
-		if not _init_complete:
-			return false
-		var result: Variant = JavaScriptBridge.eval("chedda_has_account()", true)
-		return bool(result)
-	else:
-		# Native: Check API key AND real auth type
-		return not api_key.is_empty() and _auth_type != "device" and _auth_type != "anonymous" and _auth_type != ""
-
-## Check if using anonymous/device authentication
 func is_anonymous() -> bool:
 	if _is_web:
 		if not _init_complete:
-			return true  # Default to anonymous if not ready
+			return true
 		var result: Variant = JavaScriptBridge.eval("chedda_is_anonymous()", true)
 		return bool(result)
 	else:
-		return _auth_type == "device" or _auth_type == "anonymous" or _auth_type == ""
+		return _auth_type == "anonymous" or _session_token.is_empty()
 
-## Get device ID for anonymous play (Web)
-func get_device_id() -> String:
-	if _is_web:
-		var result: Variant = JavaScriptBridge.eval("chedda_get_device_id()", true)
-		return str(result) if result else ""
-	else:
-		return get_player_id()
+func has_account() -> bool:
+	return is_authenticated() and not is_anonymous()
 
-# ============================================================
-# PUBLIC API - AUTHENTICATION
-# ============================================================
-
-## Login anonymously with device ID (no account required)
-## Optionally provide a custom nickname for leaderboard display
-## Uses HTTP API for both web and native (simpler, no JS SDK needed for anonymous)
-func login_anonymous(nickname: String = "") -> void:
-	# For anonymous users, always use HTTP API (works on both web and native)
-	_auth_type = "device"
-	var player_id = get_player_id()
-	
-	# Use provided nickname or generate one
-	if nickname != "":
-		_nickname = nickname
-	else:
-		_nickname = "Player_" + player_id.left(6)
-	
-	_cached_profile = {
-		"nickname": _nickname,
-		"score": 0,
-		"streak": 0,
-		"playCount": 0,
-		"achievements": [],
-		"deviceId": player_id
-	}
-	
-	_log("Anonymous login: %s (ID: %s)" % [_nickname, player_id])
-	login_success.emit(_nickname)
-	profile_loaded.emit(_nickname, 0, 0, [])
-
-## Set up anonymous player without emitting login signals
-## Useful when you just want to configure the player before gameplay
-func setup_anonymous_player(player_id: String = "", nickname: String = "") -> void:
-	if player_id != "":
-		set_player_id(player_id)
-	
-	var pid = get_player_id()
-	_auth_type = "device"
-	
-	if nickname != "":
-		_nickname = nickname
-	else:
-		_nickname = "Player_" + pid.left(6)
-	
-	_cached_profile = {
-		"nickname": _nickname,
-		"score": 0,
-		"streak": 0,
-		"playCount": 0,
-		"achievements": [],
-		"deviceId": pid
-	}
-	
-	_log("Anonymous player configured: %s (ID: %s)" % [_nickname, pid])
-
-# ============================================================
-# PUBLIC API - PROFILE MANAGEMENT
-# ============================================================
-
-## Refresh profile data from server
 func refresh_profile() -> void:
+	if _is_refreshing_profile:
+		return
+	
+	var current_time: float = Time.get_ticks_msec() / 1000.0
+	if current_time - _last_profile_refresh < PROFILE_REFRESH_COOLDOWN:
+		return
+	
+	_is_refreshing_profile = true
+	_last_profile_refresh = current_time
+	
 	if _is_web:
 		if not _init_complete:
+			_is_refreshing_profile = false
 			return
-		if _is_refreshing_profile:
-			_log("Profile refresh already in progress")
-			return
-		var current_time: float = Time.get_ticks_msec() / 1000.0
-		if current_time - _last_profile_refresh < PROFILE_REFRESH_COOLDOWN:
-			_log("Profile refresh on cooldown")
-			return
-		_is_refreshing_profile = true
-		_last_profile_refresh = current_time
 		JavaScriptBridge.eval("chedda_refresh_profile()", true)
 		_log("Profile refresh requested")
 	else:
-		# Native: Use HTTP API
-		get_player_profile(get_player_id())
+		get_player_profile()
 
-## Open the nickname change prompt (Web only)
-func change_nickname() -> void:
+func change_nickname(new_nickname: String = "") -> void:
 	if _is_web:
 		if not _init_complete:
+			nickname_error.emit("CheddaBoards not ready")
 			return
-		JavaScriptBridge.eval("chedda_change_nickname_prompt()", true)
+		
+		if new_nickname == "":
+			# No argument - show JS prompt
+			var current = get_nickname().replace("'", "\\'").replace('"', '\\"')
+			var js_code = """
+				(function() {
+					var result = prompt('Enter new nickname:', '%s');
+					if (result && result.trim().length >= 2) {
+						chedda_change_nickname(result.trim());
+					}
+				})();
+			""" % current
+			JavaScriptBridge.eval(js_code, true)
+		else:
+			# Argument provided - change directly
+			var safe_nickname: String = new_nickname.replace("'", "\\'").replace('"', '\\"')
+			JavaScriptBridge.eval("chedda_change_nickname('%s')" % safe_nickname, true)
 		_log("Nickname change requested")
 	else:
-		# Native: Emit error - use change_nickname_to() instead
-		nickname_error.emit("Use change_nickname_to() for native builds")
+		# Native - requires nickname argument
+		if new_nickname == "":
+			nickname_error.emit("Nickname required - use change_nickname('name')")
+			return
+		
+		if _session_token.is_empty():
+			_nickname = new_nickname
+			if not _cached_profile.is_empty():
+				_cached_profile["nickname"] = new_nickname
+			nickname_changed.emit(new_nickname)
+			_log("Nickname changed locally: %s" % new_nickname)
+		else:
+			var body = {"nickname": new_nickname}
+			_make_http_request("/auth/profile/nickname", HTTPClient.METHOD_POST, body, "change_nickname")
+			
+# ============================================================
+# PUBLIC API - SCORES
+# ============================================================
 
-## Change nickname directly via HTTP API (for anonymous/native players)
-func change_nickname_to(new_nickname: String) -> void:
-	if new_nickname.length() < 2 or new_nickname.length() > 20:
-		nickname_error.emit("Nickname must be 2-20 characters")
+func submit_score(score: int, streak: int = 0) -> void:
+	if not is_authenticated():
+		_log("Not authenticated, cannot submit")
+		score_error.emit("Not authenticated")
 		return
 	
-	# Anonymous users always use HTTP API
-	if is_anonymous() or _is_native:
-		var url = "/players/%s/nickname" % get_player_id().uri_encode()
-		var body = { "nickname": new_nickname }
-		_make_http_request(url, HTTPClient.METHOD_PUT, body, "change_nickname")
-		_log("Nickname change requested (HTTP): %s" % new_nickname)
-	else:
-		# Authenticated web users - update locally (they use JS SDK popup)
-		_nickname = new_nickname
-		if not _cached_profile.is_empty():
-			_cached_profile["nickname"] = new_nickname
-		nickname_changed.emit(new_nickname)
-
-## Set nickname directly (for anonymous players)
-func set_nickname(new_nickname: String) -> void:
-	_nickname = new_nickname
-	if not _cached_profile.is_empty():
-		_cached_profile["nickname"] = new_nickname
-	_log("Nickname set to: %s" % new_nickname)
-
-# ============================================================
-# PUBLIC API - SCORES & LEADERBOARDS
-# ============================================================
-
-## Submit score and streak to leaderboard
-## For anonymous players, nickname is included in the request
-func submit_score(score: int, streak: int = 0, rounds: int = -1) -> void:
 	if _is_submitting_score:
 		_log("Score submission already in progress")
 		return
 	
-	# Anonymous users always use HTTP API (both web and native)
-	if is_anonymous():
-		_is_submitting_score = true
+	_is_submitting_score = true
+	
+	if is_anonymous() or _is_native:
 		var body = {
 			"playerId": get_player_id(),
 			"score": score,
 			"streak": streak,
 			"nickname": _nickname if _nickname != "" else _get_default_nickname()
 		}
-		if rounds >= 0:
-			body["rounds"] = rounds
 		_make_http_request("/scores", HTTPClient.METHOD_POST, body, "submit_score")
-		_log("Score submission (HTTP): %d points, %d streak, nickname: %s" % [score, streak, body["nickname"]])
+		_log("Score submitted (HTTP): %d points, %d streak" % [score, streak])
 		return
 	
-	# Authenticated users on web use JS SDK
 	if _is_web:
 		if not _init_complete:
-			_log("SDK not ready, waiting...")
-			await get_tree().create_timer(0.5).timeout
-			if not _init_complete:
-				score_error.emit("CheddaBoards not ready")
-				return
-		_is_submitting_score = true
+			_is_submitting_score = false
+			score_error.emit("CheddaBoards not ready")
+			return
 		var js_code: String = "chedda_submit_score(%d, %d)" % [score, streak]
-		_log("Calling JS: %s" % js_code)
 		JavaScriptBridge.eval(js_code, true)
-		_log("Score submission: %d points, %d streak" % [score, streak])
-	else:
-		# Native authenticated - use HTTP API
-		_is_submitting_score = true
-		var body = {
-			"playerId": get_player_id(),
-			"score": score,
-			"streak": streak,
-			"nickname": _nickname if _nickname != "" else _get_default_nickname()
-		}
-		if rounds >= 0:
-			body["rounds"] = rounds
-		_make_http_request("/scores", HTTPClient.METHOD_POST, body, "submit_score")
-		_log("Score submission (HTTP): %d points, %d streak" % [score, streak])
+		_log("Score submitted: %d points, %d streak" % [score, streak])
 
-## Get leaderboard data
 func get_leaderboard(sort_by: String = "score", limit: int = 100) -> void:
-	# Anonymous users or native: use HTTP API
 	if is_anonymous() or _is_native:
-		var url = "/leaderboard?limit=%d&sort=%s" % [limit, sort_by]
+		var url = "/leaderboard?sort=%s&limit=%d" % [sort_by, limit]
 		_make_http_request(url, HTTPClient.METHOD_GET, {}, "leaderboard")
 		_log("Leaderboard requested (HTTP)")
 		return
 	
-	# Authenticated web users: use JS SDK
 	if _is_web:
 		if not _init_complete:
 			return
@@ -975,16 +958,13 @@ func get_leaderboard(sort_by: String = "score", limit: int = 100) -> void:
 		JavaScriptBridge.eval(js_code, true)
 		_log("Leaderboard requested (sort: %s, limit: %d)" % [sort_by, limit])
 
-## Get current player's rank on leaderboard
 func get_player_rank(sort_by: String = "score") -> void:
-	# Anonymous users or native: use HTTP API
 	if is_anonymous() or _is_native:
 		var url = "/players/%s/rank?sort=%s" % [get_player_id().uri_encode(), sort_by]
 		_make_http_request(url, HTTPClient.METHOD_GET, {}, "player_rank")
 		_log("Player rank requested (HTTP)")
 		return
 	
-	# Authenticated web users: use JS SDK
 	if _is_web:
 		if not _init_complete:
 			return
@@ -992,22 +972,170 @@ func get_player_rank(sort_by: String = "score") -> void:
 		JavaScriptBridge.eval(js_code, true)
 		_log("Player rank requested (sort: %s)" % sort_by)
 
-## Get a player's full profile (Native API)
 func get_player_profile(player_id: String = "") -> void:
-	var pid = player_id if player_id != "" else get_player_id()
 	if _is_web:
-		# Web uses refresh_profile instead
 		refresh_profile()
 	else:
-		var url = "/players/%s/profile" % pid.uri_encode()
-		_make_http_request(url, HTTPClient.METHOD_GET, {}, "player_profile")
-		_log("Player profile requested (HTTP)")
+		# OAuth session users - use /auth/profile
+		if not _session_token.is_empty():
+			_make_http_request("/auth/profile", HTTPClient.METHOD_GET, {}, "player_profile")
+			_log("Player profile requested (session)")
+		else:
+			# Anonymous/API-key users - use cached profile
+			# There's no server-side profile, scores are submitted with nickname
+			_log("Using cached profile (no server profile for API-key mode)")
+			if not _cached_profile.is_empty():
+				profile_loaded.emit(_nickname, get_high_score(), get_best_streak(), _cached_profile.get("achievements", []))
+			else:
+				no_profile.emit()
+
+# ============================================================
+# PUBLIC API - SCOREBOARDS (Time-based Leaderboards)
+# ============================================================
+
+## List all scoreboards for a game
+## Emits: scoreboards_loaded(scoreboards: Array)
+func get_scoreboards(for_game_id: String = "") -> void:
+	var gid = for_game_id if for_game_id != "" else game_id
+	if gid.is_empty():
+		scoreboard_error.emit("Game ID not set. Call set_game_id() first.")
+		return
+	
+	var url = "/games/%s/scoreboards" % gid.uri_encode()
+	_make_http_request(url, HTTPClient.METHOD_GET, {}, "list_scoreboards")
+	_log("Scoreboards list requested for game: %s" % gid)
+
+## Get a specific scoreboard's entries
+## Emits: scoreboard_loaded(scoreboard_id, config, entries)
+## @param scoreboard_id - e.g. "weekly", "all-time", "daily"
+## @param limit - max entries to return (1-1000)
+func get_scoreboard(scoreboard_id: String, limit: int = 100, for_game_id: String = "") -> void:
+	var gid = for_game_id if for_game_id != "" else game_id
+	if gid.is_empty():
+		scoreboard_error.emit("Game ID not set. Call set_game_id() first.")
+		return
+	
+	var url = "/games/%s/scoreboards/%s?limit=%d" % [gid.uri_encode(), scoreboard_id.uri_encode(), limit]
+	_make_http_request(url, HTTPClient.METHOD_GET, {}, "get_scoreboard", {"scoreboard_id": scoreboard_id})
+	_log("Scoreboard '%s' requested (limit: %d)" % [scoreboard_id, limit])
+
+## Get current player's rank on a specific scoreboard
+## Emits: scoreboard_rank_loaded(scoreboard_id, rank, score, streak, total)
+func get_scoreboard_rank(scoreboard_id: String, for_game_id: String = "") -> void:
+	var gid = for_game_id if for_game_id != "" else game_id
+	if gid.is_empty():
+		scoreboard_error.emit("Game ID not set. Call set_game_id() first.")
+		return
+	
+	if _session_token.is_empty():
+		scoreboard_error.emit("Session token required for rank lookup")
+		return
+	
+	var url = "/games/%s/scoreboards/%s/rank" % [gid.uri_encode(), scoreboard_id.uri_encode()]
+	_make_http_request(url, HTTPClient.METHOD_GET, {}, "scoreboard_rank", {"scoreboard_id": scoreboard_id})
+	_log("Scoreboard rank requested for '%s'" % scoreboard_id)
+
+## Convenience: Get weekly leaderboard
+func get_weekly_leaderboard(limit: int = 100, for_game_id: String = "") -> void:
+	get_scoreboard("weekly-scoreboard", limit, for_game_id)
+
+## Convenience: Get daily leaderboard
+func get_daily_leaderboard(limit: int = 100, for_game_id: String = "") -> void:
+	get_scoreboard("daily", limit, for_game_id)
+
+## Convenience: Get all-time leaderboard
+func get_alltime_leaderboard(limit: int = 100, for_game_id: String = "") -> void:
+	get_scoreboard("all-time-new", limit, for_game_id)
+
+## Convenience: Get monthly leaderboard
+func get_monthly_leaderboard(limit: int = 100, for_game_id: String = "") -> void:
+	get_scoreboard("monthly", limit, for_game_id)
+
+# ============================================================
+# PUBLIC API - SCOREBOARD ARCHIVES (NEW v1.4.0)
+# ============================================================
+
+## Get list of available archives for a scoreboard
+## Emits: archives_list_loaded(scoreboard_id, archives: Array)
+## Each archive: {archiveId, scoreboardId, periodStart, periodEnd, entryCount, topPlayer, topScore}
+func get_scoreboard_archives(scoreboard_id: String, for_game_id: String = "") -> void:
+	var gid = for_game_id if for_game_id != "" else game_id
+	if gid.is_empty():
+		archive_error.emit("Game ID not set. Call set_game_id() first.")
+		return
+	
+	var url = "/games/%s/scoreboards/%s/archives" % [gid.uri_encode(), scoreboard_id.uri_encode()]
+	_make_http_request(url, HTTPClient.METHOD_GET, {}, "list_archives", {"scoreboard_id": scoreboard_id})
+	_log("Archives list requested for '%s'" % scoreboard_id)
+
+## Get the most recent archived scoreboard (e.g., "last week's results")
+## Emits: archived_scoreboard_loaded(archive_id, config, entries)
+## Config includes: name, period, sortBy, periodStart, periodEnd
+func get_last_archived_scoreboard(scoreboard_id: String, limit: int = 100, for_game_id: String = "") -> void:
+	var gid = for_game_id if for_game_id != "" else game_id
+	if gid.is_empty():
+		archive_error.emit("Game ID not set. Call set_game_id() first.")
+		return
+	
+	var url = "/games/%s/scoreboards/%s/archives/latest?limit=%d" % [gid.uri_encode(), scoreboard_id.uri_encode(), limit]
+	_make_http_request(url, HTTPClient.METHOD_GET, {}, "get_last_archive", {"scoreboard_id": scoreboard_id})
+	_log("Last archive requested for '%s'" % scoreboard_id)
+
+## Get a specific archived scoreboard by its archive ID
+## Emits: archived_scoreboard_loaded(archive_id, config, entries)
+## Archive ID format: "gameId:scoreboardId:timestamp"
+func get_archived_scoreboard(archive_id: String, limit: int = 100) -> void:
+	var url = "/archives/%s?limit=%d" % [archive_id.uri_encode(), limit]
+	_make_http_request(url, HTTPClient.METHOD_GET, {}, "get_archive", {"archive_id": archive_id})
+	_log("Archive '%s' requested" % archive_id)
+
+## Get archives within a specific date range
+## Emits: archives_list_loaded(scoreboard_id, archives: Array)
+## @param after_timestamp - Unix timestamp in milliseconds (start of range)
+## @param before_timestamp - Unix timestamp in milliseconds (end of range)
+func get_archives_in_range(scoreboard_id: String, after_timestamp: int, before_timestamp: int, for_game_id: String = "") -> void:
+	var gid = for_game_id if for_game_id != "" else game_id
+	if gid.is_empty():
+		archive_error.emit("Game ID not set. Call set_game_id() first.")
+		return
+	
+	var url = "/games/%s/scoreboards/%s/archives?after=%d&before=%d" % [
+		gid.uri_encode(), 
+		scoreboard_id.uri_encode(), 
+		after_timestamp, 
+		before_timestamp
+	]
+	_make_http_request(url, HTTPClient.METHOD_GET, {}, "list_archives", {"scoreboard_id": scoreboard_id})
+	_log("Archives in range requested for '%s'" % scoreboard_id)
+
+## Get archive statistics for a game
+## Emits: archive_stats_loaded(total_archives, by_scoreboard: Array)
+func get_archive_stats(for_game_id: String = "") -> void:
+	var gid = for_game_id if for_game_id != "" else game_id
+	if gid.is_empty():
+		archive_error.emit("Game ID not set. Call set_game_id() first.")
+		return
+	
+	var url = "/games/%s/archives/stats" % gid.uri_encode()
+	_make_http_request(url, HTTPClient.METHOD_GET, {}, "archive_stats")
+	_log("Archive stats requested for game: %s" % gid)
+
+## Convenience: Get last week's scoreboard
+func get_last_week_scoreboard(limit: int = 100, for_game_id: String = "") -> void:
+	get_last_archived_scoreboard("weekly", limit, for_game_id)
+
+## Convenience: Get last month's scoreboard  
+func get_last_month_scoreboard(limit: int = 100, for_game_id: String = "") -> void:
+	get_last_archived_scoreboard("monthly", limit, for_game_id)
+
+## Convenience: Get yesterday's scoreboard
+func get_yesterday_scoreboard(limit: int = 100, for_game_id: String = "") -> void:
+	get_last_archived_scoreboard("daily", limit, for_game_id)
 
 # ============================================================
 # PUBLIC API - ACHIEVEMENTS
 # ============================================================
 
-## Unlock a single achievement
 func unlock_achievement(achievement_id: String, achievement_name: String = "", achievement_desc: String = "") -> void:
 	if _is_web:
 		if not _init_complete:
@@ -1031,7 +1159,6 @@ func unlock_achievement(achievement_id: String, achievement_name: String = "", a
 		JavaScriptBridge.eval(js_code, true)
 		_log("Achievement unlock: %s" % achievement_name)
 	else:
-		# Native: Use HTTP API
 		var body = {
 			"playerId": get_player_id(),
 			"achievementId": achievement_id
@@ -1039,11 +1166,9 @@ func unlock_achievement(achievement_id: String, achievement_name: String = "", a
 		_make_http_request("/achievements", HTTPClient.METHOD_POST, body, "unlock_achievement")
 		_log("Achievement unlock (HTTP): %s" % achievement_id)
 
-## Get all achievements for a player
 func get_achievements(player_id: String = "") -> void:
 	var pid = player_id if player_id != "" else get_player_id()
 	if _is_web:
-		# Web: achievements come with profile
 		refresh_profile()
 	else:
 		var url = "/players/%s/achievements" % pid.uri_encode()
@@ -1060,7 +1185,6 @@ func submit_score_with_achievements(score: int, streak: int, achievements: Array
 		return
 	_is_submitting_score = true
 	
-	# Build achievement IDs array
 	var ach_ids: Array = []
 	for ach in achievements:
 		if typeof(ach) == TYPE_STRING:
@@ -1070,7 +1194,6 @@ func submit_score_with_achievements(score: int, streak: int, achievements: Array
 			if ach_id != "":
 				ach_ids.append(ach_id)
 	
-	# Anonymous users (web or native): just submit score via HTTP, skip achievements for now
 	if is_anonymous():
 		_log("Anonymous user - submitting score only (achievements disabled)")
 		var score_body = {
@@ -1082,7 +1205,6 @@ func submit_score_with_achievements(score: int, streak: int, achievements: Array
 		_make_http_request("/scores", HTTPClient.METHOD_POST, score_body, "submit_score")
 		return
 	
-	# Authenticated web: use JS bridge with achievements
 	if _is_web:
 		_log("Submitting score with %d achievements" % ach_ids.size())
 		var ach_json = JSON.stringify(ach_ids)
@@ -1091,7 +1213,6 @@ func submit_score_with_achievements(score: int, streak: int, achievements: Array
 		JavaScriptBridge.eval(js_code, true)
 		return
 	
-	# Authenticated native: use HTTP with achievements
 	_log("Submitting score with %d achievements (HTTP)" % ach_ids.size())
 	for ach_id in ach_ids:
 		var body = {
@@ -1107,11 +1228,11 @@ func submit_score_with_achievements(score: int, streak: int, achievements: Array
 		"nickname": _nickname if _nickname != "" else _get_default_nickname()
 	}
 	_make_http_request("/scores", HTTPClient.METHOD_POST, score_body, "submit_score")
+
 # ============================================================
 # PUBLIC API - ANALYTICS
 # ============================================================
 
-## Track a custom event (for analytics)
 func track_event(event_type: String, metadata: Dictionary = {}) -> void:
 	if _is_web:
 		if not _init_complete:
@@ -1125,24 +1246,20 @@ func track_event(event_type: String, metadata: Dictionary = {}) -> void:
 		JavaScriptBridge.eval(js_code, true)
 		_log("Event tracked: %s" % event_type)
 	else:
-		# Native: Could implement event tracking endpoint
 		_log("Event tracked (local): %s" % event_type)
 
 # ============================================================
-# PUBLIC API - GAME INFO (Native HTTP API)
+# PUBLIC API - GAME INFO
 # ============================================================
 
-## Get game info
 func get_game_info() -> void:
 	if _is_native:
 		_make_http_request("/game", HTTPClient.METHOD_GET, {}, "game_info")
 
-## Get game statistics
 func get_game_stats() -> void:
 	if _is_native:
 		_make_http_request("/game/stats", HTTPClient.METHOD_GET, {}, "game_stats")
 
-## Health check - verify API connection
 func health_check() -> void:
 	if _is_native:
 		_make_http_request("/health", HTTPClient.METHOD_GET, {}, "health")
@@ -1151,7 +1268,6 @@ func health_check() -> void:
 # HELPER FUNCTIONS
 # ============================================================
 
-## Force check for pending events or auth status (Web only)
 func force_check_events() -> void:
 	if not _is_web or _is_checking_auth or not _init_complete:
 		return
@@ -1174,7 +1290,6 @@ func force_check_events() -> void:
 
 	_is_checking_auth = false
 
-## Get profile data directly from JavaScript cache (Web only)
 func _get_profile_from_js() -> Dictionary:
 	if not _is_web or not _init_complete:
 		return {}
@@ -1193,23 +1308,25 @@ func _get_profile_from_js() -> Dictionary:
 		return json.data
 	return {}
 
-## Print debug information to console
 func debug_status() -> void:
 	print("")
 	print("╔══════════════════════════════════════════════╗")
-	print("║        CheddaBoards Debug Status v1.2.1      ║")
+	print("║        CheddaBoards Debug Status v1.4.0      ║")
 	print("╠══════════════════════════════════════════════╣")
 	print("║ Environment                                  ║")
 	print("║  - Platform:         %s" % ("Web" if _is_web else "Native").rpad(24) + "║")
 	print("║  - Init Complete:    %s" % str(_init_complete).rpad(24) + "║")
 	print("║  - Init Attempts:    %s" % str(_init_attempts).rpad(24) + "║")
 	print("╠══════════════════════════════════════════════╣")
+	print("║ Configuration                                ║")
+	print("║  - Game ID:          %s" % game_id.left(20).rpad(24) + "║")
+	print("║  - API Key Set:      %s" % str(not api_key.is_empty()).rpad(24) + "║")
+	print("║  - Session Token:    %s" % str(not _session_token.is_empty()).rpad(24) + "║")
+	print("╠══════════════════════════════════════════════╣")
 	print("║ Authentication                               ║")
 	print("║  - Authenticated:    %s" % str(is_authenticated()).rpad(24) + "║")
 	print("║  - Auth Type:        %s" % _auth_type.rpad(24) + "║")
-	if _is_native:
-		print("║  - API Key Set:      %s" % str(not api_key.is_empty()).rpad(24) + "║")
-		print("║  - Player ID:        %s" % get_player_id().left(20).rpad(24) + "║")
+	print("║  - Player ID:        %s" % get_player_id().left(20).rpad(24) + "║")
 	print("╠══════════════════════════════════════════════╣")
 	print("║ Profile                                      ║")
 	print("║  - Nickname:         %s" % get_nickname().rpad(24) + "║")
@@ -1220,7 +1337,8 @@ func debug_status() -> void:
 	print("║  - Checking Auth:    %s" % str(_is_checking_auth).rpad(24) + "║")
 	print("║  - Refreshing:       %s" % str(_is_refreshing_profile).rpad(24) + "║")
 	print("║  - Submitting:       %s" % str(_is_submitting_score).rpad(24) + "║")
-	print("║  - Login Timeout:    %s" % str(_login_timeout_timer != null).rpad(24) + "║")
+	print("║  - HTTP Busy:        %s" % str(_http_busy).rpad(24) + "║")
+	print("║  - Queue Size:       %s" % str(_request_queue.size()).rpad(24) + "║")
 	print("╚══════════════════════════════════════════════╝")
 
 	if _is_web:
@@ -1243,7 +1361,6 @@ func debug_status() -> void:
 # ============================================================
 
 func _exit_tree() -> void:
-	"""Clean up timers on exit"""
 	if _poll_timer:
 		_poll_timer.stop()
 		_poll_timer.queue_free()
