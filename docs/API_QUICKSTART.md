@@ -142,7 +142,7 @@ func _on_archive_loaded(archive_id, config, entries):
 CheddaBoards.change_nickname()
 
 # Change to specific name
-CheddaBoards.change_nickname_to("NewName")
+CheddaBoards.change_nickname("NewName")
 ```
 
 ---
