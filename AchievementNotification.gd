@@ -88,7 +88,7 @@ func _show_next():
 	var achievement = queue.pop_front()
 	
 	# Update UI
-	name_label.text = "🏆 " + achievement.name
+	name_label.text = achievement.name
 	description_label.text = achievement.description
 	
 	# Load icon if available
