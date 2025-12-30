@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.0] - 2025-12-30
+
+### Time-Based Scoreboards, Archives & Level System
+
+### Added
+
+#### Scoreboard Archives
+- `get_scoreboard_archives(scoreboard_id)` - List all archived periods
+- `get_last_archived_scoreboard(scoreboard_id, limit)` - Get last week/month results
+- `get_archived_scoreboard(archive_id, limit)` - Get specific archive
+- `get_archives_in_range(scoreboard_id, after, before)` - Query date range
+- Signals: `archives_list_loaded`, `archived_scoreboard_loaded`, `archive_error`
+
+#### Leaderboard UI Updates
+- All Time / Weekly toggle buttons
+- Current / Last Period archive viewing
+- Archive winner highlight (gold + 👑)
+- Date range display for archived periods
+
+#### Level System
+- 5 score-based levels (1000/2500/5000/8000 pts)
+- Time extensions: +0.15s per hit, +3s per level up, 45s cap
+- Level achievements: `level_2`, `level_3`, `level_4`, `level_5`, `level_5_fast`
+- `check_level()` function in Achievements.gd
+
+### Changed
+
+- `change_nickname()` shows JS prompt on web if no argument provided
+- Leaderboard.gd updated to v1.4.0
+- Leaderboard.tscn updated with TimeContainer and PeriodContainer
+
+---
+
 ## [1.2.2] - 2025-12-27
 
 ### Fixed
@@ -329,6 +362,7 @@ First public release of the CheddaBoards Godot 4 Template.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| **v1.3.0** | 2025-12-30 | Time-based scoreboards, archives, level system |
 | **v1.2.2** | 2025-12-27 | Unique default nicknames fix |
 | **v1.2.1** | 2025-12-18 | Native platform support, HTTP REST API, API key auth |
 | **v1.2.0** | 2025-12-15 | Anonymous play with device ID, play without login |
@@ -338,6 +372,13 @@ First public release of the CheddaBoards Godot 4 Template.
 ---
 
 ## Upgrade Guide
+
+### From v1.2.2 to v1.3.0
+
+1. **Update CheddaBoards.gd** - Replace with new version (adds archive functions)
+2. **Update Leaderboard.gd** - Replace with v1.4.0 (adds time period & archive UI)
+3. **Update Leaderboard.tscn** - Replace with new version (adds button containers)
+4. **Configure scoreboard IDs** in Leaderboard.gd constants to match your backend
 
 ### From v1.2.1 to v1.2.2
 
@@ -350,12 +391,11 @@ First public release of the CheddaBoards Godot 4 Template.
 
 2. **For Native builds, set API key**:
    ```gdscript
-   # Option A: In CheddaBoards.gd directly
+   # In CheddaBoards.gd
    var api_key: String = "cb_your_api_key_here"
    
-   # Option B: At runtime
-   func _ready():
-       CheddaBoards.set_api_key("cb_your_api_key_here")
+   # Or at runtime
+   CheddaBoards.set_api_key("cb_your_api_key_here")
    ```
 
 3. **Fix high-DPI click offset** (if affected):
@@ -426,7 +466,7 @@ First public release of the CheddaBoards Godot 4 Template.
    - Change Custom HTML Shell to `res://template.html`
    - Always export as `index.html`
 
-### From Nothing to v1.2.2
+### From Nothing to v1.3.0
 
 1. Download/clone from GitHub
 2. Copy `addons/cheddaboards/` folder to your project
