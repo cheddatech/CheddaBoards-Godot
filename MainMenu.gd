@@ -927,7 +927,7 @@ func _test_submit_bulk_scores(count: int = 5):
 	_set_status("Submitting %d test scores..." % count, false)
 	
 	for i in count:
-		await get_tree().create_timer(0.3).timeout
+		await get_tree().create_timer(2.0).timeout
 		_test_submit_random_score()
 	
 	_log("TEST: Bulk submission complete")
