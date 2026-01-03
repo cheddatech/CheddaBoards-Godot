@@ -1,4 +1,4 @@
-# CheddaBoards.gd v1.4.0
+# CheddaBoards.gd v1.4.1
 # CheddaBoards integration for Godot 4.x
 # https://github.com/cheddatech/CheddaBoards-Godot
 # https://cheddaboards.com
@@ -118,6 +118,13 @@ var _last_response_check: float = 0.0
 var _last_profile_refresh: float = 0.0
 
 # ============================================================
+# PENDING SCORE SUBMISSION VALUES
+# ============================================================
+
+var _pending_score: int = 0
+var _pending_streak: int = 0
+
+# ============================================================
 # TIMEOUT MANAGEMENT
 # ============================================================
 
@@ -155,13 +162,11 @@ func _ready() -> void:
 	_setup_http_client()
 	
 	if _is_web:
-		_log("Initializing CheddaBoards v1.4.0 (Web Mode)...")
+		_log("Initializing CheddaBoards v1.4.1 (Web Mode)...")
 		_start_polling()
 		_check_chedda_ready()
 	else:
-		_log("Initializing CheddaBoards v1.4.0 (Native/HTTP API Mode)...")
-		var pid = get_player_id()
-		_log("Device player ID: %s" % pid)
+		_log("Initializing CheddaBoards v1.4.1 (Native/HTTP API Mode)...")
 		_init_complete = true
 		call_deferred("_emit_sdk_ready")
 
@@ -294,10 +299,9 @@ func _handle_web_response(response: Dictionary) -> void:
 			_is_submitting_score = false
 			_log("submitScore response received - success: %s" % success)
 			if success:
-				var scored: int = int(response.get("score", 0))
-				var streakd: int = int(response.get("streak", 0))
-				_log("Score submitted successfully: %d points, %d streak" % [scored, streakd])
-				score_submitted.emit(scored, streakd)
+				# Use pending values we stored before the request
+				_log("Score submitted successfully: %d points, %d streak" % [_pending_score, _pending_streak])
+				score_submitted.emit(_pending_score, _pending_streak)
 				if response.has("profile"):
 					var p: Dictionary = response.get("profile")
 					_update_cached_profile(p)
@@ -393,9 +397,9 @@ func _emit_http_success(data) -> void:
 	match _current_endpoint:
 		"submit_score":
 			_is_submitting_score = false
-			var score_val = int(data.get("score", 0))
-			var streak_val = int(data.get("streak", 0))
-			score_submitted.emit(score_val, streak_val)
+			# Use the pending values we stored before the request
+			_log("Score submission successful: %d points, %d streak" % [_pending_score, _pending_streak])
+			score_submitted.emit(_pending_score, _pending_streak)
 		
 		"leaderboard":
 			var entries = data.get("leaderboard", [])
@@ -677,9 +681,19 @@ func _get_default_nickname() -> String:
 	return "Player_" + get_player_id().left(6)
 
 func get_nickname() -> String:
-	if _cached_profile.is_empty():
-		return _nickname if _nickname != "" else _get_default_nickname()
-	return str(_cached_profile.get("nickname", _get_default_nickname()))
+	if _nickname != "" and not _nickname.begins_with("Player_p_"):
+		return _nickname
+	
+	if not _cached_profile.is_empty():
+		var profile_nick = str(_cached_profile.get("nickname", ""))
+		if profile_nick != "" and not profile_nick.begins_with("Player_p_"):
+			return profile_nick
+	
+	if _nickname != "":
+		return _nickname
+	
+	# Fallback: Generate default (only if nothing else set)
+	return _get_default_nickname()
 
 func get_high_score() -> int:
 	if _cached_profile.is_empty():
@@ -716,19 +730,26 @@ func set_session_token(token: String) -> void:
 func set_player_id(player_id: String) -> void:
 	_player_id = _sanitize_player_id(player_id)
 	_log("Player ID set: %s" % _player_id)
+	# Note: Don't reset _nickname here - MainMenu sets it separately
 
 func get_player_id() -> String:
-	if _player_id.is_empty():
-		if _is_web:
-			var js_device_id = JavaScriptBridge.eval("window.deviceId || ''", true)
-			if js_device_id and str(js_device_id) != "":
-				_player_id = _sanitize_player_id(str(js_device_id))
-			else:
-				_player_id = "player_" + str(randi() % 1000000000)
+	# If already set (by MainMenu), return it
+	if not _player_id.is_empty():
+		return _player_id
+	
+	# Only auto-generate if actually needed and not set by MainMenu
+	if _is_web:
+		var js_device_id = JavaScriptBridge.eval("window.deviceId || ''", true)
+		if js_device_id and str(js_device_id) != "":
+			_player_id = _sanitize_player_id(str(js_device_id))
 		else:
-			var raw_id = OS.get_unique_id()
-			_player_id = _sanitize_player_id(raw_id)
-		_log("Generated player ID: %s" % _player_id)
+			_player_id = "player_" + str(randi() % 1000000000)
+	else:
+		# Generate a temporary ID - MainMenu should override this
+		randomize()
+		_player_id = "p_" + str(Time.get_unix_time_from_system()) + "_" + str(randi() % 10000)
+	
+	_log("Generated player ID: %s" % _player_id)
 	return _player_id
 
 func _sanitize_player_id(raw_id: String) -> String:
@@ -923,16 +944,19 @@ func submit_score(score: int, streak: int = 0) -> void:
 		return
 	
 	_is_submitting_score = true
+	_pending_score = score
+	_pending_streak = streak
 	
 	if is_anonymous() or _is_native:
 		var body = {
 			"playerId": get_player_id(),
+			"gameId": game_id,
 			"score": score,
 			"streak": streak,
 			"nickname": _nickname if _nickname != "" else _get_default_nickname()
 		}
+		_log("Submitting: score=%d, streak=%d, nickname=%s, gameId=%s, playerId=%s" % [score, streak, body.nickname, game_id, body.playerId])
 		_make_http_request("/scores", HTTPClient.METHOD_POST, body, "submit_score")
-		_log("Score submitted (HTTP): %d points, %d streak" % [score, streak])
 		return
 	
 	if _is_web:
@@ -1184,6 +1208,8 @@ func submit_score_with_achievements(score: int, streak: int, achievements: Array
 		_log("Score submission already in progress")
 		return
 	_is_submitting_score = true
+	_pending_score = score
+	_pending_streak = streak
 	
 	var ach_ids: Array = []
 	for ach in achievements:
@@ -1198,10 +1224,12 @@ func submit_score_with_achievements(score: int, streak: int, achievements: Array
 		_log("Anonymous user - submitting score only (achievements disabled)")
 		var score_body = {
 			"playerId": get_player_id(),
+			"gameId": game_id,
 			"score": score,
 			"streak": streak,
 			"nickname": _nickname if _nickname != "" else _get_default_nickname()
 		}
+		_log("Submitting: score=%d, streak=%d, nickname=%s, gameId=%s, playerId=%s" % [score, streak, score_body.nickname, game_id, score_body.playerId])
 		_make_http_request("/scores", HTTPClient.METHOD_POST, score_body, "submit_score")
 		return
 	
@@ -1223,10 +1251,12 @@ func submit_score_with_achievements(score: int, streak: int, achievements: Array
 	
 	var score_body = {
 		"playerId": get_player_id(),
+		"gameId": game_id,
 		"score": score,
 		"streak": streak,
 		"nickname": _nickname if _nickname != "" else _get_default_nickname()
 	}
+	_log("Submitting: score=%d, streak=%d, nickname=%s, gameId=%s, playerId=%s" % [score, streak, score_body.nickname, game_id, score_body.playerId])
 	_make_http_request("/scores", HTTPClient.METHOD_POST, score_body, "submit_score")
 
 # ============================================================
@@ -1311,7 +1341,7 @@ func _get_profile_from_js() -> Dictionary:
 func debug_status() -> void:
 	print("")
 	print("╔══════════════════════════════════════════════╗")
-	print("║        CheddaBoards Debug Status v1.4.0      ║")
+	print("║        CheddaBoards Debug Status v1.4.1      ║")
 	print("╠══════════════════════════════════════════════╣")
 	print("║ Environment                                  ║")
 	print("║  - Platform:         %s" % ("Web" if _is_web else "Native").rpad(24) + "║")
@@ -1339,6 +1369,8 @@ func debug_status() -> void:
 	print("║  - Submitting:       %s" % str(_is_submitting_score).rpad(24) + "║")
 	print("║  - HTTP Busy:        %s" % str(_http_busy).rpad(24) + "║")
 	print("║  - Queue Size:       %s" % str(_request_queue.size()).rpad(24) + "║")
+	print("║  - Pending Score:    %s" % str(_pending_score).rpad(24) + "║")
+	print("║  - Pending Streak:   %s" % str(_pending_streak).rpad(24) + "║")
 	print("╚══════════════════════════════════════════════╝")
 
 	if _is_web:
