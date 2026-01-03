@@ -1,13 +1,14 @@
 @tool
 extends EditorScript
 
-# CheddaBoards Ultimate Setup Wizard v2.3
+# CheddaBoards Ultimate Setup Wizard v2.4
 # Run via: File → Run (or Ctrl+Shift+X)
 # Performs all checks, auto-fixes, AND interactive configuration!
 #
-# v2.3 Changes:
-# - Game ID now syncs to BOTH template.html AND CheddaBoards.gd
-# - Added mismatch detection between web and native Game IDs
+# v2.4 Changes:
+# - Added Google Client ID configuration
+# - Added Apple Service ID and Redirect URI configuration
+# - All OAuth credentials sync to template.html
 
 const TEMPLATE_HTML_PATH = "res://template.html"
 const PROJECT_GODOT_PATH = "res://project.godot"
@@ -32,6 +33,7 @@ func _run():
 	_check_required_files()
 	_check_api_key()
 	_check_game_id_sync()
+	_check_oauth_config()
 	_check_cheddaboards_config()
 	_check_project_settings()
 	_check_export_preset()
@@ -40,7 +42,7 @@ func _run():
 	# Print summary
 	_print_summary()
 	
-	# Interactive configuration (Game ID + API Key)
+	# Interactive configuration (Game ID + API Key + OAuth)
 	_interactive_config()
 	
 	# Print next steps
@@ -53,7 +55,7 @@ func _run():
 func _print_header():
 	print("")
 	print("╔══════════════════════════════════════════════════════════════╗")
-	print("║         🧀 CheddaBoards Ultimate Setup Wizard v2.3          ║")
+	print("║         🧀 CheddaBoards Ultimate Setup Wizard v2.4          ║")
 	print("║                                                              ║")
 	print("║  Automated checks • Auto-fixes • Configuration validation   ║")
 	print("╚══════════════════════════════════════════════════════════════╝")
@@ -102,15 +104,20 @@ func _print_next_steps():
 	print("     • Create a game → Get your Game ID")
 	print("     • Generate API Key → Get your API Key")
 	print("")
-	print("  2. Run this wizard again to enter your credentials")
+	print("  2. Optional: Set up OAuth providers")
+	print("     • Google: https://console.cloud.google.com/")
+	print("     • Apple: https://developer.apple.com/")
+	print("")
+	print("  3. Run this wizard again to enter your credentials")
 	print("     • Game ID updates BOTH template.html and CheddaBoards.gd")
 	print("     • API Key updates CheddaBoards.gd")
+	print("     • OAuth credentials update template.html")
 	print("")
-	print("  3. Export & Test:")
+	print("  4. Export & Test:")
 	print("     • Web: Project → Export → Web → Export Project")
 	print("     • Native: Just export! API key handles auth")
 	print("")
-	print("  4. Test locally (web):")
+	print("  5. Test locally (web):")
 	print("     • cd to export folder")
 	print("     • python3 -m http.server 8000")
 	print("     • Open http://localhost:8000")
@@ -253,6 +260,36 @@ func _check_game_id_sync():
 	else:
 		print("   ✅ Game IDs match: '%s'" % web_game_id)
 
+func _check_oauth_config():
+	_print_section("OAuth Configuration (template.html)")
+	
+	var google_id = _get_google_client_id()
+	var apple_id = _get_apple_service_id()
+	var apple_redirect = _get_apple_redirect_uri()
+	
+	# Google
+	if google_id.is_empty():
+		print("   ℹ️  Google Sign-In: Not configured (optional)")
+	elif google_id.ends_with(".apps.googleusercontent.com"):
+		print("   ✅ Google Client ID: %s...%s" % [google_id.substr(0, 12), google_id.substr(-25)])
+	else:
+		print("   ⚠️  Google Client ID format may be wrong")
+		warnings.append("Google Client ID should end with .apps.googleusercontent.com")
+	
+	# Apple
+	if apple_id.is_empty():
+		print("   ℹ️  Apple Sign-In: Not configured (optional)")
+	else:
+		print("   ✅ Apple Service ID: %s" % apple_id)
+		if apple_redirect.is_empty():
+			print("   ⚠️  Apple Redirect URI not set (required for Apple Sign-In)")
+			warnings.append("Apple Redirect URI required when Apple Service ID is set")
+		elif apple_redirect.begins_with("https://"):
+			print("   ✅ Apple Redirect URI: %s" % apple_redirect)
+		else:
+			print("   ⚠️  Apple Redirect URI should start with https://")
+			warnings.append("Apple Redirect URI should use HTTPS")
+
 func _check_cheddaboards_config():
 	_print_section("CheddaBoards.gd Configuration")
 	
@@ -377,7 +414,7 @@ func _check_template_html():
 		errors.append("GAME_ID not found in template.html")
 	
 	# Check for SDK script inclusion
-	if "cheddaboards-sdk" in content or "sdk.js" in content:
+	if "cheddaboards" in content.to_lower():
 		print("   ✅ CheddaBoards SDK script included")
 	else:
 		print("   ⚠️  SDK script tag may be missing")
@@ -393,7 +430,7 @@ func _print_section(title: String):
 	print("│")
 
 # ============================================================
-# INTERACTIVE CONFIGURATION (Game ID + API Key)
+# INTERACTIVE CONFIGURATION (Game ID + API Key + OAuth)
 # ============================================================
 
 func _interactive_config():
@@ -401,13 +438,16 @@ func _interactive_config():
 	var web_game_id = _get_current_game_id()
 	var native_game_id = _get_native_game_id()
 	var current_api_key = _get_current_api_key()
+	var google_client_id = _get_google_client_id()
+	var apple_service_id = _get_apple_service_id()
+	var apple_redirect_uri = _get_apple_redirect_uri()
 	
 	# Use whichever game_id is set (prefer non-default)
 	var current_game_id = web_game_id
 	if web_game_id in ["catch-the-cheese", "test-game", ""] and native_game_id not in ["catch-the-cheese", "test-game", ""]:
 		current_game_id = native_game_id
 	elif native_game_id not in ["catch-the-cheese", "test-game", ""] and web_game_id != native_game_id:
-		current_game_id = native_game_id  # Prefer native if different
+		current_game_id = native_game_id
 	
 	# Show current config
 	print("")
@@ -425,12 +465,17 @@ func _interactive_config():
 	else:
 		print("   API Key (CheddaBoards.gd): %s***" % current_api_key.substr(0, min(15, current_api_key.length())))
 	print("")
+	print("   OAuth (template.html):")
+	print("      Google Client ID: %s" % ("Not set" if google_client_id.is_empty() else google_client_id.substr(0, 20) + "..."))
+	print("      Apple Service ID: %s" % ("Not set" if apple_service_id.is_empty() else apple_service_id))
+	print("      Apple Redirect:   %s" % ("Not set" if apple_redirect_uri.is_empty() else apple_redirect_uri))
+	print("")
 	
-	# Show popup to edit both
-	_show_config_dialog(current_game_id, current_api_key, web_game_id, native_game_id)
+	# Show popup to edit all
+	_show_config_dialog(current_game_id, current_api_key, web_game_id, native_game_id, google_client_id, apple_service_id, apple_redirect_uri)
 
-func _show_config_dialog(current_game_id: String, current_api_key: String, web_game_id: String, native_game_id: String):
-	"""Show a dialog to edit Game ID and API Key"""
+func _show_config_dialog(current_game_id: String, current_api_key: String, web_game_id: String, native_game_id: String, google_client_id: String, apple_service_id: String, apple_redirect_uri: String):
+	"""Show a dialog to edit Game ID, API Key, and OAuth credentials"""
 	var editor = get_editor_interface()
 	var base_control = editor.get_base_control()
 	
@@ -439,13 +484,18 @@ func _show_config_dialog(current_game_id: String, current_api_key: String, web_g
 	dialog.title = "🧀 CheddaBoards Configuration"
 	dialog.dialog_hide_on_ok = false
 	
+	# Create scroll container for longer content
+	var scroll = ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(550, 500)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	
 	# Create content
 	var vbox = VBoxContainer.new()
-	vbox.custom_minimum_size = Vector2(500, 0)
+	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	
 	# === GAME ID SECTION ===
 	var game_id_header = Label.new()
-	game_id_header.text = "Game ID (syncs to BOTH web & native)"
+	game_id_header.text = "🎮 Game ID (syncs to BOTH web & native)"
 	game_id_header.add_theme_font_size_override("font_size", 14)
 	vbox.add_child(game_id_header)
 	
@@ -466,20 +516,12 @@ func _show_config_dialog(current_game_id: String, current_api_key: String, web_g
 	game_id_input.placeholder_text = "my-game-id"
 	vbox.add_child(game_id_input)
 	
-	var game_id_note = Label.new()
-	game_id_note.text = "→ Updates both template.html AND CheddaBoards.gd"
-	game_id_note.add_theme_font_size_override("font_size", 10)
-	game_id_note.modulate = Color(0.5, 0.7, 0.5)
-	vbox.add_child(game_id_note)
-	
 	# Spacer
-	var spacer1 = Control.new()
-	spacer1.custom_minimum_size = Vector2(0, 15)
-	vbox.add_child(spacer1)
+	vbox.add_child(_create_spacer(15))
 	
 	# === API KEY SECTION ===
 	var api_key_header = Label.new()
-	api_key_header.text = "API Key (for native + anonymous play)"
+	api_key_header.text = "🔑 API Key (for native + anonymous play)"
 	api_key_header.add_theme_font_size_override("font_size", 14)
 	vbox.add_child(api_key_header)
 	
@@ -498,13 +540,76 @@ func _show_config_dialog(current_game_id: String, current_api_key: String, web_g
 	vbox.add_child(api_key_input)
 	
 	# Spacer
-	var spacer2 = Control.new()
-	spacer2.custom_minimum_size = Vector2(0, 10)
-	vbox.add_child(spacer2)
+	vbox.add_child(_create_spacer(20))
+	
+	# === OAUTH SECTION HEADER ===
+	var oauth_header = Label.new()
+	oauth_header.text = "━━━ OAuth Providers (Optional) ━━━"
+	oauth_header.add_theme_font_size_override("font_size", 12)
+	oauth_header.modulate = Color(0.8, 0.8, 0.8)
+	oauth_header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(oauth_header)
+	
+	vbox.add_child(_create_spacer(10))
+	
+	# === GOOGLE SECTION ===
+	var google_header = Label.new()
+	google_header.text = "🔷 Google Sign-In"
+	google_header.add_theme_font_size_override("font_size", 14)
+	vbox.add_child(google_header)
+	
+	var google_help = Label.new()
+	google_help.text = "Get from: console.cloud.google.com → APIs & Services → Credentials"
+	google_help.add_theme_font_size_override("font_size", 10)
+	google_help.modulate = Color(0.6, 0.6, 0.6)
+	vbox.add_child(google_help)
+	
+	var google_input = LineEdit.new()
+	google_input.text = google_client_id
+	google_input.placeholder_text = "123456789-xxxxxxxx.apps.googleusercontent.com"
+	vbox.add_child(google_input)
+	
+	# Spacer
+	vbox.add_child(_create_spacer(15))
+	
+	# === APPLE SECTION ===
+	var apple_header = Label.new()
+	apple_header.text = "🍎 Apple Sign-In"
+	apple_header.add_theme_font_size_override("font_size", 14)
+	vbox.add_child(apple_header)
+	
+	var apple_help = Label.new()
+	apple_help.text = "Get from: developer.apple.com → Certificates, IDs & Profiles → Services IDs"
+	apple_help.add_theme_font_size_override("font_size", 10)
+	apple_help.modulate = Color(0.6, 0.6, 0.6)
+	vbox.add_child(apple_help)
+	
+	var apple_id_label = Label.new()
+	apple_id_label.text = "Service ID:"
+	apple_id_label.add_theme_font_size_override("font_size", 11)
+	vbox.add_child(apple_id_label)
+	
+	var apple_id_input = LineEdit.new()
+	apple_id_input.text = apple_service_id
+	apple_id_input.placeholder_text = "com.yourdomain.yourapp"
+	vbox.add_child(apple_id_input)
+	
+	var apple_redirect_label = Label.new()
+	apple_redirect_label.text = "Redirect URI:"
+	apple_redirect_label.add_theme_font_size_override("font_size", 11)
+	vbox.add_child(apple_redirect_label)
+	
+	var apple_redirect_input = LineEdit.new()
+	apple_redirect_input.text = apple_redirect_uri
+	apple_redirect_input.placeholder_text = "https://yourdomain.com/auth/apple"
+	vbox.add_child(apple_redirect_input)
+	
+	# Spacer
+	vbox.add_child(_create_spacer(15))
 	
 	# Help text
 	var help = Label.new()
-	help.text = "💡 Get both at cheddaboards.com/dashboard\n   1. Register/sign in\n   2. Create a game → Copy Game ID\n   3. Generate API Key → Copy API Key"
+	help.text = "💡 Get Game ID & API Key at cheddaboards.com/dashboard\n   OAuth providers are optional - Chedda/II always works!"
 	help.add_theme_font_size_override("font_size", 11)
 	help.modulate = Color(0.6, 0.8, 0.6)
 	vbox.add_child(help)
@@ -513,9 +618,11 @@ func _show_config_dialog(current_game_id: String, current_api_key: String, web_g
 	var status = Label.new()
 	status.text = ""
 	status.add_theme_color_override("font_color", Color.RED)
+	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	vbox.add_child(status)
 	
-	dialog.add_child(vbox)
+	scroll.add_child(vbox)
+	dialog.add_child(scroll)
 	
 	# Add cancel button
 	dialog.add_cancel_button("Cancel")
@@ -525,6 +632,9 @@ func _show_config_dialog(current_game_id: String, current_api_key: String, web_g
 	dialog.confirmed.connect(func():
 		var new_game_id = game_id_input.text.strip_edges()
 		var new_api_key = api_key_input.text.strip_edges()
+		var new_google_id = google_input.text.strip_edges()
+		var new_apple_id = apple_id_input.text.strip_edges()
+		var new_apple_redirect = apple_redirect_input.text.strip_edges()
 		
 		var had_error = false
 		var changes_made = false
@@ -544,35 +654,42 @@ func _show_config_dialog(current_game_id: String, current_api_key: String, web_g
 			status.text = "❌ Game ID cannot be empty"
 			had_error = true
 		
+		# Validate Google Client ID format (if provided)
+		if not had_error and not new_google_id.is_empty():
+			if not new_google_id.ends_with(".apps.googleusercontent.com"):
+				status.text = "❌ Google Client ID should end with .apps.googleusercontent.com"
+				had_error = true
+		
+		# Validate Apple config (if provided)
+		if not had_error and not new_apple_id.is_empty():
+			if new_apple_redirect.is_empty():
+				status.text = "❌ Apple Redirect URI required when Service ID is set"
+				had_error = true
+			elif not new_apple_redirect.begins_with("https://"):
+				status.text = "❌ Apple Redirect URI must start with https://"
+				had_error = true
+		
 		# Save Game ID to BOTH files if valid and changed
 		if not had_error:
-			var web_changed = false
-			var native_changed = false
-			
-			# Update template.html if different
+			# Update template.html Game ID
 			if new_game_id != web_game_id:
 				if _set_game_id(new_game_id):
-					web_changed = true
+					changes_made = true
 				else:
 					status.text = "❌ Failed to save Game ID to template.html"
 					had_error = true
 			
-			# Update CheddaBoards.gd if different
+			# Update CheddaBoards.gd Game ID
 			if not had_error and new_game_id != native_game_id:
 				if _set_native_game_id(new_game_id):
-					native_changed = true
+					changes_made = true
 				else:
 					status.text = "❌ Failed to save Game ID to CheddaBoards.gd"
 					had_error = true
-			
-			if web_changed or native_changed:
-				changes_made = true
-				print("   ✅ Game ID synced to both files: '%s'" % new_game_id)
 		
-		# Validate and save API Key
+		# Save API Key
 		if not had_error and new_api_key != current_api_key:
 			if new_api_key.is_empty():
-				# Empty is OK - just means no API key
 				if _set_api_key(""):
 					changes_made = true
 			elif not new_api_key.begins_with("cb_"):
@@ -582,6 +699,30 @@ func _show_config_dialog(current_game_id: String, current_api_key: String, web_g
 				changes_made = true
 			else:
 				status.text = "❌ Failed to save API Key"
+				had_error = true
+		
+		# Save Google Client ID
+		if not had_error and new_google_id != google_client_id:
+			if _set_google_client_id(new_google_id):
+				changes_made = true
+			else:
+				status.text = "❌ Failed to save Google Client ID"
+				had_error = true
+		
+		# Save Apple Service ID
+		if not had_error and new_apple_id != apple_service_id:
+			if _set_apple_service_id(new_apple_id):
+				changes_made = true
+			else:
+				status.text = "❌ Failed to save Apple Service ID"
+				had_error = true
+		
+		# Save Apple Redirect URI
+		if not had_error and new_apple_redirect != apple_redirect_uri:
+			if _set_apple_redirect_uri(new_apple_redirect):
+				changes_made = true
+			else:
+				status.text = "❌ Failed to save Apple Redirect URI"
 				had_error = true
 		
 		if not had_error:
@@ -604,6 +745,11 @@ func _show_config_dialog(current_game_id: String, current_api_key: String, web_g
 	base_control.add_child(dialog)
 	dialog.popup_centered()
 	game_id_input.grab_focus()
+
+func _create_spacer(height: int) -> Control:
+	var spacer = Control.new()
+	spacer.custom_minimum_size = Vector2(0, height)
+	return spacer
 
 # ============================================================
 # GAME ID FUNCTIONS - WEB (template.html)
@@ -635,7 +781,6 @@ func _set_game_id(new_game_id: String) -> bool:
 		print("   ❌ template.html not found")
 		return false
 	
-	# Read current content
 	var file = FileAccess.open(TEMPLATE_HTML_PATH, FileAccess.READ)
 	if not file:
 		print("   ❌ Could not read template.html")
@@ -644,7 +789,6 @@ func _set_game_id(new_game_id: String) -> bool:
 	var content = file.get_as_text()
 	file.close()
 	
-	# Replace Game ID
 	var regex = RegEx.new()
 	regex.compile("GAME_ID:\\s*['\"]([^'\"]+)['\"]")
 	var new_content = regex.sub(content, "GAME_ID: '%s'" % new_game_id)
@@ -653,7 +797,6 @@ func _set_game_id(new_game_id: String) -> bool:
 		print("   ⚠️  Could not find GAME_ID to replace in template.html")
 		return false
 	
-	# Write back
 	file = FileAccess.open(TEMPLATE_HTML_PATH, FileAccess.WRITE)
 	if not file:
 		print("   ❌ Could not write to template.html")
@@ -681,7 +824,6 @@ func _get_native_game_id() -> String:
 	var content = file.get_as_text()
 	file.close()
 	
-	# Match: var game_id: String = "xxx" or var game_id = "xxx" or const GAME_ID = "xxx"
 	var regex = RegEx.new()
 	regex.compile('(?:var\\s+game_id|const\\s+GAME_ID)[^=]*=\\s*["\']([^"\']*)["\']')
 	var result = regex.search(content)
@@ -704,13 +846,11 @@ func _set_native_game_id(new_game_id: String) -> bool:
 	var content = file.get_as_text()
 	file.close()
 	
-	# Try to replace var game_id first
 	var regex = RegEx.new()
 	regex.compile('(var\\s+game_id[^=]*=\\s*)["\'][^"\']*["\']')
 	var new_content = regex.sub(content, '$1"%s"' % new_game_id)
 	
 	if new_content == content:
-		# Try const GAME_ID pattern
 		regex.compile('(const\\s+GAME_ID[^=]*=\\s*)["\'][^"\']*["\']')
 		new_content = regex.sub(content, '$1"%s"' % new_game_id)
 	
@@ -745,7 +885,6 @@ func _get_current_api_key() -> String:
 	var content = file.get_as_text()
 	file.close()
 	
-	# Match: var api_key: String = "xxx" or var api_key = "xxx"
 	var regex = RegEx.new()
 	regex.compile('var\\s+api_key[^=]*=\\s*["\']([^"\']*)["\']')
 	var result = regex.search(content)
@@ -760,7 +899,6 @@ func _set_api_key(new_api_key: String) -> bool:
 		print("   ❌ CheddaBoards.gd not found")
 		return false
 	
-	# Read current content
 	var file = FileAccess.open(CHEDDABOARDS_GD_PATH, FileAccess.READ)
 	if not file:
 		print("   ❌ Could not read CheddaBoards.gd")
@@ -769,7 +907,6 @@ func _set_api_key(new_api_key: String) -> bool:
 	var content = file.get_as_text()
 	file.close()
 	
-	# Replace API Key - handle both typed and untyped declarations
 	var regex = RegEx.new()
 	regex.compile('(var\\s+api_key[^=]*=\\s*)["\'][^"\']*["\']')
 	var new_content = regex.sub(content, '$1"%s"' % new_api_key)
@@ -778,8 +915,7 @@ func _set_api_key(new_api_key: String) -> bool:
 		print("   ⚠️  Could not find api_key to replace in CheddaBoards.gd")
 		return false
 	
-	# Write back
-	file = FileAccess.open(CHEDDABOARDS_GD_PATH, FileAccess.WRITE)
+	file = FileAccess.open(TEMPLATE_HTML_PATH, FileAccess.WRITE)
 	if not file:
 		print("   ❌ Could not write to CheddaBoards.gd")
 		return false
@@ -791,6 +927,173 @@ func _set_api_key(new_api_key: String) -> bool:
 		print("   ✅ API Key cleared")
 	else:
 		print("   ✅ API Key updated: %s***" % new_api_key.substr(0, min(15, new_api_key.length())))
+	return true
+
+# ============================================================
+# GOOGLE OAUTH FUNCTIONS (template.html)
+# ============================================================
+
+func _get_google_client_id() -> String:
+	"""Extract Google Client ID from template.html"""
+	if not FileAccess.file_exists(TEMPLATE_HTML_PATH):
+		return ""
+	
+	var file = FileAccess.open(TEMPLATE_HTML_PATH, FileAccess.READ)
+	if not file:
+		return ""
+	
+	var content = file.get_as_text()
+	file.close()
+	
+	var regex = RegEx.new()
+	regex.compile("GOOGLE_CLIENT_ID:\\s*['\"]([^'\"]*)['\"]")
+	var result = regex.search(content)
+	
+	return result.get_string(1) if result else ""
+
+func _set_google_client_id(new_id: String) -> bool:
+	"""Update Google Client ID in template.html"""
+	new_id = new_id.strip_edges()
+	
+	if not FileAccess.file_exists(TEMPLATE_HTML_PATH):
+		return false
+	
+	var file = FileAccess.open(TEMPLATE_HTML_PATH, FileAccess.READ)
+	if not file:
+		return false
+	
+	var content = file.get_as_text()
+	file.close()
+	
+	var regex = RegEx.new()
+	regex.compile("GOOGLE_CLIENT_ID:\\s*['\"][^'\"]*['\"]")
+	var new_content = regex.sub(content, "GOOGLE_CLIENT_ID: '%s'" % new_id)
+	
+	if new_content == content:
+		print("   ⚠️  Could not find GOOGLE_CLIENT_ID in template.html")
+		return false
+	
+	file = FileAccess.open(TEMPLATE_HTML_PATH, FileAccess.WRITE)
+	if not file:
+		return false
+	
+	file.store_string(new_content)
+	file.close()
+	
+	if new_id.is_empty():
+		print("   ✅ Google Client ID cleared")
+	else:
+		print("   ✅ Google Client ID updated")
+	return true
+
+# ============================================================
+# APPLE OAUTH FUNCTIONS (template.html)
+# ============================================================
+
+func _get_apple_service_id() -> String:
+	"""Extract Apple Service ID from template.html"""
+	if not FileAccess.file_exists(TEMPLATE_HTML_PATH):
+		return ""
+	
+	var file = FileAccess.open(TEMPLATE_HTML_PATH, FileAccess.READ)
+	if not file:
+		return ""
+	
+	var content = file.get_as_text()
+	file.close()
+	
+	var regex = RegEx.new()
+	regex.compile("APPLE_SERVICE_ID:\\s*['\"]([^'\"]*)['\"]")
+	var result = regex.search(content)
+	
+	return result.get_string(1) if result else ""
+
+func _set_apple_service_id(new_id: String) -> bool:
+	"""Update Apple Service ID in template.html"""
+	new_id = new_id.strip_edges()
+	
+	if not FileAccess.file_exists(TEMPLATE_HTML_PATH):
+		return false
+	
+	var file = FileAccess.open(TEMPLATE_HTML_PATH, FileAccess.READ)
+	if not file:
+		return false
+	
+	var content = file.get_as_text()
+	file.close()
+	
+	var regex = RegEx.new()
+	regex.compile("APPLE_SERVICE_ID:\\s*['\"][^'\"]*['\"]")
+	var new_content = regex.sub(content, "APPLE_SERVICE_ID: '%s'" % new_id)
+	
+	if new_content == content:
+		print("   ⚠️  Could not find APPLE_SERVICE_ID in template.html")
+		return false
+	
+	file = FileAccess.open(TEMPLATE_HTML_PATH, FileAccess.WRITE)
+	if not file:
+		return false
+	
+	file.store_string(new_content)
+	file.close()
+	
+	if new_id.is_empty():
+		print("   ✅ Apple Service ID cleared")
+	else:
+		print("   ✅ Apple Service ID updated: %s" % new_id)
+	return true
+
+func _get_apple_redirect_uri() -> String:
+	"""Extract Apple Redirect URI from template.html"""
+	if not FileAccess.file_exists(TEMPLATE_HTML_PATH):
+		return ""
+	
+	var file = FileAccess.open(TEMPLATE_HTML_PATH, FileAccess.READ)
+	if not file:
+		return ""
+	
+	var content = file.get_as_text()
+	file.close()
+	
+	var regex = RegEx.new()
+	regex.compile("APPLE_REDIRECT_URI:\\s*['\"]([^'\"]*)['\"]")
+	var result = regex.search(content)
+	
+	return result.get_string(1) if result else ""
+
+func _set_apple_redirect_uri(new_uri: String) -> bool:
+	"""Update Apple Redirect URI in template.html"""
+	new_uri = new_uri.strip_edges()
+	
+	if not FileAccess.file_exists(TEMPLATE_HTML_PATH):
+		return false
+	
+	var file = FileAccess.open(TEMPLATE_HTML_PATH, FileAccess.READ)
+	if not file:
+		return false
+	
+	var content = file.get_as_text()
+	file.close()
+	
+	var regex = RegEx.new()
+	regex.compile("APPLE_REDIRECT_URI:\\s*['\"][^'\"]*['\"]")
+	var new_content = regex.sub(content, "APPLE_REDIRECT_URI: '%s'" % new_uri)
+	
+	if new_content == content:
+		print("   ⚠️  Could not find APPLE_REDIRECT_URI in template.html")
+		return false
+	
+	file = FileAccess.open(TEMPLATE_HTML_PATH, FileAccess.WRITE)
+	if not file:
+		return false
+	
+	file.store_string(new_content)
+	file.close()
+	
+	if new_uri.is_empty():
+		print("   ✅ Apple Redirect URI cleared")
+	else:
+		print("   ✅ Apple Redirect URI updated: %s" % new_uri)
 	return true
 
 # ============================================================
@@ -834,7 +1137,9 @@ func get_project_status() -> Dictionary:
 		"game_ids_match": web_game_id == native_game_id,
 		"api_key": _get_current_api_key(),
 		"using_default_game_id": web_game_id in ["catch-the-cheese", "test-game"],
-		"has_api_key": not _get_current_api_key().is_empty()
+		"has_api_key": not _get_current_api_key().is_empty(),
+		"has_google": not _get_google_client_id().is_empty(),
+		"has_apple": not _get_apple_service_id().is_empty(),
 	}
 
 func is_ready_to_export() -> bool:
