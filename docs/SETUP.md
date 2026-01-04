@@ -2,6 +2,8 @@
 
 **Detailed setup instructions for all platforms.**
 
+> **SDK Version:** 1.4.0 | [Changelog](CHANGELOG.md)
+
 > 💡 **Want the fast version?** See [QUICKSTART.md](QUICKSTART.md)
 
 ---
@@ -47,12 +49,13 @@
 
 Download from [GitHub](https://github.com/cheddatech/CheddaBoards-Godot).
 
-Copy `addons/cheddaboards/CheddaBoards.gd` to your project:
+Copy `addons/cheddaboards/` folder to your project:
 
 ```
 YourGame/
-├── autoloads/
-│   └── CheddaBoards.gd
+├── addons/
+│   └── cheddaboards/
+│       └── CheddaBoards.gd
 ├── scenes/
 │   └── Game.tscn
 └── project.godot
@@ -64,7 +67,7 @@ YourGame/
 
 | Path | Name |
 |------|------|
-| `res://autoloads/CheddaBoards.gd` | `CheddaBoards` |
+| `res://addons/cheddaboards/CheddaBoards.gd` | `CheddaBoards` |
 
 ### 4. Set API Key
 
@@ -72,12 +75,14 @@ Open `CheddaBoards.gd` and find (around line 35):
 
 ```gdscript
 var api_key: String = ""
+var game_id: String = ""
 ```
 
 Change to:
 
 ```gdscript
 var api_key: String = "cb_my-game_xxxxxxxxx"
+var game_id: String = "my-game"
 ```
 
 Or set at runtime:
@@ -86,6 +91,8 @@ Or set at runtime:
 func _ready():
     CheddaBoards.set_api_key("cb_my-game_xxxxxxxxx")
 ```
+
+> 💡 **Tip:** Run the Setup Wizard (`File → Run → addons/cheddaboards/SetupWizard.gd`) to configure these automatically!
 
 ### 5. Use It
 
@@ -113,7 +120,7 @@ Export for any platform and you're done.
 Same as API setup - register at [cheddaboards.com/dashboard](https://cheddaboards.com/dashboard).
 
 You'll need:
-- **Game ID** (for template.html)
+- **Game ID** (for template.html and CheddaBoards.gd)
 - **API Key** (optional, for anonymous play)
 
 ### 2. Download Files
@@ -126,7 +133,7 @@ YourGame/
 │   └── cheddaboards/
 │       ├── CheddaBoards.gd      ← Core SDK
 │       ├── Achievements.gd      ← Achievement system
-│       ├── SetupWizard.gd       ← Setup tool
+│       ├── SetupWizard.gd       ← Setup tool (v2.4)
 │       └── plugin.cfg
 ├── template.html                ← Web export template
 └── project.godot
@@ -139,7 +146,9 @@ YourGame/
 The wizard will:
 - ✅ Auto-add CheddaBoards and Achievements to Autoloads
 - ✅ Check all required files exist
-- ✅ Prompt you to enter your Game ID
+- ✅ Prompt you to enter your Game ID (syncs to both files)
+- ✅ Prompt you to enter your API Key
+- ✅ Configure Google/Apple OAuth credentials (v2.4+)
 - ✅ Validate your export settings
 
 ### 4. Configure Web Export
@@ -151,25 +160,7 @@ Under **HTML** section:
 
 > ⚠️ This is required! Without it, authentication won't work.
 
-### 5. Configure template.html
-
-Open `template.html` and find the CONFIG section:
-
-```javascript
-const CONFIG = {
-    GAME_ID: 'your-game-id',              // ← Your game ID
-    CANISTER_ID: 'fdvph-sqaaa-aaaap-qqc4a-cai',
-    
-    // Optional: For Google/Apple login
-    GOOGLE_CLIENT_ID: '',
-    APPLE_SERVICE_ID: '',
-    APPLE_REDIRECT_URI: ''
-};
-```
-
-Set your **GAME_ID** to match what you registered.
-
-### 6. Export & Test
+### 5. Export & Test
 
 1. **Project → Export → Web**
 2. Click **Export Project**
@@ -245,11 +236,13 @@ func _on_archive(archive_id, config, entries):
 
 ### Setting Up Google OAuth (Optional)
 
+> 💡 **Tip:** The Setup Wizard (v2.4+) can configure OAuth credentials directly - no need to edit template.html manually!
+
 1. Go to [console.cloud.google.com](https://console.cloud.google.com)
 2. Create project → Enable Google Sign-In API
 3. Create OAuth 2.0 credentials
 4. Add your domain to authorized origins
-5. Copy Client ID to `template.html`:
+5. Run Setup Wizard and enter your Client ID, or manually add to `template.html`:
 
 ```javascript
 GOOGLE_CLIENT_ID: 'xxxxx.apps.googleusercontent.com',
@@ -257,11 +250,13 @@ GOOGLE_CLIENT_ID: 'xxxxx.apps.googleusercontent.com',
 
 ### Setting Up Apple Sign-In (Optional)
 
+> 💡 **Tip:** The Setup Wizard (v2.4+) can configure OAuth credentials directly - no need to edit template.html manually!
+
 1. Go to [developer.apple.com](https://developer.apple.com)
 2. Register App ID with Sign In with Apple
 3. Create Services ID
 4. Configure domain and redirect URI
-5. Add to `template.html`:
+5. Run Setup Wizard and enter your credentials, or manually add to `template.html`:
 
 ```javascript
 APPLE_SERVICE_ID: 'com.yourdomain.yourapp',
@@ -273,6 +268,8 @@ APPLE_REDIRECT_URI: 'https://yourdomain.com/auth/apple'
 ## 🏆 Achievements Setup (Web SDK)
 
 The Achievements.gd autoload handles unlocking and syncing.
+
+> ⚠️ **Note:** Full achievement sync requires login (Google/Apple/Chedda ID). Anonymous users have achievements stored locally only.
 
 ### Define Your Achievements
 
@@ -379,8 +376,9 @@ func _on_exit_pressed():
 
 ```
 YourGame/
-├── autoloads/
-│   └── CheddaBoards.gd      ← API key set ✓
+├── addons/
+│   └── cheddaboards/
+│       └── CheddaBoards.gd  ← API key + game_id set ✓
 ├── scenes/
 │   └── Game.tscn
 └── project.godot
@@ -394,7 +392,7 @@ YourGame/
 │   └── cheddaboards/
 │       ├── CheddaBoards.gd  ← Autoload ✓
 │       ├── Achievements.gd  ← Autoload ✓
-│       └── SetupWizard.gd
+│       └── SetupWizard.gd   ← v2.4
 ├── template.html            ← Game ID set ✓
 ├── scenes/
 │   ├── MainMenu.tscn
@@ -411,15 +409,15 @@ YourGame/
 ### API Only
 - [ ] Game registered on dashboard
 - [ ] API key generated and copied
-- [ ] CheddaBoards.gd added to project
+- [ ] `addons/cheddaboards/` folder added to project
 - [ ] CheddaBoards in Autoloads
-- [ ] API key set in CheddaBoards.gd
+- [ ] API key and game_id set in CheddaBoards.gd
 
 ### Web SDK
 - [ ] Game registered on dashboard
 - [ ] All files copied to project
 - [ ] Setup Wizard run successfully
-- [ ] Game ID set in template.html
+- [ ] Game ID set in both template.html and CheddaBoards.gd
 - [ ] Custom HTML Shell set in export settings
 - [ ] Tested with local web server
 
@@ -450,7 +448,7 @@ YourGame/
 
 - **Dashboard:** [cheddaboards.com/dashboard](https://cheddaboards.com/dashboard)
 - **GitHub:** [github.com/cheddatech/CheddaBoards-Godot](https://github.com/cheddatech/CheddaBoards-Godot)
-- **Example:** [cheddaclick.cheddagames.com](https://cheddagames.com/cheddaclick)
+- **Example:** [cheddagames.com/cheddaclick](https://cheddaclick.cheddagames.com)
 
 ---
 
