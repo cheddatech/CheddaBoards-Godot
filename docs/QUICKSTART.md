@@ -2,6 +2,8 @@
 
 **Add leaderboards to your game in minutes.**
 
+> **SDK Version:** 1.4.0 | [Changelog](CHANGELOG.md)
+
 ---
 
 ## Choose Your Integration
@@ -23,25 +25,28 @@
 
 1. Go to [cheddaboards.com/dashboard](https://cheddaboards.com/dashboard)
 2. Sign in (Internet Identity, Google, or Apple)
-3. Register your game
+3. Register your game → Copy your **Game ID**
 4. Click **"Generate API Key"**
 5. Copy your key: `cb_your-game_xxxxxxxxx`
 
 ### Step 2: Add to Project (30 sec)
 
-Download from [GitHub](https://github.com/cheddatech/CheddaBoards-Godot) and copy `CheddaBoards.gd` to your project.
+Download from [GitHub](https://github.com/cheddatech/CheddaBoards-Godot) and copy `addons/cheddaboards/` folder to your project.
 
 Add as Autoload:
 ```
 Project → Project Settings → Autoload → Add
-Path: res://CheddaBoards.gd
+Path: res://addons/cheddaboards/CheddaBoards.gd
 Name: CheddaBoards
 ```
 
-Set your API key in CheddaBoards.gd:
+Set your credentials in CheddaBoards.gd:
 ```gdscript
+var game_id: String = "your-game-id"
 var api_key: String = "cb_your-game_xxxxxxxxx"
 ```
+
+> 💡 **Tip:** Run `File → Run → addons/cheddaboards/SetupWizard.gd` to configure automatically!
 
 ### Step 3: Use It (30 sec)
 
@@ -103,10 +108,12 @@ YourGame/
 File → Run (Ctrl+Shift+X) → Select SetupWizard.gd
 ```
 
-The wizard will:
+The wizard (v2.4) will:
 - ✅ Auto-add Autoloads
 - ✅ Check required files
-- ✅ Prompt for your Game ID
+- ✅ Prompt for your Game ID (syncs to both files)
+- ✅ Prompt for your API Key
+- ✅ Configure Google/Apple OAuth credentials (optional)
 
 ### Step 4: Configure Export (30 sec)
 
@@ -198,6 +205,8 @@ func _on_game_over(score, streak):
     Achievements.submit_with_score(score, streak)
 ```
 
+> ⚠️ **Note:** Full achievement sync requires login (Google/Apple/Chedda ID). Anonymous users have achievements stored locally only.
+
 ---
 
 ## 🐛 Debug Shortcuts
@@ -218,10 +227,12 @@ Press during development:
 | Issue | Solution |
 |-------|----------|
 | "API key not set" | Set `api_key` in CheddaBoards.gd |
+| "Game ID not set" | Set `game_id` in CheddaBoards.gd |
 | "CheddaBoards not found" | Add to Autoloads or run Setup Wizard |
 | Blank screen (web) | Use `python3 -m http.server`, not file:// |
 | "Engine not defined" (web) | Export must be named `index.html` |
 | Clicks offset | Project Settings → Display → DPI → Allow Hidpi: On |
+| Nickname not updating | Update to v1.4.0 (fixed in this version) |
 
 ---
 
@@ -233,6 +244,7 @@ Press during development:
 | [TIMED_SCOREBOARDS.md](TIMED_SCOREBOARDS.md) | Weekly/daily competitions & archives |
 | [SETUP.md](SETUP.md) | Detailed setup guide |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common problems & solutions |
+| [CHANGELOG.md](CHANGELOG.md) | Version history |
 
 ---
 
@@ -240,7 +252,7 @@ Press during development:
 
 - **Dashboard:** [cheddaboards.com/dashboard](https://cheddaboards.com/dashboard)
 - **GitHub:** [github.com/cheddatech/CheddaBoards-Godot](https://github.com/cheddatech/CheddaBoards-Godot)
-- **Example:** [cheddaclick.cheddagames.com](https://cheddaclick.cheddagames.com)
+- **Example:** [cheddagames.com/cheddaclick](https://cheddaclick.cheddagames.com)
 
 ---
 
