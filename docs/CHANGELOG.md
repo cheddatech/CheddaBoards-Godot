@@ -7,6 +7,102 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.0] - 2026-01-04
+
+### Bug Fixes & Setup Wizard OAuth Support
+
+Major bug fixes for score submission, nickname updates, and player ID management. Setup Wizard now supports OAuth configuration.
+
+### Added
+
+#### Setup Wizard v2.4
+- **Google Client ID configuration**: Set directly in wizard popup
+- **Apple Service ID configuration**: Set directly in wizard popup  
+- **Apple Redirect URI configuration**: Set directly in wizard popup
+- **OAuth validation**: Checks format and required fields
+- **New check**: `_check_oauth_config()` validates OAuth settings
+- **Scrollable dialog**: Accommodates longer configuration form
+- **Status indicators**: Shows which OAuth providers are configured
+
+#### template.html v1.3.0
+- `chedda_change_nickname(newNickname)` - Direct nickname change without prompt (was missing!)
+- Improved `chedda_submit_score()` - Now submits score FIRST, then unlocks achievements
+
+### Fixed
+
+#### Score Submission & Nicknames
+- **Nickname not updating on leaderboard**: Backend now updates scoreboard entry even when score doesn't improve
+- **"No profile for this game" error**: Fixed by submitting score before unlocking achievements (creates profile first)
+- **`chedda_change_nickname is not defined` error**: Added missing function to template.html
+
+#### Player ID Management (CheddaBoards.gd)
+- **Auto-generated player ID conflict**: Removed auto-generation in `_ready()` that created duplicate IDs
+- **Wrong nickname displayed**: Fixed `get_nickname()` to prioritize manually-set nickname over auto-generated
+- **Player ID overwritten**: Lazy generation now only creates ID when actually needed and not already set
+
+#### Motoko Backend (submitScore)
+- **Nickname not syncing**: Scoreboard now updates nickname even when score/streak doesn't improve
+- Added `nicknameChanged` tracking variable
+- Stores `existingScore` and `existingStreak` to update scoreboard with current best when only nickname changes
+
+### Changed
+
+#### CheddaBoards.gd v1.4.1
+- `_ready()` no longer auto-generates player ID - waits for MainMenu to set it
+- `get_player_id()` returns existing ID if set, only generates if empty
+- `get_nickname()` priority: manual nickname → cached profile → fallback
+
+#### template.html
+- Score submission order: score first, then achievements (fixes profile creation timing)
+- Added proper nickname change function for web builds
+
+### Known Limitations
+
+- **Achievements in anonymous mode**: Still score-only for anonymous/API-key users
+  - Authenticated users (Google/Apple/Chedda ID): Full achievement support ✓
+  - Anonymous users: Scores save to leaderboard, achievements stored locally only
+
+### Technical Details
+
+**Files Updated:**
+- `addons/cheddaboards/SetupWizard.gd` → v2.4
+- `addons/cheddaboards/CheddaBoards.gd` → v1.4.1
+- `template.html` → v1.3.0
+- Motoko backend `submitScore` function
+
+**New template.html Functions:**
+```javascript
+window.chedda_change_nickname = async function(newNickname) { ... }
+```
+
+**Backend Logic Change:**
+```motoko
+// Now handles nickname-only updates
+} else if (nicknameChanged) {
+  updateScoreboardsForGame(gameId, u.identifier, u.nickname, existingScore, existingStreak, u.authType);
+  cachedLeaderboards.delete(gameId # ":score");
+  cachedLeaderboards.delete(gameId # ":streak");
+};
+```
+
+### Migration from v1.3.0
+
+1. **Update CheddaBoards.gd** - Replace with v1.4.1
+2. **Update template.html** - Replace with v1.3.0 (critical for web builds!)
+3. **Update SetupWizard.gd** - Replace with v2.4 (optional, for OAuth config)
+4. **Deploy Motoko backend** - If self-hosting, update `submitScore` function
+5. **Clear corrupted player data** (if experiencing issues):
+   - Delete `user://device_id.txt`
+   - Delete `user://player_data.save`
+
+### Upgrade Notes
+
+- **Web builds**: Must update template.html to fix nickname change and achievement unlock order
+- **Native builds**: Update CheddaBoards.gd to fix player ID conflicts
+- **Existing players**: May need to play one game to sync nickname to leaderboard
+
+---
+
 ## [1.3.0] - 2025-12-30
 
 ### Time-Based Scoreboards, Archives & Level System
@@ -345,15 +441,14 @@ First public release of the CheddaBoards Godot 4 Template.
 ### Technical Details
 
 - **Godot Version**: 4.0+ compatible
-- **Export**: HTML5/Web
+- **Export**: HTML5/Web + Native (Windows, Mac, Linux, Mobile)
 - **License**: MIT
 - **Cost**: 100% free forever
 - **Backend**: CheddaBoards (serverless, zero maintenance)
 
 ### Known Limitations
 
-- HTML5 export only (Unity support coming to CheddaBoards)
-- Requires web server for testing (no file:// protocol)
+- Requires web server for testing web builds (no file:// protocol)
 - HTTPS required for OAuth in production
 
 ---
@@ -362,6 +457,7 @@ First public release of the CheddaBoards Godot 4 Template.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| **v1.4.0** | 2026-01-04 | OAuth in wizard, nickname/score fixes, player ID fixes |
 | **v1.3.0** | 2025-12-30 | Time-based scoreboards, archives, level system |
 | **v1.2.2** | 2025-12-27 | Unique default nicknames fix |
 | **v1.2.1** | 2025-12-18 | Native platform support, HTTP REST API, API key auth |
@@ -372,6 +468,16 @@ First public release of the CheddaBoards Godot 4 Template.
 ---
 
 ## Upgrade Guide
+
+### From v1.3.0 to v1.4.0
+
+1. **Update CheddaBoards.gd** - Replace with v1.4.1 (fixes player ID conflicts)
+2. **Update template.html** - Replace with v1.3.0 (critical for web builds!)
+3. **Update SetupWizard.gd** - Replace with v2.4 (optional, adds OAuth config)
+4. **Deploy Motoko backend** - If self-hosting, update `submitScore` function
+5. **Clear corrupted player data** (if experiencing issues):
+   - Windows: `%APPDATA%\Godot\app_userdata\YourGame\`
+   - Delete `device_id.txt` and `player_data.save`
 
 ### From v1.2.2 to v1.3.0
 
@@ -466,22 +572,24 @@ First public release of the CheddaBoards Godot 4 Template.
    - Change Custom HTML Shell to `res://template.html`
    - Always export as `index.html`
 
-### From Nothing to v1.3.0
+### From Nothing to v1.4.0
 
 1. Download/clone from GitHub
 2. Copy `addons/cheddaboards/` folder to your project
 3. Copy `template.html` to your project root (web only)
 4. Run `File > Run > addons/cheddaboards/SetupWizard.gd`
 5. Enter your Game ID in the popup
-6. **For native**: Set API key in CheddaBoards.gd
-7. **For web**: Export as `index.html` and test!
-8. Users can play immediately on any platform!
+6. **Optional**: Configure Google/Apple OAuth in wizard
+7. **For native**: Set API key in CheddaBoards.gd
+8. **For web**: Export as `index.html` and test!
+9. Users can play immediately on any platform!
 
 ---
 
 ## Roadmap
 
 ### Planned Features
+- [ ] Achievements for anonymous/API-key users
 - [ ] Unity SDK
 - [ ] Unreal Plugin
 - [ ] Full REST API documentation (OpenAPI/Swagger)
@@ -499,8 +607,8 @@ First public release of the CheddaBoards Godot 4 Template.
 - **GitHub**: https://github.com/cheddatech/CheddaBoards-Godot
 - **CheddaBoards**: https://cheddaboards.com
 - **Example Games**: 
-  - https://thecheesegame.online (Web)
-  - https://cheddaclick.cheddagames.com (Web + Native)
+  - https://cheddagames.com/chedzvsthegraters (Web)
+  - https://cheddagames.com/cheddaclick (Web + Native)
 - **Contact**: info@cheddaboards.com
 
 ---
