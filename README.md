@@ -4,6 +4,8 @@
 
 # CheddaBoards Godot 4 Template
 
+> **SDK Version:** 1.4.0 | [Changelog](docs/CHANGELOG.md)
+
 <p align="center">
   <img src="screenshots/cheddaboards1.png" alt="CheddaBoards Screenshot" width="400">
   <img src="screenshots/cheddaboards2.png" alt="CheddaBoards Screenshot" width="400">
@@ -70,7 +72,9 @@ Session persistence works across page reloads.
 - **Level achievements** - Unlock for reaching game levels
 - Popup notifications
 - Offline support with local caching
-- Multi-device sync
+- Multi-device sync (requires login)
+
+> ⚠️ **Note:** Full achievement sync requires login (Google/Apple/Chedda ID). Anonymous users have achievements stored locally only.
 
 ### Player Stats
 
@@ -107,6 +111,9 @@ Session persistence works across page reloads.
    - `addons/cheddaboards/` folder
    - `template.html` to project root
 3. Run Setup Wizard: `File → Run → SetupWizard.gd`
+   - Enter your Game ID (syncs to both files)
+   - Enter your API Key
+   - (Optional) Configure Google/Apple OAuth credentials
 4. Configure export: `Project → Export → Web → Custom HTML Shell: res://template.html`
 5. Export as `index.html` and test with local server
 
@@ -116,12 +123,17 @@ Session persistence works across page reloads.
 2. Get your API Key from the dashboard
 3. Copy files to your project:
    - `addons/cheddaboards/` folder
-4. Add Autoloads in Project Settings:
-   - `CheddaBoards` → `addons/cheddaboards/CheddaBoards.gd`
-   - `Achievements` → `addons/cheddaboards/Achievements.gd`
-5. Set API key in `CheddaBoards.gd` or at runtime:
+4. Run Setup Wizard: `File → Run → SetupWizard.gd`
+   - Or manually add Autoloads in Project Settings:
+     - `CheddaBoards` → `addons/cheddaboards/CheddaBoards.gd`
+     - `Achievements` → `addons/cheddaboards/Achievements.gd`
+5. Set credentials in `CheddaBoards.gd` or at runtime:
 
 ```gdscript
+var game_id: String = "your-game-id"
+var api_key: String = "cb_your_api_key_here"
+
+# Or at runtime:
 CheddaBoards.set_api_key("cb_your_api_key_here")
 ```
 
@@ -176,7 +188,7 @@ func _on_game_over(score: int, streak: int):
 - Works on ALL platforms (web + native)
 - Players can set custom nicknames
 - Scores appear on leaderboards
-- Achievements still work
+- Achievements work (stored locally)
 - Device ID persists across sessions
 
 ---
@@ -230,7 +242,7 @@ CheddaBoards.login_anonymous("CustomNickname")
 CheddaBoards.login_internet_identity("Nickname")
 
 # Google/Apple (Web only) - Requires your OAuth credentials
-# Set GOOGLE_CLIENT_ID or APPLE_SERVICE_ID in template.html first
+# Configure via Setup Wizard or set in template.html
 CheddaBoards.login_google()
 CheddaBoards.login_apple()
 
@@ -364,11 +376,12 @@ print("%d/%d (%.0f%%)" % [unlocked, total, percent])
 
 ## Configuration
 
-### API Key (Native/Anonymous)
+### Game ID & API Key (Native/Anonymous)
 
 Set in `CheddaBoards.gd`:
 
 ```gdscript
+var game_id: String = "your-game-id"
 var api_key: String = "cb_your_api_key_here"
 ```
 
@@ -379,6 +392,8 @@ func _ready():
     CheddaBoards.set_api_key("cb_your_api_key_here")
 ```
 
+> 💡 **Tip:** Run the Setup Wizard (`File → Run → SetupWizard.gd`) to configure these automatically!
+
 ### HTML Template (Web)
 
 In `template.html`:
@@ -388,12 +403,14 @@ const CONFIG = {
     GAME_ID: 'your-game-id',  // From dashboard
     CANISTER_ID: 'fdvph-sqaaa-aaaap-qqc4a-cai',
     
-    // Optional: Social login
+    // Optional: Social login (or configure via Setup Wizard v2.4+)
     GOOGLE_CLIENT_ID: '',
     APPLE_SERVICE_ID: '',
     APPLE_REDIRECT_URI: ''
 };
 ```
+
+> 💡 **Tip:** The Setup Wizard (v2.4+) can configure OAuth credentials directly - no need to edit template.html manually!
 
 ### Scoreboard Configuration
 
@@ -535,12 +552,15 @@ Achievements.debug_logging = true
 | Issue | Solution |
 |-------|----------|
 | "API key not set" | Set `api_key` in CheddaBoards.gd or call `set_api_key()` |
+| "Game ID not set" | Set `game_id` in CheddaBoards.gd or run Setup Wizard |
 | "CheddaBoards not ready" | Use `await CheddaBoards.wait_until_ready()` |
 | Score not submitting | Check `is_authenticated()` and connect to `score_error` |
+| Nickname not updating | Update to v1.4.0 (fixed in this version) |
 | Click offset on high-DPI | Enable "Allow Hidpi" in Project Settings |
 | Web: "Engine not defined" | Export must be named `index.html` |
 | Web: Blank screen | Use local server, not `file://` |
 | Scoreboard not found | Check scoreboard ID matches dashboard exactly |
+| "No profile for this game" | Fixed in v1.4.0 - update template.html |
 
 ---
 
@@ -549,6 +569,7 @@ Achievements.debug_logging = true
 ### Web Export Checklist
 
 - [ ] Game ID configured in `template.html`
+- [ ] Game ID configured in `CheddaBoards.gd`
 - [ ] Custom HTML Shell set to `res://template.html`
 - [ ] Export filename is `index.html`
 - [ ] Test with `python3 -m http.server 8000`
@@ -556,6 +577,7 @@ Achievements.debug_logging = true
 
 ### Native Export Checklist
 
+- [ ] Game ID set in `CheddaBoards.gd`
 - [ ] API Key set in `CheddaBoards.gd`
 - [ ] CheddaBoards + Achievements in Autoloads
 - [ ] High-DPI settings configured
@@ -581,7 +603,7 @@ CheddaBoards-Godot/
 │   └── cheddaboards/
 │       ├── CheddaBoards.gd       # Core SDK (Autoload)
 │       ├── Achievements.gd       # Achievement system (Autoload)
-│       ├── SetupWizard.gd        # Setup & validation tool
+│       ├── SetupWizard.gd        # Setup & validation tool (v2.4)
 │       └── icon.png
 ├── scenes/
 │   ├── MainMenu.tscn/.gd         # Login & profile UI
@@ -590,7 +612,7 @@ CheddaBoards-Godot/
 │   ├── AchievementsView.tscn/.gd # Achievement list
 │   └── AchievementNotification.* # Unlock popups
 ├── assets/                       # Sprites, fonts, etc.
-├── template.html                 # Web export template
+├── template.html                 # Web export template (v1.3.0)
 ├── project.godot                 # Pre-configured project
 ├── docs/
 │   ├── QUICKSTART.md
@@ -621,7 +643,7 @@ CheddaBoards-Godot/
 
 - **Dashboard**: [cheddaboards.com](https://cheddaboards.com)
 - **GitHub**: [github.com/cheddatech/CheddaBoards-Godot](https://github.com/cheddatech/CheddaBoards-Godot)
-- **Example**: [cheddaclick.cheddagames.com](https://cheddagames.com/cheddaclick)
+- **Example**: [cheddaclick.cheddagames.com](https://cheddaclick.cheddagames.com)
 - **Support**: info@cheddaboards.com
 
 ---
@@ -630,6 +652,7 @@ CheddaBoards-Godot/
 
 | Version | Date | Changes |
 |---------|------|---------|
+| v1.4.0 | 2026-01-04 | OAuth in Setup Wizard, nickname/score/player ID fixes |
 | v1.3.0 | 2025-12-30 | Timed scoreboards, archives, level system, debug shortcuts |
 | v1.2.2 | 2025-12-27 | Unique default nicknames |
 | v1.2.1 | 2025-12-18 | Native HTTP API support, anonymous login, API key auth |
