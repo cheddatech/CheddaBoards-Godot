@@ -87,8 +87,9 @@
 
   <script type="module">
     // ============================================================
-    // CheddaBoards Godot 4 Template v1.3.0
+    // CheddaBoards Godot 4 Template v1.4.0
     // WITH DEVICE ID / ANONYMOUS PLAY SUPPORT
+    // FIXED: Anonymous nickname now properly used
     // https://github.com/cheddatech/CheddaBoards-Godot
     // https://cheddaboards.com
     // ============================================================
@@ -141,6 +142,9 @@
     // Device ID for anonymous play
     let deviceId = null;
     const DEVICE_ID_KEY = `cheddaboards_device_${CONFIG.GAME_ID}`;
+    
+    // Anonymous nickname (set by Godot before login)
+    let pendingNickname = null;
     
     // Rate limiting
     let loginAttempts = 0;
@@ -241,7 +245,8 @@
         streak: parseInt(profile.streak || profile.bestStreak || 0) || 0,
         playCount: parseInt(profile.playCount || profile.plays || 0) || 0,
         achievements: Array.isArray(profile.achievements) ? profile.achievements : [],
-        authType: profile.authType || authType || 'unknown'
+        authType: profile.authType || authType || 'unknown',
+        deviceId: profile.deviceId || deviceId || null
       };
       
       cachedProfileData = sanitized;
@@ -363,25 +368,44 @@
       return null;
     };
 
-    window.chedda_login_anonymous = async function() {
+    /**
+     * Set player ID (device ID) - called from Godot before anonymous login
+     */
+    window.chedda_set_player_id = function(playerId) {
+      if (playerId) {
+        deviceId = playerId;
+        console.log('[Bridge] Player ID set to:', playerId.substring(0, 12) + '...');
+      }
+    };
+
+    window.chedda_login_anonymous = async function(nickname) {
       try {
-        console.log('[Bridge] Anonymous login requested');
+        console.log('[Bridge] Anonymous login requested with nickname:', nickname);
         
         const devId = getOrCreateDeviceId();
         
+        // Use provided nickname, or pending nickname, or generate from device ID
+        const finalNickname = nickname || pendingNickname || ('Player_' + devId.substring(4, 10));
+        pendingNickname = null; // Clear pending
+        
+        console.log('[Login] Final nickname:', finalNickname);
+        
         if (chedda && chedda.login && chedda.login.anonymous) {
           console.log('[Login] Using SDK anonymous login...');
-          const profile = await chedda.login.anonymous(devId);
+          const profile = await chedda.login.anonymous(devId, finalNickname);
           handleLoginSuccess('anonymous', profile);
         } else {
           console.log('[Login] Creating local anonymous profile...');
           isAuthenticated = true;
           authType = 'device';
           
+          // Check for existing profile
           let anonProfile = loadProfileFromLocalStorage();
-          if (!anonProfile) {
+          
+          // If no existing profile OR nickname is different, update it
+          if (!anonProfile || anonProfile.deviceId !== devId) {
             anonProfile = {
-              nickname: 'Player_' + devId.substring(4, 10),
+              nickname: finalNickname,
               score: 0,
               streak: 0,
               playCount: 0,
@@ -389,7 +413,13 @@
               authType: 'device',
               deviceId: devId
             };
+          } else {
+            // Update nickname if provided
+            if (nickname) {
+              anonProfile.nickname = finalNickname;
+            }
           }
+          
           anonProfile.deviceId = devId;
           
           currentProfile = sanitizeProfileData(anonProfile, true);
@@ -546,6 +576,7 @@
         authType = '';
         currentProfile = null;
         cachedProfileData = null;
+        pendingNickname = null;
         
         localStorage.removeItem(PROFILE_STORAGE_KEY);
         
@@ -640,9 +671,11 @@
         if (chedda && chedda.isAuthenticated()) {
           console.log('[Bridge] Submitting via authenticated session...');
           
+          // Submit score FIRST to create/update game profile
           result = await chedda.submitScore(score, streak);
           console.log('[Bridge] Score result:', result);
           
+          // THEN unlock achievements (profile now exists)
           if (achievements && achievements.length > 0) {
             console.log('[Bridge] Unlocking %d achievements...', achievements.length);
             for (const achId of achievements) {
@@ -885,11 +918,15 @@
         const nickname = newNickname.trim();
         console.log('[Bridge] Changing nickname to:', nickname);
         
-        // For anonymous users
+        // Store as pending nickname for next anonymous login
+        pendingNickname = nickname;
+        
+        // For anonymous users - update immediately
         if (authType === 'device' || authType === 'anonymous') {
           if (currentProfile) {
             currentProfile.nickname = nickname;
             saveProfileToLocalStorage(currentProfile);
+            console.log('[Bridge] Anonymous nickname updated to:', nickname);
           }
           responseQueue.push({
             action: 'changeNickname',
@@ -901,10 +938,13 @@
         
         // For authenticated users
         if (!chedda || !chedda.isAuthenticated()) {
+          // Not authenticated yet - store for later
+          console.log('[Bridge] Storing pending nickname:', nickname);
           responseQueue.push({
             action: 'changeNickname',
-            success: false,
-            error: 'Not authenticated'
+            success: true,
+            nickname: nickname,
+            pending: true
           });
           return;
         }
@@ -933,6 +973,9 @@
       }
     };
 
+    /**
+     * Change nickname with prompt
+     */
     window.chedda_change_nickname_prompt = async function() {
       try {
         const currentNick = currentProfile?.nickname || 'Player';
@@ -960,7 +1003,7 @@
     // INITIALIZATION
     // ============================================================
     window.addEventListener('load', async () => {
-      console.log('[Init] CheddaBoards Template v1.3.0 (with Device ID support)');
+      console.log('[Init] CheddaBoards Template v1.4.0 (with Device ID + Nickname fix)');
       console.log('[Init] Game ID:', CONFIG.GAME_ID);
       console.log('[Init] Anonymous Play:', CONFIG.ALLOW_ANONYMOUS_PLAY ? 'Enabled' : 'Disabled');
 
@@ -1034,6 +1077,7 @@
           if (cachedProfile && cachedProfile.deviceId === deviceId) {
             currentProfile = cachedProfile;
             authType = 'device';
+            console.log('[Init] Restored anonymous profile:', currentProfile.nickname);
           }
           
           responseQueue.push({
@@ -1041,7 +1085,8 @@
             success: true,
             authenticated: false,
             anonymousReady: true,
-            deviceId: deviceId
+            deviceId: deviceId,
+            cachedNickname: currentProfile?.nickname || null
           });
         } else {
           responseQueue.push({
@@ -1142,7 +1187,7 @@
     // ============================================================
     window.debugChedda = () => {
       console.log('═══════════════════════════════════════');
-      console.log('CheddaBoards Debug Info v1.3.0');
+      console.log('CheddaBoards Debug Info v1.4.0');
       console.log('═══════════════════════════════════════');
       console.log('Game ID:', CONFIG.GAME_ID);
       console.log('Anonymous Play:', CONFIG.ALLOW_ANONYMOUS_PLAY);
@@ -1152,6 +1197,7 @@
       console.log('Local Authenticated:', isAuthenticated);
       console.log('Auth Type:', authType || 'None');
       console.log('Device ID:', deviceId ? deviceId.substring(0, 12) + '...' : 'Not set');
+      console.log('Pending Nickname:', pendingNickname || 'None');
       console.log('───────────────────────────────────────');
       console.log('Profile:', currentProfile);
       console.log('Response Queue:', responseQueue.length, 'items');
@@ -1160,7 +1206,7 @@
       console.log('Google:', CONFIG.GOOGLE_CLIENT_ID ? 'Configured' : 'Disabled');
       console.log('Apple:', CONFIG.APPLE_SERVICE_ID ? 'Configured' : 'Disabled');
       console.log('═══════════════════════════════════════');
-      return { chedda, currentProfile, responseQueue, deviceId, CONFIG };
+      return { chedda, currentProfile, responseQueue, deviceId, pendingNickname, CONFIG };
     };
   </script>
 </body>
