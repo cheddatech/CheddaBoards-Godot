@@ -1,1192 +1,1393 @@
-# MainMenu.gd v1.7.0
-# Main menu with authentication flow, profile display, roguelike progression, and upgrade shop
-# - Login panel: PLAY NOW (with name entry), Shop, Leaderboard, and login buttons
-# - Name entry panel: For anonymous players to set their display name
-# - Main panel: Profile stats when logged in (Google/Apple/Chedda)
-# - Fixed: Landscape scrolling support for mobile
+# CheddaBoards.gd v1.4.1
+# CheddaBoards integration for Godot 4.x
 # https://github.com/cheddatech/CheddaBoards-Godot
+# https://cheddaboards.com
 #
+# HYBRID SDK: Supports both Web (JavaScript Bridge) and Native (HTTP API)
+# - Web exports use JavaScript bridge for ICP authentication
+# - Native exports (Windows/Mac/Linux/Mobile) use HTTP API
+#
+# Add to Project Settings > Autoload as "CheddaBoards"
+
+extends Node
+
 # ============================================================
-# SETUP
+# QUICK START
 # ============================================================
-# Required Autoloads (in order):
-#   - CheddaBoards
-#   - RunManager
-#   - UpgradeManager
-#   - Achievements (optional)
+# 1. Add this script to Project Settings > Autoload as "CheddaBoards"
+# 2. For WEB: Configure your HTML template with your Game ID
+# 3. For NATIVE: Set your API key: CheddaBoards.set_api_key("cb_xxx")
+#
+# Example:
+#    func _ready():
+#        await CheddaBoards.wait_until_ready()
+#        CheddaBoards.login_success.connect(_on_login_success)
+#        CheddaBoards.score_submitted.connect(_on_score_submitted)
+#
+#    func _on_game_over(score: int, streak: int):
+#        CheddaBoards.submit_score(score, streak)
 #
 # ============================================================
 
-extends Control
+# ============================================================
+# SIGNALS
+# ============================================================
+
+# --- Initialization ---
+signal sdk_ready()
+signal init_error(reason: String)
+
+# --- Authentication ---
+signal login_success(nickname: String)
+signal login_failed(reason: String)
+signal login_timeout()
+signal logout_success()
+signal auth_error(reason: String)
+
+# --- Profile ---
+signal profile_loaded(nickname: String, score: int, streak: int, achievements: Array)
+signal no_profile()
+signal nickname_changed(new_nickname: String)
+signal nickname_error(reason: String)
+
+# --- Scores & Leaderboards (Legacy) ---
+signal score_submitted(score: int, streak: int)
+signal score_error(reason: String)
+signal leaderboard_loaded(entries: Array)
+signal player_rank_loaded(rank: int, score: int, streak: int, total_players: int)
+signal rank_error(reason: String)
+
+# --- Scoreboards (NEW - Time-based) ---
+signal scoreboards_loaded(scoreboards: Array)
+signal scoreboard_loaded(scoreboard_id: String, config: Dictionary, entries: Array)
+signal scoreboard_rank_loaded(scoreboard_id: String, rank: int, score: int, streak: int, total: int)
+signal scoreboard_error(reason: String)
+
+# --- Scoreboard Archives (NEW v1.4.0) ---
+signal archives_list_loaded(scoreboard_id: String, archives: Array)
+signal archived_scoreboard_loaded(archive_id: String, config: Dictionary, entries: Array)
+signal archive_stats_loaded(total_archives: int, by_scoreboard: Array)
+signal archive_error(reason: String)
+
+# --- Achievements ---
+signal achievement_unlocked(achievement_id: String)
+signal achievements_loaded(achievements: Array)
+
+# --- HTTP API Specific ---
+signal request_failed(endpoint: String, error: String)
 
 # ============================================================
 # CONFIGURATION
 # ============================================================
 
-const SCENE_GAME: String = "res://Game.tscn"
-const SCENE_LEADERBOARD: String = "res://Leaderboard.tscn"
-const SCENE_ACHIEVEMENTS: String = "res://AchievementsView.tscn"
-const SCENE_SETTINGS: String = "res://Settings.tscn"
-const SCENE_SHOP: String = "res://UpgradeShop.tscn"
-const DEVICE_ID_FILE: String = "user://device_id.txt"
-
-const UI_TIMEOUT_DURATION: float = 40.0
-const PROFILE_TIMEOUT_DURATION: float = 10.0
-const POLL_INTERVAL: float = 0.5
-const MAX_PROFILE_LOAD_ATTEMPTS: int = 3
-const MAX_POLL_ATTEMPTS: int = 15
-
-const SAVE_FILE_PATH: String = "user://player_data.save"
-const MIN_NAME_LENGTH: int = 2
-const MAX_NAME_LENGTH: int = 16
-
-# ============================================================
-# NODE REFERENCES - LOGIN PANEL
-# ============================================================
-
-@onready var login_panel = $LoginPanel
-@onready var direct_play_button = $LoginPanel/MarginContainer/VBoxContainer/DirectPlayButton
-@onready var login_shop_button = $LoginPanel/MarginContainer/VBoxContainer/ShopButton
-@onready var login_leaderboard_button = $LoginPanel/MarginContainer/VBoxContainer/LeaderboardButton
-@onready var google_button = $LoginPanel/MarginContainer/VBoxContainer/GoogleButton
-@onready var apple_button = $LoginPanel/MarginContainer/VBoxContainer/AppleButton
-@onready var chedda_button = $LoginPanel/MarginContainer/VBoxContainer/CheddaButton
-@onready var exit_button = $LoginPanel/MarginContainer/VBoxContainer/ExitButton
-@onready var status_label = $LoginPanel/MarginContainer/VBoxContainer/StatusLabel
-@onready var login_cheese_bank_label = $LoginPanel/CheeseBankLabel
-@onready var login_best_progress_label = $LoginPanel/BestProgressLabel
-
-# ============================================================
-# NODE REFERENCES - NAME ENTRY PANEL
-# ============================================================
-
-@onready var name_entry_panel = $NameEntryPanel
-@onready var name_line_edit = $NameEntryPanel/MarginContainer/VBoxContainer/NameLineEdit
-@onready var confirm_name_button = $NameEntryPanel/MarginContainer/VBoxContainer/ConfirmNameButton
-@onready var cancel_name_button = $NameEntryPanel/MarginContainer/VBoxContainer/CancelNameButton
-@onready var name_status_label = $NameEntryPanel/MarginContainer/VBoxContainer/NameStatusLabel
-
-# ============================================================
-# NODE REFERENCES - MAIN PANEL
-# ============================================================
-
-@onready var main_panel = $MainPanel
-@onready var welcome_label = $MainPanel/MarginContainer/VBoxContainer/WelcomeLabel
-@onready var score_label = $MainPanel/MarginContainer/VBoxContainer/StatsPanel/VBoxContainer/ScoreLabel
-@onready var streak_label = $MainPanel/MarginContainer/VBoxContainer/StatsPanel/VBoxContainer/StreakLabel
-@onready var plays_label = $MainPanel/MarginContainer/VBoxContainer/StatsPanel/VBoxContainer/PlaysLabel
-@onready var play_button = $MainPanel/MarginContainer/VBoxContainer/PlayButton
-@onready var main_shop_button = $MainPanel/MarginContainer/VBoxContainer/ShopButton
-@onready var change_nickname_button = $MainPanel/MarginContainer/VBoxContainer/ChangeNicknameButton
-@onready var achievement_button = $MainPanel/MarginContainer/VBoxContainer/AchievementsButton
-@onready var leaderboard_button = $MainPanel/MarginContainer/VBoxContainer/LeaderboardButton
-@onready var settings_button = $MainPanel/MarginContainer/VBoxContainer/SettingsButton
-@onready var logout_button = $MainPanel/MarginContainer/VBoxContainer/LogoutButton
-@onready var main_cheese_bank_label = $MainPanel/CheeseBankLabel
-@onready var main_best_progress_label = $MainPanel/BestProgressLabel
-
-# ============================================================
-# STATE
-# ============================================================
-
-var is_logging_in: bool = false
-var waiting_for_profile: bool = false
-var profile_load_attempts: int = 0
-var profile_poll_attempts: int = 0
-
-# Anonymous player data
-var anonymous_nickname: String = ""
-var anonymous_player_id: String = ""
-
-# Test mode flag
-var _is_test_submission: bool = false
-
-# ============================================================
-# TIMERS
-# ============================================================
-
-var ui_timeout_timer: Timer = null
-var profile_poll_timer: Timer = null
-var profile_timeout_timer: Timer = null
-
-# ============================================================
-# DEBUG
-# ============================================================
-
+## Set to true to enable verbose logging
 var debug_logging: bool = true
-var state_history: Array = []
+
+## HTTP API Configuration (for native builds)
+const API_BASE_URL = "https://api.cheddaboards.com"
+var api_key: String = "cb_chedz-vs-the-graters_408970212"  ## Your API key
+var game_id: String = "chedz-vs-the-graters"  ## Your game ID for scoreboard operations
+var _player_id: String = ""
+var _session_token: String = ""  ## For OAuth session-based auth
+
+# ============================================================
+# PLATFORM DETECTION
+# ============================================================
+
+var _is_web: bool = false
+var _is_native: bool = false
+var _init_complete: bool = false
+var _init_attempts: int = 0
+
+# ============================================================
+# INTERNAL STATE (Shared)
+# ============================================================
+
+var _auth_type: String = ""
+var _cached_profile: Dictionary = {}
+var _nickname: String = ""
+
+# ============================================================
+# PERFORMANCE OPTIMIZATION
+# ============================================================
+
+var _is_checking_auth: bool = false
+var _is_refreshing_profile: bool = false
+var _is_submitting_score: bool = false
+var _last_response_check: float = 0.0
+var _last_profile_refresh: float = 0.0
+
+# ============================================================
+# PENDING SCORE SUBMISSION VALUES
+# ============================================================
+
+var _pending_score: int = 0
+var _pending_streak: int = 0
+
+# ============================================================
+# TIMEOUT MANAGEMENT
+# ============================================================
+
+var _login_timeout_timer: Timer = null
+const LOGIN_TIMEOUT_DURATION: float = 35.0
+const MAX_INIT_ATTEMPTS: int = 50
+
+# ============================================================
+# POLLING CONFIGURATION (Web only)
+# ============================================================
+
+var _poll_timer: Timer = null
+const POLL_INTERVAL: float = 0.1
+const MIN_RESPONSE_CHECK_INTERVAL: float = 0.3
+const PROFILE_REFRESH_COOLDOWN: float = 2.0
+
+# ============================================================
+# HTTP REQUEST (Native only)
+# ============================================================
+
+var _http_request: HTTPRequest
+var _current_endpoint: String = ""
+var _current_meta: Dictionary = {}  # Extra metadata for response handling
+var _http_busy: bool = false
+var _request_queue: Array = []
 
 # ============================================================
 # INITIALIZATION
 # ============================================================
 
-func _ready():
-	# Generate anonymous player ID
-	_setup_anonymous_player()
+func _ready() -> void:
+	_is_web = OS.get_name() == "Web"
+	_is_native = not _is_web
 	
-	# Load saved anonymous nickname
-	_load_player_data()
+	_setup_http_client()
 	
-	# Connect CheddaBoards signals
-	CheddaBoards.sdk_ready.connect(_on_sdk_ready)
-	CheddaBoards.login_success.connect(_on_login_success)
-	CheddaBoards.login_failed.connect(_on_login_failed)
-	CheddaBoards.login_timeout.connect(_on_login_timeout)
-	CheddaBoards.profile_loaded.connect(_on_profile_loaded)
-	CheddaBoards.no_profile.connect(_on_no_profile)
-	CheddaBoards.logout_success.connect(_on_logout_success)
-	CheddaBoards.nickname_changed.connect(_on_nickname_changed)
-	
-	# Connect LOGIN PANEL buttons
-	if direct_play_button:
-		direct_play_button.pressed.connect(_on_direct_play_pressed)
-	if login_shop_button:
-		login_shop_button.pressed.connect(_on_shop_pressed)
-	if login_leaderboard_button:
-		login_leaderboard_button.pressed.connect(_on_leaderboard_pressed)
-	if google_button:
-		google_button.pressed.connect(_on_google_button_pressed)
-	if apple_button:
-		apple_button.pressed.connect(_on_apple_button_pressed)
-	if chedda_button:
-		chedda_button.pressed.connect(_on_chedda_button_pressed)
-	if exit_button:
-		exit_button.pressed.connect(_on_exit_button_pressed)
-	
-	# Connect NAME ENTRY PANEL buttons
-	if confirm_name_button:
-		confirm_name_button.pressed.connect(_on_confirm_name_pressed)
-	if cancel_name_button:
-		cancel_name_button.pressed.connect(_on_cancel_name_pressed)
-	if name_line_edit:
-		name_line_edit.text_submitted.connect(_on_name_submitted)
-		name_line_edit.text_changed.connect(_on_name_text_changed)
-	
-	# Connect MAIN PANEL buttons
-	if play_button:
-		play_button.pressed.connect(_on_play_button_pressed)
-	if main_shop_button:
-		main_shop_button.pressed.connect(_on_shop_pressed)
-	if change_nickname_button:
-		change_nickname_button.pressed.connect(_on_change_nickname_pressed)
-	if leaderboard_button:
-		leaderboard_button.pressed.connect(_on_leaderboard_pressed)
-	if achievement_button:
-		achievement_button.pressed.connect(_on_achievements_pressed)
-	if settings_button:
-		settings_button.pressed.connect(_on_settings_pressed)
-	if logout_button:
-		logout_button.pressed.connect(_on_logout_pressed)
-	
-	# Initial state - show login panel
-	_show_login_panel()
-	status_label.text = "Connecting..."
-	_enable_login_buttons(false)
-	
-	# Apply mobile-responsive UI scaling
-	_adapt_for_mobile()
-	
-	# Add scroll support for landscape mode
-	_add_scroll_support()
-	
-	_log("MainMenu v1.7.0 initialized")
-	
-	# Check if SDK already ready
-	if CheddaBoards.is_ready():
-		_on_sdk_ready()
-
-func _add_scroll_support():
-	"""Wrap panel contents in ScrollContainers for landscape mobile support"""
-	_wrap_panel_in_scroll(login_panel)
-	_wrap_panel_in_scroll(main_panel)
-	if name_entry_panel:
-		_wrap_panel_in_scroll(name_entry_panel)
-	print("[MainMenu] Scroll support added for landscape mode")
-
-func _wrap_panel_in_scroll(panel: Control):
-	"""Wrap a panel's MarginContainer content in a ScrollContainer"""
-	if not panel:
-		return
-	
-	var margin_container = panel.get_node_or_null("MarginContainer")
-	if not margin_container:
-		return
-	
-	var vbox = margin_container.get_node_or_null("VBoxContainer")
-	if not vbox:
-		return
-	
-	# Remove VBox from MarginContainer
-	margin_container.remove_child(vbox)
-	
-	# Create ScrollContainer that fills the space
-	var scroll = ScrollContainer.new()
-	scroll.name = "ScrollContainer"
-	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-	
-	# Create a wrapper VBox that expands to fill scroll viewport
-	# This ensures content is centered when smaller than viewport
-	var wrapper = VBoxContainer.new()
-	wrapper.name = "ScrollWrapper"
-	wrapper.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	wrapper.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	wrapper.alignment = BoxContainer.ALIGNMENT_CENTER
-	
-	# The wrapper needs to be at least as tall as the scroll viewport
-	# We achieve this by connecting to the scroll's resized signal
-	scroll.resized.connect(func(): 
-		wrapper.custom_minimum_size.y = scroll.size.y
-	)
-	
-	# Add original VBox to wrapper (centered)
-	wrapper.add_child(vbox)
-	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	vbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	
-	# Add wrapper to scroll
-	scroll.add_child(wrapper)
-	
-	# Add scroll to MarginContainer
-	margin_container.add_child(scroll)
-	
-	# Trigger initial size
-	await panel.get_tree().process_frame
-	if scroll.size.y > 0:
-		wrapper.custom_minimum_size.y = scroll.size.y
-
-func _adapt_for_mobile() -> void:
-	"""Apply mobile-responsive UI scaling using MobileUI autoload"""
-	var is_mobile = MobileUI.is_mobile
-	
-	# === LOGIN PANEL ===
-	if direct_play_button:
-		MobileUI.scale_button(direct_play_button, 22 if is_mobile else 18, 60 if is_mobile else 44)
-	if login_shop_button:
-		MobileUI.scale_button(login_shop_button, 20 if is_mobile else 16, 50 if is_mobile else 40)
-	if login_leaderboard_button:
-		MobileUI.scale_button(login_leaderboard_button, 20 if is_mobile else 16, 50 if is_mobile else 40)
-	if google_button:
-		MobileUI.scale_button(google_button, 18 if is_mobile else 14, 50 if is_mobile else 40)
-	if apple_button:
-		MobileUI.scale_button(apple_button, 18 if is_mobile else 14, 50 if is_mobile else 40)
-	if chedda_button:
-		MobileUI.scale_button(chedda_button, 18 if is_mobile else 14, 50 if is_mobile else 40)
-	if exit_button:
-		MobileUI.scale_button(exit_button, 16 if is_mobile else 14, 44 if is_mobile else 36)
-	if status_label:
-		status_label.add_theme_font_size_override("font_size", MobileUI.get_font_size(16))
-	if login_cheese_bank_label:
-		login_cheese_bank_label.add_theme_font_size_override("font_size", MobileUI.get_font_size(20))
-	if login_best_progress_label:
-		login_best_progress_label.add_theme_font_size_override("font_size", MobileUI.get_font_size(14))
-	
-	# === NAME ENTRY PANEL ===
-	if name_line_edit:
-		name_line_edit.add_theme_font_size_override("font_size", MobileUI.get_font_size(20))
-		name_line_edit.custom_minimum_size.y = MobileUI.get_touch_size(50)
-	if confirm_name_button:
-		MobileUI.scale_button(confirm_name_button, 20, 50)
-	if cancel_name_button:
-		MobileUI.scale_button(cancel_name_button, 18, 44)
-	if name_status_label:
-		name_status_label.add_theme_font_size_override("font_size", MobileUI.get_font_size(14))
-	
-	# === MAIN PANEL ===
-	if welcome_label:
-		welcome_label.add_theme_font_size_override("font_size", MobileUI.get_title_font_size())
-	if score_label:
-		score_label.add_theme_font_size_override("font_size", MobileUI.get_hud_font_size())
-	if streak_label:
-		streak_label.add_theme_font_size_override("font_size", MobileUI.get_hud_font_size())
-	if plays_label:
-		plays_label.add_theme_font_size_override("font_size", MobileUI.get_hud_font_size())
-	if play_button:
-		MobileUI.scale_button(play_button, 24 if is_mobile else 20, 60 if is_mobile else 50)
-	if main_shop_button:
-		MobileUI.scale_button(main_shop_button, 20 if is_mobile else 16, 50 if is_mobile else 40)
-	if change_nickname_button:
-		MobileUI.scale_button(change_nickname_button, 18 if is_mobile else 14, 44 if is_mobile else 36)
-	if achievement_button:
-		MobileUI.scale_button(achievement_button, 18 if is_mobile else 14, 44 if is_mobile else 36)
-	if leaderboard_button:
-		MobileUI.scale_button(leaderboard_button, 18 if is_mobile else 14, 44 if is_mobile else 36)
-	if settings_button:
-		MobileUI.scale_button(settings_button, 18 if is_mobile else 14, 44 if is_mobile else 36)
-	if logout_button:
-		MobileUI.scale_button(logout_button, 16 if is_mobile else 14, 40 if is_mobile else 36)
-	if main_cheese_bank_label:
-		main_cheese_bank_label.add_theme_font_size_override("font_size", MobileUI.get_font_size(20))
-	if main_best_progress_label:
-		main_best_progress_label.add_theme_font_size_override("font_size", MobileUI.get_font_size(14))
-	
-	# Apply safe area margins on mobile
-	if is_mobile:
-		if login_panel:
-			var margin = login_panel.get_node_or_null("MarginContainer")
-			if margin:
-				MobileUI.scale_container_margins(margin, 30)
-		if main_panel:
-			var margin = main_panel.get_node_or_null("MarginContainer")
-			if margin:
-				MobileUI.scale_container_margins(margin, 30)
-	
-	print("[MainMenu] Mobile UI adapted - Scale: %.2f" % MobileUI.ui_scale)
-
-func _on_sdk_ready():
-	"""Called when CheddaBoards SDK is ready"""
-	_log("SDK ready")
-	status_label.text = ""
-	_enable_login_buttons(true)
-	
-	# Update roguelike progress display
-	_update_roguelike_display()
-	
-	# Check for existing REAL auth (not anonymous)
-	_check_existing_auth()
-
-func _input(event):
-	"""Debug keyboard shortcuts"""
-	if event is InputEventKey and event.pressed:
-		match event.keycode:
-			KEY_F5:
-				UpgradeManager.debug_add_cheese(500)
-				_update_roguelike_display()
-				get_viewport().set_input_as_handled()
-			KEY_F6:
-				_test_submit_bulk_scores(5)
-				get_viewport().set_input_as_handled()
-			KEY_F7:
-				_test_submit_random_score()
-				get_viewport().set_input_as_handled()
-			KEY_F8:
-				_log("Force profile refresh (F8)")
-				CheddaBoards.refresh_profile()
-				get_viewport().set_input_as_handled()
-			KEY_F9:
-				_dump_debug()
-				get_viewport().set_input_as_handled()
-
-# ============================================================
-# ROGUELIKE PROGRESSION DISPLAY
-# ============================================================
-
-func _update_roguelike_display():
-	"""Update cheese bank and best progress labels"""
-	var cheese = RunManager.cheese_bank
-	var best_cycle = RunManager.highest_cycle
-	var best_level = RunManager.highest_level
-	
-	# Update login panel labels
-	if login_cheese_bank_label:
-		login_cheese_bank_label.text = "🧀 %d" % cheese
-	
-	if login_best_progress_label:
-		if best_cycle > 1 or best_level > 1:
-			var level_name = _get_level_name(best_level)
-			if best_cycle > 1:
-				login_best_progress_label.text = "Best: %s (Cycle %d)" % [level_name, best_cycle]
-			else:
-				login_best_progress_label.text = "Best: %s" % level_name
-			login_best_progress_label.visible = true
-		else:
-			login_best_progress_label.visible = false
-	
-	# Update main panel labels
-	if main_cheese_bank_label:
-		main_cheese_bank_label.text = "🧀 %d" % cheese
-	
-	if main_best_progress_label:
-		if best_cycle > 1 or best_level > 1:
-			var level_name = _get_level_name(best_level)
-			if best_cycle > 1:
-				main_best_progress_label.text = "Best: %s (Cycle %d)" % [level_name, best_cycle]
-			else:
-				main_best_progress_label.text = "Best: %s" % level_name
-			main_best_progress_label.visible = true
-		else:
-			main_best_progress_label.visible = false
-	
-	# Update shop button to show upgrade count
-	var purchased_count = UpgradeManager.purchased.size()
-	var total_upgrades = UpgradeManager.upgrades.size()
-	
-	if login_shop_button:
-		if purchased_count > 0:
-			login_shop_button.text = "🛒 Upgrades (%d/%d)" % [purchased_count, total_upgrades]
-		else:
-			login_shop_button.text = "🛒 Upgrade Shop"
-	
-	if main_shop_button:
-		if purchased_count > 0:
-			main_shop_button.text = "🛒 Upgrades (%d/%d)" % [purchased_count, total_upgrades]
-		else:
-			main_shop_button.text = "🛒 Upgrade Shop"
-
-func _get_level_name(level: int) -> String:
-	"""Get level name from RunManager"""
-	if level < 1 or level > RunManager.level_configs.size():
-		return "Level %d" % level
-	return RunManager.level_configs[level - 1].name
-
-# ============================================================
-# ANONYMOUS PLAYER SETUP
-# ============================================================
-
-func _setup_anonymous_player():
-	"""Setup anonymous player ID - persistent across sessions"""
-	if OS.get_name() == "Web":
-		var js_device_id = JavaScriptBridge.eval("chedda_get_device_id()", true)
-		if js_device_id and str(js_device_id) != "" and str(js_device_id) != "null":
-			anonymous_player_id = str(js_device_id)
-		else:
-			anonymous_player_id = _get_or_create_native_device_id()
+	if _is_web:
+		_log("Initializing CheddaBoards v1.4.1 (Web Mode)...")
+		_start_polling()
+		_check_chedda_ready()
 	else:
-		anonymous_player_id = _get_or_create_native_device_id()
-	
-	_log("Anonymous player ID: %s" % anonymous_player_id)
+		_log("Initializing CheddaBoards v1.4.1 (Native/HTTP API Mode)...")
+		_init_complete = true
+		call_deferred("_emit_sdk_ready")
 
-func _get_or_create_native_device_id() -> String:
-	"""Get existing device ID or create new one (persisted to file)"""
-	if FileAccess.file_exists(DEVICE_ID_FILE):
-		var file = FileAccess.open(DEVICE_ID_FILE, FileAccess.READ)
-		if file:
-			var stored_id = file.get_line().strip_edges()
-			file.close()
-			if stored_id != "":
-				return stored_id
-	
-	randomize()
-	var new_id = "dev_%d_%08x" % [Time.get_unix_time_from_system(), randi()]
-	
-	var file = FileAccess.open(DEVICE_ID_FILE, FileAccess.WRITE)
-	if file:
-		file.store_line(new_id)
-		file.close()
-	
-	return new_id
+func _emit_sdk_ready() -> void:
+	sdk_ready.emit()
 
-func _load_player_data():
-	"""Load saved player data (anonymous nickname)"""
-	if not FileAccess.file_exists(SAVE_FILE_PATH):
-		_log("No save file found")
+func _setup_http_client() -> void:
+	_http_request = HTTPRequest.new()
+	add_child(_http_request)
+	_http_request.request_completed.connect(_on_http_request_completed)
+
+# ============================================================
+# SDK READY CHECK (Web Only)
+# ============================================================
+
+func _check_chedda_ready() -> void:
+	if not _is_web or _is_checking_auth:
+		return
+
+	_is_checking_auth = true
+	_init_attempts += 1
+
+	if _init_attempts > MAX_INIT_ATTEMPTS:
+		_is_checking_auth = false
+		push_error("[CheddaBoards] SDK failed to load after %d attempts" % MAX_INIT_ATTEMPTS)
+		init_error.emit("CheddaBoards SDK failed to load. Check your HTML template configuration.")
+		return
+
+	var js_check: String = """
+		(function() {
+			if (window.CheddaBoards && window.chedda) {
+				return true;
+			}
+			return false;
+		})();
+	"""
+
+	var ready: Variant = JavaScriptBridge.eval(js_check, true)
+
+	if ready:
+		_log("SDK confirmed ready")
+		_init_complete = true
+		_is_checking_auth = false
+		sdk_ready.emit()
+		force_check_events()
+	else:
+		_is_checking_auth = false
+		if _init_attempts % 10 == 0:
+			_log("SDK not ready, attempt %d/%d..." % [_init_attempts, MAX_INIT_ATTEMPTS])
+		await get_tree().create_timer(0.1).timeout
+		_check_chedda_ready()
+
+# ============================================================
+# POLLING SYSTEM (Web Only)
+# ============================================================
+
+func _start_polling() -> void:
+	if _poll_timer:
+		return
+
+	_poll_timer = Timer.new()
+	_poll_timer.wait_time = POLL_INTERVAL
+	_poll_timer.autostart = true
+	_poll_timer.timeout.connect(_check_for_responses)
+	add_child(_poll_timer)
+	_log("Started polling timer (interval: %ss)" % POLL_INTERVAL)
+
+func _check_for_responses() -> void:
+	if not _is_web or not _init_complete:
+		return
+
+	var current_time: float = Time.get_ticks_msec() / 1000.0
+	if current_time - _last_response_check < MIN_RESPONSE_CHECK_INTERVAL:
+		return
+
+	_last_response_check = current_time
+
+	var resp: Variant = JavaScriptBridge.eval("chedda_get_response()", true)
+	if resp == null:
 		return
 	
-	var file = FileAccess.open(SAVE_FILE_PATH, FileAccess.READ)
-	if file:
-		var data = file.get_var()
-		file.close()
+	var response_str: String = str(resp)
+	if response_str == "" or response_str.to_lower() == "null":
+		return
+
+	var json := JSON.new()
+	var parse_result: int = json.parse(response_str)
+	if parse_result == OK:
+		var response: Dictionary = json.data
+		_handle_web_response(response)
+
+# ============================================================
+# WEB RESPONSE HANDLER
+# ============================================================
+
+func _handle_web_response(response: Dictionary) -> void:
+	var action: String = str(response.get("action", ""))
+	var success: bool = bool(response.get("success", false))
+
+	_log("Received response: %s (success: %s)" % [action, success])
+
+	match action:
+		"init":
+			if success:
+				var authenticated: bool = bool(response.get("authenticated", false))
+				if authenticated:
+					_auth_type = str(response.get("authType", ""))
+					var profile: Dictionary = response.get("profile", {})
+					if profile and not profile.is_empty():
+						_update_cached_profile(profile)
+				else:
+					no_profile.emit()
+
+		"loginGoogle", "loginApple", "loginCheddaId", "loginInternetIdentity", "loginAnonymous":
+			_clear_login_timeout()
+			if success:
+				_auth_type = str(response.get("authType", ""))
+				var profile: Dictionary = response.get("profile", {})
+				if profile and not profile.is_empty():
+					_update_cached_profile(profile)
+					var nickname: String = str(profile.get("nickname", _get_default_nickname()))
+					login_success.emit(nickname)
+				else:
+					login_success.emit(_get_default_nickname())
+			else:
+				var error: String = str(response.get("error", "Unknown error"))
+				login_failed.emit(error)
+
+		"submitScore":
+			_is_submitting_score = false
+			_log("submitScore response received - success: %s" % success)
+			if success:
+				# Use pending values we stored before the request
+				_log("Score submitted successfully: %d points, %d streak" % [_pending_score, _pending_streak])
+				score_submitted.emit(_pending_score, _pending_streak)
+				if response.has("profile"):
+					var p: Dictionary = response.get("profile")
+					_update_cached_profile(p)
+			else:
+				var error: String = str(response.get("error", "Unknown error"))
+				_log("Score submission FAILED: %s" % error)
+				score_error.emit(error)
+
+		"getProfile":
+			_is_refreshing_profile = false
+			if success:
+				var profile: Dictionary = response.get("profile", {})
+				if profile and not profile.is_empty():
+					_update_cached_profile(profile)
+				else:
+					no_profile.emit()
+			else:
+				no_profile.emit()
+
+		"getLeaderboard":
+			if success:
+				var leaderboard: Array = response.get("leaderboard", response.get("entries", []))
+				leaderboard_loaded.emit(leaderboard)
+
+		"getPlayerRank":
+			if success:
+				var rank: int = int(response.get("rank", 0))
+				var score_val: int = int(response.get("score", 0))
+				var streak_val: int = int(response.get("streak", 0))
+				var total: int = int(response.get("totalPlayers", 0))
+				player_rank_loaded.emit(rank, score_val, streak_val, total)
+			else:
+				var error: String = str(response.get("error", "Unknown error"))
+				rank_error.emit(error)
+
+		"logout":
+			if success:
+				_cached_profile = {}
+				_auth_type = ""
+				logout_success.emit()
+
+		"changeNickname":
+			if success:
+				var new_nickname: String = str(response.get("nickname", ""))
+				if not _cached_profile.is_empty():
+					_cached_profile["nickname"] = new_nickname
+				nickname_changed.emit(new_nickname)
+			elif bool(response.get("cancelled", false)):
+				pass
+			else:
+				var error: String = str(response.get("error", "Unknown error"))
+				nickname_error.emit(error)
+
+# ============================================================
+# HTTP RESPONSE HANDLER (Native Only)
+# ============================================================
+
+func _on_http_request_completed(result: int, response_code: int, headers: PackedStringArray, body: PackedByteArray) -> void:
+	if result != HTTPRequest.RESULT_SUCCESS:
+		push_error("[CheddaBoards] Request failed with result %d" % result)
+		request_failed.emit(_current_endpoint, "Network error")
+		_emit_http_failure("Network error")
+		return
+	
+	var json = JSON.new()
+	var parse_result = json.parse(body.get_string_from_utf8())
+	
+	if parse_result != OK:
+		push_error("[CheddaBoards] Failed to parse JSON response")
+		request_failed.emit(_current_endpoint, "Invalid JSON response")
+		_emit_http_failure("Invalid JSON response")
+		return
+	
+	var response = json.data
+	
+	if response_code != 200:
+		var error_msg = response.get("error", "Unknown error")
+		push_error("[CheddaBoards] API error (%d): %s" % [response_code, error_msg])
+		request_failed.emit(_current_endpoint, error_msg)
+		_emit_http_failure(error_msg)
+		return
+	
+	if not response.get("ok", false):
+		var error_msg = response.get("error", "Unknown error")
+		request_failed.emit(_current_endpoint, error_msg)
+		_emit_http_failure(error_msg)
+		return
+	
+	var data = response.get("data", {})
+	_emit_http_success(data)
+
+func _emit_http_success(data) -> void:
+	match _current_endpoint:
+		"submit_score":
+			_is_submitting_score = false
+			# Use the pending values we stored before the request
+			_log("Score submission successful: %d points, %d streak" % [_pending_score, _pending_streak])
+			score_submitted.emit(_pending_score, _pending_streak)
 		
-		if data is Dictionary:
-			anonymous_nickname = data.get("nickname", "")
-			_log("Loaded anonymous nickname: %s" % anonymous_nickname)
-
-func _save_player_data():
-	"""Save player data (anonymous nickname)"""
-	var file = FileAccess.open(SAVE_FILE_PATH, FileAccess.WRITE)
-	if file:
-		var data = {
-			"nickname": anonymous_nickname,
-			"player_id": anonymous_player_id
-		}
-		file.store_var(data)
-		file.close()
-		_log("Saved player data")
-
-# ============================================================
-# AUTHENTICATION CHECK
-# ============================================================
-
-func _check_existing_auth():
-	"""Check if user has REAL authentication (not anonymous)"""
-	_log("Checking existing auth...")
-	_log("  has_account: %s" % CheddaBoards.has_account())
-	_log("  is_authenticated: %s" % CheddaBoards.is_authenticated())
-	_log("  is_anonymous: %s" % CheddaBoards.is_anonymous())
+		"leaderboard":
+			var entries = data.get("leaderboard", [])
+			leaderboard_loaded.emit(entries)
+		
+		"player_rank":
+			var rank = int(data.get("rank", 0))
+			var score_val = int(data.get("score", 0))
+			var streak_val = int(data.get("streak", 0))
+			var total = int(data.get("totalPlayers", 0))
+			player_rank_loaded.emit(rank, score_val, streak_val, total)
+		
+		"player_profile":
+			if data and not data.is_empty():
+				_update_cached_profile(data)
+			else:
+				no_profile.emit()
+		
+		"change_nickname":
+			var new_nick = str(data.get("nickname", ""))
+			if new_nick != "":
+				_nickname = new_nick
+				if not _cached_profile.is_empty():
+					_cached_profile["nickname"] = new_nick
+				nickname_changed.emit(new_nick)
+				_log("Nickname changed to: %s" % new_nick)
+		
+		"unlock_achievement":
+			var ach_id = str(data.get("achievementId", ""))
+			achievement_unlocked.emit(ach_id)
+		
+		"achievements":
+			var achievements = data.get("achievements", [])
+			achievements_loaded.emit(achievements)
+		
+		# --- SCOREBOARD RESPONSES ---
+		"list_scoreboards":
+			var scoreboards = data.get("scoreboards", [])
+			scoreboards_loaded.emit(scoreboards)
+			_log("Loaded %d scoreboards" % scoreboards.size())
+		
+		"get_scoreboard":
+			var sb_id = _current_meta.get("scoreboard_id", "")
+			var config = data.get("config", {})
+			var entries = data.get("entries", [])
+			scoreboard_loaded.emit(sb_id, config, entries)
+			_log("Loaded scoreboard '%s' with %d entries" % [sb_id, entries.size()])
+		
+		"scoreboard_rank":
+			var sb_id = _current_meta.get("scoreboard_id", "")
+			var found = data.get("found", false)
+			if found:
+				var rank = int(data.get("rank", 0))
+				var score_val = int(data.get("score", 0))
+				var streak_val = int(data.get("streak", 0))
+				var total = int(data.get("totalPlayers", 0))
+				scoreboard_rank_loaded.emit(sb_id, rank, score_val, streak_val, total)
+			else:
+				scoreboard_rank_loaded.emit(sb_id, 0, 0, 0, int(data.get("totalPlayers", 0)))
+		
+		# --- ARCHIVE RESPONSES (NEW v1.4.0) ---
+		"list_archives":
+			var sb_id = _current_meta.get("scoreboard_id", "")
+			var archives = data.get("archives", [])
+			archives_list_loaded.emit(sb_id, archives)
+			_log("Loaded %d archives for '%s'" % [archives.size(), sb_id])
+		
+		"get_archive", "get_last_archive":
+			var archive_id = data.get("archiveId", _current_meta.get("archive_id", ""))
+			var config = data.get("config", {})
+			var entries = data.get("entries", [])
+			archived_scoreboard_loaded.emit(archive_id, config, entries)
+			_log("Loaded archive '%s' with %d entries" % [archive_id, entries.size()])
+		
+		"archive_stats":
+			var total = int(data.get("totalArchives", 0))
+			var by_sb = data.get("byScoreboard", [])
+			archive_stats_loaded.emit(total, by_sb)
+			_log("Archive stats: %d total archives" % total)
+		
+		"game_info", "game_stats", "health":
+			_log("API response: %s" % str(data))
 	
-	if CheddaBoards.has_account() and CheddaBoards.is_authenticated() and not CheddaBoards.is_anonymous():
-		_log("User has real account and is authenticated - loading profile")
-		_load_authenticated_profile()
-	else:
-		_log("No real auth - showing login panel")
-		_show_login_panel()
+	_current_meta = {}
+	_http_busy = false
+	_process_next_request()
 
-func _load_authenticated_profile():
-	"""Load profile for authenticated user"""
-	_log("Loading profile...")
-	waiting_for_profile = true
-	profile_load_attempts = 0
+func _emit_http_failure(error: String) -> void:
+	match _current_endpoint:
+		"submit_score":
+			_is_submitting_score = false
+			score_error.emit(error)
+		"leaderboard":
+			leaderboard_loaded.emit([])
+		"player_rank":
+			rank_error.emit(error)
+		"player_profile":
+			no_profile.emit()
+		"change_nickname":
+			nickname_error.emit(error)
+		"unlock_achievement":
+			pass
+		"achievements":
+			achievements_loaded.emit([])
+		"list_scoreboards":
+			scoreboards_loaded.emit([])
+			scoreboard_error.emit(error)
+		"get_scoreboard":
+			var sb_id = _current_meta.get("scoreboard_id", "")
+			scoreboard_loaded.emit(sb_id, {}, [])
+			scoreboard_error.emit(error)
+		"scoreboard_rank":
+			var sb_id = _current_meta.get("scoreboard_id", "")
+			scoreboard_rank_loaded.emit(sb_id, 0, 0, 0, 0)
+			scoreboard_error.emit(error)
+		# --- ARCHIVE FAILURES (NEW v1.4.0) ---
+		"list_archives":
+			var sb_id = _current_meta.get("scoreboard_id", "")
+			archives_list_loaded.emit(sb_id, [])
+			archive_error.emit(error)
+		"get_archive", "get_last_archive":
+			var archive_id = _current_meta.get("archive_id", "")
+			archived_scoreboard_loaded.emit(archive_id, {}, [])
+			archive_error.emit(error)
+		"archive_stats":
+			archive_stats_loaded.emit(0, [])
+			archive_error.emit(error)
 	
-	var profile = CheddaBoards.get_cached_profile()
-	if not profile.is_empty():
-		_log("Showing cached profile")
-		_show_main_panel(profile)
-	else:
-		_show_main_panel_loading()
-	
-	_request_profile_with_timeout()
+	_current_meta = {}
+	_http_busy = false
+	_process_next_request()
 
-func _request_profile_with_timeout():
-	"""Request profile with timeout"""
-	CheddaBoards.refresh_profile()
-	_start_profile_polling()
-	_start_profile_timeout()
-
-# ============================================================
-# PROFILE POLLING
-# ============================================================
-
-func _start_profile_polling():
-	"""Start polling for profile"""
-	_stop_profile_polling()
-	
-	profile_poll_timer = Timer.new()
-	profile_poll_timer.wait_time = POLL_INTERVAL
-	profile_poll_timer.timeout.connect(_check_profile_poll)
-	add_child(profile_poll_timer)
-	profile_poll_timer.start()
-	profile_poll_attempts = 0
-
-func _check_profile_poll():
-	"""Check if profile has loaded"""
-	profile_poll_attempts += 1
-	
-	var profile = CheddaBoards.get_cached_profile()
-	
-	if not profile.is_empty() and waiting_for_profile:
-		_log("Profile found via polling")
-		_stop_all_timers()
-		waiting_for_profile = false
-		_show_main_panel(profile)
+func _make_http_request(endpoint: String, method: int, body: Dictionary, request_type: String, meta: Dictionary = {}) -> void:
+	if api_key.is_empty():
+		_log("API key not set - skipping HTTP request to %s" % endpoint)
+		match request_type:
+			"submit_score":
+				score_error.emit("API key not set")
+			"player_profile":
+				no_profile.emit()
+			"leaderboard":
+				leaderboard_loaded.emit([])
+			"player_rank":
+				rank_error.emit("API key not set")
+			"list_scoreboards", "get_scoreboard":
+				scoreboard_error.emit("API key not set")
+			"list_archives", "get_archive", "get_last_archive", "archive_stats":
+				archive_error.emit("API key not set")
 		return
 	
-	if profile_poll_attempts >= MAX_POLL_ATTEMPTS:
-		_stop_profile_polling()
-
-func _stop_profile_polling():
-	"""Stop polling"""
-	if profile_poll_timer:
-		profile_poll_timer.stop()
-		profile_poll_timer.queue_free()
-		profile_poll_timer = null
-
-# ============================================================
-# PROFILE TIMEOUT
-# ============================================================
-
-func _start_profile_timeout():
-	"""Start timeout for profile loading"""
-	_clear_profile_timeout()
+	var request_data = {
+		"endpoint": endpoint,
+		"method": method,
+		"body": body,
+		"request_type": request_type,
+		"meta": meta
+	}
 	
-	profile_timeout_timer = Timer.new()
-	profile_timeout_timer.wait_time = PROFILE_TIMEOUT_DURATION
-	profile_timeout_timer.one_shot = true
-	profile_timeout_timer.timeout.connect(_on_profile_timeout)
-	add_child(profile_timeout_timer)
-	profile_timeout_timer.start()
-
-func _clear_profile_timeout():
-	"""Clear profile timeout"""
-	if profile_timeout_timer:
-		profile_timeout_timer.stop()
-		profile_timeout_timer.queue_free()
-		profile_timeout_timer = null
-
-func _on_profile_timeout():
-	"""Handle profile timeout"""
-	if not waiting_for_profile:
+	if _http_busy:
+		_log("HTTP busy, queuing request: %s" % request_type)
+		_request_queue.append(request_data)
 		return
 	
-	profile_load_attempts += 1
-	_log("Profile timeout (attempt %d/%d)" % [profile_load_attempts, MAX_PROFILE_LOAD_ATTEMPTS])
-	
-	if profile_load_attempts < MAX_PROFILE_LOAD_ATTEMPTS:
-		_request_profile_with_timeout()
-	else:
-		_log("Max attempts - using defaults")
-		_stop_all_timers()
-		waiting_for_profile = false
-		_show_main_panel({
-			"nickname": CheddaBoards.get_nickname(),
-			"score": 0,
-			"streak": 0,
-			"playCount": 0
-		})
+	_execute_http_request(request_data)
 
-# ============================================================
-# UI TIMEOUT (LOGIN)
-# ============================================================
+func _execute_http_request(request_data: Dictionary) -> void:
+	_http_busy = true
+	_current_endpoint = request_data.request_type
+	_current_meta = request_data.get("meta", {})
+	
+	var headers = [
+		"Content-Type: application/json",
+		"X-API-Key: " + api_key
+	]
+	
+	# Add session token if available (for OAuth users)
+	if not _session_token.is_empty():
+		headers.append("X-Session-Token: " + _session_token)
+	
+	# Add game ID header if set
+	if not game_id.is_empty():
+		headers.append("X-Game-ID: " + game_id)
+	
+	var url = API_BASE_URL + request_data.endpoint
+	var json_body = JSON.stringify(request_data.body) if request_data.body.size() > 0 else ""
+	
+	_log("HTTP %s: %s" % ["POST" if request_data.method == HTTPClient.METHOD_POST else "GET", url])
+	
+	var error = _http_request.request(url, headers, request_data.method, json_body)
+	if error != OK:
+		push_error("[CheddaBoards] HTTP request failed to start: %s" % error)
+		request_failed.emit(request_data.endpoint, "Request failed to start: %s" % error)
+		_http_busy = false
+		_process_next_request()
 
-func _start_ui_timeout():
-	"""Start login timeout"""
-	_clear_ui_timeout()
-	
-	ui_timeout_timer = Timer.new()
-	ui_timeout_timer.wait_time = UI_TIMEOUT_DURATION
-	ui_timeout_timer.one_shot = true
-	ui_timeout_timer.timeout.connect(_on_ui_timeout)
-	add_child(ui_timeout_timer)
-	ui_timeout_timer.start()
-
-func _clear_ui_timeout():
-	"""Clear login timeout"""
-	if ui_timeout_timer:
-		ui_timeout_timer.stop()
-		ui_timeout_timer.queue_free()
-		ui_timeout_timer = null
-
-func _on_ui_timeout():
-	"""Handle login timeout"""
-	_log("Login timeout")
-	_set_status("Login timeout. Please try again.", true)
-	_enable_login_buttons(true)
-	_stop_all_timers()
-	is_logging_in = false
-
-func _stop_all_timers():
-	"""Stop all timers"""
-	_clear_ui_timeout()
-	_clear_profile_timeout()
-	_stop_profile_polling()
-
-# ============================================================
-# UI STATE
-# ============================================================
-
-func _show_login_panel():
-	"""Show login panel (anonymous/not logged in)"""
-	login_panel.visible = true
-	main_panel.visible = false
-	if name_entry_panel:
-		name_entry_panel.visible = false
-	status_label.text = ""
-	
-	waiting_for_profile = false
-	is_logging_in = false
-	
-	_stop_all_timers()
-	_enable_login_buttons(true)
-	
-	# Update PLAY NOW button to show returning player
-	if direct_play_button and not anonymous_nickname.is_empty():
-		direct_play_button.text = "PLAY AS %s" % anonymous_nickname.to_upper()
-	elif direct_play_button:
-		direct_play_button.text = "PLAY NOW"
-	
-	# Update roguelike display
-	_update_roguelike_display()
-
-func _show_name_entry_panel():
-	login_panel.visible = false
-	main_panel.visible = false
-	name_entry_panel.visible = true
-	
-	if not anonymous_nickname.is_empty():
-		name_line_edit.text = anonymous_nickname
-	else:
-		name_line_edit.text = _generate_default_name()
-	
-	name_line_edit.placeholder_text = "Enter your name..."
-	name_status_label.text = ""
-	
-	name_line_edit.grab_focus()
-	_update_confirm_button_state()
-
-func _update_confirm_button_state():
-	"""Enable/disable confirm button based on name validity"""
-	var name_text = name_line_edit.text.strip_edges()
-	var is_valid = name_text.length() >= MIN_NAME_LENGTH and name_text.length() <= MAX_NAME_LENGTH
-	confirm_name_button.disabled = not is_valid
-
-func _show_main_panel_loading():
-	"""Show main panel in loading state"""
-	login_panel.visible = false
-	main_panel.visible = true
-	if name_entry_panel:
-		name_entry_panel.visible = false
-	
-	welcome_label.text = "Loading..."
-	score_label.text = "High Score: --"
-	streak_label.text = "Best Streak: --"
-	if plays_label:
-		plays_label.text = "Games Played: --"
-	
-	_set_main_buttons_disabled(true)
-	_update_roguelike_display()
-
-func _show_main_panel(profile: Dictionary):
-	"""Show main panel with profile (logged in)"""
-	_log("Showing main panel")
-	
-	waiting_for_profile = false
-	_stop_all_timers()
-	
-	login_panel.visible = false
-	main_panel.visible = true
-	if name_entry_panel:
-		name_entry_panel.visible = false
-	
-	var nickname = str(profile.get("nickname", profile.get("username", "Player")))
-	var score = int(profile.get("score", profile.get("highScore", 0)))
-	var streak = int(profile.get("streak", profile.get("bestStreak", 0)))
-	var play_count = int(profile.get("playCount", profile.get("plays", 0)))
-	
-	welcome_label.text = "Welcome, %s!" % nickname
-	score_label.text = "High Score: %d" % score
-	streak_label.text = "Best Streak: %d" % streak
-	if plays_label:
-		plays_label.text = "Games Played: %d" % play_count
-	
-	_update_achievement_button()
-	_set_main_buttons_disabled(false)
-	_update_roguelike_display()
-
-func _update_main_panel_stats(profile: Dictionary):
-	"""Update stats on main panel"""
-	var nickname = str(profile.get("nickname", "Player"))
-	var score = int(profile.get("score", 0))
-	var streak = int(profile.get("streak", 0))
-	var play_count = int(profile.get("playCount", 0))
-	
-	welcome_label.text = "Welcome, %s!" % nickname
-	score_label.text = "High Score: %d" % score
-	streak_label.text = "Best Streak: %d" % streak
-	if plays_label:
-		plays_label.text = "Games Played: %d" % play_count
-	
-	_update_achievement_button()
-	_update_roguelike_display()
-
-func _update_achievement_button():
-	"""Update achievement button text"""
-	if not achievement_button:
-		return
-	var achievements = get_node_or_null("/root/Achievements")
-	if achievements and achievements.has_method("get_unlocked_count"):
-		var unlocked = achievements.get_unlocked_count()
-		var total = achievements.get_total_count()
-		achievement_button.text = "Achievements (%d/%d)" % [unlocked, total]
-
-func _enable_login_buttons(enabled: bool):
-	"""Enable/disable login panel buttons"""
-	if direct_play_button:
-		direct_play_button.disabled = not enabled
-	if login_shop_button:
-		login_shop_button.disabled = not enabled
-	if login_leaderboard_button:
-		login_leaderboard_button.disabled = not enabled
-	if google_button:
-		google_button.disabled = not enabled
-	if apple_button:
-		apple_button.disabled = not enabled
-	if chedda_button:
-		chedda_button.disabled = not enabled
-	if exit_button:
-		exit_button.disabled = not enabled
-
-func _set_main_buttons_disabled(disabled: bool):
-	"""Enable/disable main panel buttons"""
-	if play_button:
-		play_button.disabled = disabled
-	if main_shop_button:
-		main_shop_button.disabled = disabled
-	if change_nickname_button:
-		change_nickname_button.disabled = disabled
-	if achievement_button:
-		achievement_button.disabled = disabled
-	if leaderboard_button:
-		leaderboard_button.disabled = disabled
-	if settings_button:
-		settings_button.disabled = disabled
-	if logout_button:
-		logout_button.disabled = false
-
-func _set_status(message: String, is_error: bool = false):
-	"""Set status label"""
-	status_label.text = message
-	if is_error:
-		status_label.add_theme_color_override("font_color", Color.RED)
-	else:
-		status_label.remove_theme_color_override("font_color")
-
-# ============================================================
-# LOGIN PANEL BUTTON HANDLERS
-# ============================================================
-
-func _on_direct_play_pressed():
-	"""Handle PLAY NOW button - show name entry or use mobile prompt"""
-	_log("PLAY NOW pressed")
-	
-	if OS.get_name() == "Web" and _is_mobile_web():
-		_show_mobile_name_prompt()
+func _process_next_request() -> void:
+	if _request_queue.is_empty():
 		return
 	
-	_log("Showing name entry panel")
-	_show_name_entry_panel()
-
-func _on_shop_pressed():
-	"""Open upgrade shop"""
-	_log("Shop pressed")
-	get_tree().change_scene_to_file(SCENE_SHOP)
-
-func _on_google_button_pressed():
-	"""Login with Google"""
-	_log("Google login pressed")
-	_set_status("Opening Google login...")
-	_enable_login_buttons(false)
-	_start_ui_timeout()
-	is_logging_in = true
-	CheddaBoards.login_google()
-
-func _on_apple_button_pressed():
-	"""Login with Apple"""
-	_log("Apple login pressed")
-	_set_status("Opening Apple login...")
-	_enable_login_buttons(false)
-	_start_ui_timeout()
-	is_logging_in = true
-	CheddaBoards.login_apple()
-
-func _on_chedda_button_pressed():
-	"""Login with Internet Identity"""
-	_log("Chedda/II login pressed")
-	_set_status("Opening Internet Identity...")
-	_enable_login_buttons(false)
-	_start_ui_timeout()
-	is_logging_in = true
-	CheddaBoards.login_internet_identity()
-
-func _on_exit_button_pressed():
-	"""Exit game"""
-	_log("Exit pressed")
-	if OS.get_name() == "Web":
-		JavaScriptBridge.eval("window.location.href = 'https://cheddagames.com'")
-	else:
-		get_tree().quit()
+	var next_request = _request_queue.pop_front()
+	_log("Processing queued request: %s" % next_request.request_type)
+	_execute_http_request(next_request)
 
 # ============================================================
-# NAME ENTRY PANEL HANDLERS
+# PROFILE MANAGEMENT
 # ============================================================
 
-func _is_mobile_web() -> bool:
-	"""Check if running on mobile web browser"""
-	if OS.get_name() != "Web":
-		return false
-	var is_mobile = JavaScriptBridge.eval("""
-		/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
-	""", true)
-	return bool(is_mobile)
-
-func _generate_default_name() -> String:
-	"""Generate a unique default name like 'Player_4829'"""
-	randomize()
-	var suffix = str(randi() % 10000).pad_zeros(4)
-	return "Player_%s" % suffix
-
-func _show_mobile_name_prompt():
-	"""Show native prompt for mobile web users"""
-	var default_name = anonymous_nickname if anonymous_nickname != "" else _generate_default_name()
-	var js_code = "prompt('Enter your name:', '%s')" % default_name.replace("'", "\\'")
-	var result = JavaScriptBridge.eval(js_code, true)
-	
-	if result == null or str(result) == "null" or str(result).strip_edges() == "":
-		_log("Mobile prompt cancelled")
-		return
-	
-	var name_text = str(result).strip_edges()
-	
-	if name_text.length() < MIN_NAME_LENGTH or name_text.length() > MAX_NAME_LENGTH:
-		JavaScriptBridge.eval("alert('Name must be %d-%d characters')" % [MIN_NAME_LENGTH, MAX_NAME_LENGTH], true)
-		return
-	
-	anonymous_nickname = name_text
-	_save_player_data()
-	
-	CheddaBoards.set_player_id(anonymous_player_id)
-	
-	_log(">>> Calling change_nickname('%s')" % name_text)
-	CheddaBoards.change_nickname(name_text)
-	
-	CheddaBoards.login_anonymous(name_text)
-	_log("Starting game as: %s (ID: %s)" % [anonymous_nickname, anonymous_player_id])
-	
-	# Start new roguelike run
-	RunManager.start_new_run()
-	get_tree().change_scene_to_file(SCENE_GAME)
-
-func _on_name_text_changed(_new_text: String):
-	"""Handle name text changes"""
-	_update_confirm_button_state()
-	name_status_label.text = ""
-
-func _on_name_submitted(name_text: String):
-	"""Handle Enter key in name field"""
-	if not confirm_name_button.disabled:
-		_on_confirm_name_pressed()
-
-func _on_confirm_name_pressed():
-	"""Confirm name and start game"""
-	var name_text = name_line_edit.text.strip_edges()
-	
-	_log("=== NAME CONFIRMATION ===")
-	_log("Entered name: '%s'" % name_text)
-	_log("Old nickname: '%s'" % anonymous_nickname)
-	_log("Player ID: '%s'" % anonymous_player_id)
-	
-	if name_text.length() < MIN_NAME_LENGTH:
-		name_status_label.text = "Name too short (min %d characters)" % MIN_NAME_LENGTH
-		name_status_label.add_theme_color_override("font_color", Color.RED)
-		return
-	
-	if name_text.length() > MAX_NAME_LENGTH:
-		name_status_label.text = "Name too long (max %d characters)" % MAX_NAME_LENGTH
-		name_status_label.add_theme_color_override("font_color", Color.RED)
-		return
-	
-	anonymous_nickname = name_text
-	_save_player_data()
-	
-	CheddaBoards.set_player_id(anonymous_player_id)
-	_log("Set player ID to: %s" % anonymous_player_id)
-	
-	_log(">>> Calling change_nickname('%s')" % name_text)
-	CheddaBoards.change_nickname(name_text)
-	
-	_log(">>> Calling login_anonymous('%s')" % name_text)
-	CheddaBoards.login_anonymous(name_text)
-	
-	_log("Starting game as: %s (ID: %s)" % [anonymous_nickname, anonymous_player_id])
-	
-	# Start new roguelike run
-	RunManager.start_new_run()
-	get_tree().change_scene_to_file(SCENE_GAME)
-
-func _on_cancel_name_pressed():
-	"""Cancel name entry, go back to login panel"""
-	_log("Name entry cancelled")
-	_show_login_panel()
-
-# ============================================================
-# CHEDDABOARDS SIGNAL HANDLERS
-# ============================================================
-
-func _on_login_success(nickname: String):
-	"""Login succeeded"""
-	_log("Login success: %s" % nickname)
-	_clear_ui_timeout()
-	is_logging_in = false
-	
-	if _is_test_submission:
-		_is_test_submission = false
-		return
-	
-	_show_main_panel_loading()
-	waiting_for_profile = true
-	profile_load_attempts = 0
-	_request_profile_with_timeout()
-
-func _on_login_failed(reason: String):
-	"""Login failed"""
-	_log("Login failed: %s" % reason)
-	_clear_ui_timeout()
-	_set_status("Login failed: %s" % reason, true)
-	_enable_login_buttons(true)
-	_stop_all_timers()
-	is_logging_in = false
-
-func _on_login_timeout():
-	"""Login timeout from SDK"""
-	_log("Login timeout signal")
-	_clear_ui_timeout()
-	_set_status("Login took too long. Please try again.", true)
-	_enable_login_buttons(true)
-	_stop_all_timers()
-	is_logging_in = false
-
-func _on_profile_loaded(nickname: String, score: int, streak: int, achievements: Array):
-	"""Profile loaded from backend"""
-	_log("Profile loaded: %s (score: %d)" % [nickname, score])
-	
-	var profile = CheddaBoards.get_cached_profile()
+func _update_cached_profile(profile: Dictionary) -> void:
 	if profile.is_empty():
 		return
-	
-	if main_panel.visible:
-		_update_main_panel_stats(profile)
-	
-	if waiting_for_profile:
-		waiting_for_profile = false
-		_stop_all_timers()
-		if not main_panel.visible:
-			_show_main_panel(profile)
 
-func _on_no_profile():
-	"""No profile found"""
-	_log("No profile signal")
+	_cached_profile = profile
+
+	var nickname: String = str(profile.get("nickname", profile.get("username", _get_default_nickname())))
+	var score: int = int(profile.get("score", profile.get("highScore", 0)))
+	var streak: int = int(profile.get("streak", profile.get("bestStreak", 0)))
+	var achievements: Array = profile.get("achievements", [])
 	
-	if not CheddaBoards.has_account() and not is_logging_in:
-		_stop_all_timers()
-		waiting_for_profile = false
-		_show_login_panel()
-	elif is_logging_in:
-		pass
-	else:
-		_stop_all_timers()
-		waiting_for_profile = false
-		_show_main_panel({
-			"nickname": CheddaBoards.get_nickname(),
-			"score": 0,
-			"streak": 0,
-			"playCount": 0
-		})
+	_nickname = nickname
 
-func _on_logout_success():
-	"""Logout completed"""
-	_log("Logout success")
-	is_logging_in = false
-	_show_login_panel()
-
-func _on_nickname_changed(new_nickname: String):
-	"""Nickname changed"""
-	_log("Nickname changed: %s" % new_nickname)
-	if main_panel.visible:
-		welcome_label.text = "Welcome, %s!" % new_nickname
+	profile_loaded.emit(nickname, score, streak, achievements)
 
 # ============================================================
-# MAIN PANEL BUTTON HANDLERS
+# TIMEOUT MANAGEMENT
 # ============================================================
 
-func _on_play_button_pressed():
-	"""Start game (logged in)"""
-	_log("Play pressed")
-	# Start new roguelike run
-	RunManager.start_new_run()
-	get_tree().change_scene_to_file(SCENE_GAME)
-
-func _on_change_nickname_pressed():
-	"""Change nickname"""
-	_log("Change nickname pressed")
-	CheddaBoards.change_nickname()
-
-func _on_leaderboard_pressed():
-	"""View leaderboard"""
-	_log("Leaderboard pressed")
-	get_tree().change_scene_to_file(SCENE_LEADERBOARD)
-
-func _on_achievements_pressed():
-	"""View achievements"""
-	_log("Achievements pressed")
-	get_tree().change_scene_to_file(SCENE_ACHIEVEMENTS)
-
-func _on_settings_pressed():
-	"""Open settings"""
-	_log("Settings pressed")
-	if FileAccess.file_exists(SCENE_SETTINGS):
-		get_tree().change_scene_to_file(SCENE_SETTINGS)
-
-func _on_logout_pressed():
-	"""Logout"""
-	_log("Logout pressed")
-	CheddaBoards.logout()
-
-# ============================================================
-# PUBLIC GETTERS
-# ============================================================
-
-func get_anonymous_nickname() -> String:
-	"""Get the saved anonymous nickname"""
-	return anonymous_nickname
-
-func get_anonymous_player_id() -> String:
-	"""Get the anonymous player ID"""
-	return anonymous_player_id
-
-# ============================================================
-# DEBUG / TESTING
-# ============================================================
-
-func _test_submit_random_score():
-	"""F7 - Submit single random score for testing leaderboard"""
-	randomize()
-	var test_name = "Test_%04d" % (randi() % 10000)
-	var test_score = randi_range(500, 7000)
-	var test_streak = randi_range(1, 10)
-	var test_id = "test_%d_%d" % [Time.get_unix_time_from_system(), randi() % 10000]
+func _start_login_timeout() -> void:
+	_clear_login_timeout()
 	
-	_is_test_submission = true
-	CheddaBoards.set_player_id(test_id)
-	CheddaBoards.login_anonymous(test_name)
-	CheddaBoards.submit_score(test_score, test_streak)
-	
-	_log("TEST: %s submitted %d pts (streak: %d)" % [test_name, test_score, test_streak])
-	_set_status("Test: %s - %d pts" % [test_name, test_score], false)
+	_login_timeout_timer = Timer.new()
+	_login_timeout_timer.wait_time = LOGIN_TIMEOUT_DURATION
+	_login_timeout_timer.one_shot = true
+	_login_timeout_timer.timeout.connect(_on_login_timeout)
+	add_child(_login_timeout_timer)
+	_login_timeout_timer.start()
+	_log("Login timeout started (%.1fs)" % LOGIN_TIMEOUT_DURATION)
 
-func _test_submit_bulk_scores(count: int = 5):
-	"""F6 - Submit multiple random scores for testing"""
-	_log("TEST: Submitting %d random scores..." % count)
-	_set_status("Submitting %d test scores..." % count, false)
-	
-	for i in count:
-		await get_tree().create_timer(2.0).timeout
-		_test_submit_random_score()
-	
-	_log("TEST: Bulk submission complete")
+func _clear_login_timeout() -> void:
+	if _login_timeout_timer:
+		_login_timeout_timer.stop()
+		_login_timeout_timer.queue_free()
+		_login_timeout_timer = null
+
+func _on_login_timeout() -> void:
+	_log("Login timeout - no response received")
+	login_timeout.emit()
+	_login_timeout_timer = null
 
 # ============================================================
 # LOGGING
 # ============================================================
 
-func _log(message: String):
-	"""Log with timestamp"""
-	if not debug_logging:
-		return
-	var entry = "[%d] %s" % [Time.get_ticks_msec(), message]
-	state_history.append(entry)
-	print("[MainMenu] %s" % message)
+func _log(message: String) -> void:
+	if debug_logging:
+		print("[CheddaBoards] %s" % message)
 
-func _dump_debug():
-	"""Dump debug info (F9)"""
+# ============================================================
+# PUBLIC API - UTILITIES
+# ============================================================
+
+func is_ready() -> bool:
+	if _is_web:
+		return _is_web and _init_complete
+	else:
+		return _init_complete
+
+func can_connect() -> bool:
+	if _is_web:
+		return _init_complete
+	else:
+		return _init_complete and not api_key.is_empty()
+
+func wait_until_ready() -> void:
+	if is_ready():
+		return
+	await sdk_ready
+
+func _get_default_nickname() -> String:
+	return "Player_" + get_player_id().left(6)
+
+func get_nickname() -> String:
+	if _nickname != "" and not _nickname.begins_with("Player_p_"):
+		return _nickname
+	
+	if not _cached_profile.is_empty():
+		var profile_nick = str(_cached_profile.get("nickname", ""))
+		if profile_nick != "" and not profile_nick.begins_with("Player_p_"):
+			return profile_nick
+	
+	if _nickname != "":
+		return _nickname
+	
+	# Fallback: Generate default (only if nothing else set)
+	return _get_default_nickname()
+
+func get_high_score() -> int:
+	if _cached_profile.is_empty():
+		return 0
+	return int(_cached_profile.get("score", 0))
+
+func get_best_streak() -> int:
+	if _cached_profile.is_empty():
+		return 0
+	return int(_cached_profile.get("streak", 0))
+
+func get_cached_profile() -> Dictionary:
+	return _cached_profile
+
+func get_auth_type() -> String:
+	return _auth_type
+
+# ============================================================
+# PUBLIC API - CONFIGURATION
+# ============================================================
+
+func set_api_key(key: String) -> void:
+	api_key = key
+	_log("API key set")
+
+func set_game_id(id: String) -> void:
+	game_id = id
+	_log("Game ID set: %s" % id)
+
+func set_session_token(token: String) -> void:
+	_session_token = token
+	_log("Session token set")
+
+func set_player_id(player_id: String) -> void:
+	_player_id = _sanitize_player_id(player_id)
+	_log("Player ID set: %s" % _player_id)
+	# Note: Don't reset _nickname here - MainMenu sets it separately
+
+func get_player_id() -> String:
+	if not _player_id.is_empty():
+		return _player_id
+	
+	if _is_web:
+		var js_device_id = JavaScriptBridge.eval("chedda_get_device_id()", true)
+		if js_device_id and str(js_device_id) != "":
+			_player_id = str(js_device_id)
+			return _player_id
+	
+	randomize()
+	_player_id = "player_" + str(randi() % 1000000000)
+	return _player_id
+
+func _sanitize_player_id(raw_id: String) -> String:
+	if raw_id.is_empty():
+		randomize()
+		return "player_" + str(randi() % 1000000000)
+	
+	var sanitized = ""
+	for c in raw_id:
+		if (c >= "a" and c <= "z") or (c >= "A" and c <= "Z") or (c >= "0" and c <= "9") or c == "_" or c == "-":
+			sanitized += c
+	
+	if sanitized.is_empty():
+		randomize()
+		return "player_" + str(abs(raw_id.hash()))
+	
+	if sanitized[0] >= "0" and sanitized[0] <= "9":
+		sanitized = "p_" + sanitized
+	
+	if sanitized.length() > 100:
+		sanitized = sanitized.left(100)
+	
+	return sanitized
+
+# ============================================================
+# PUBLIC API - AUTHENTICATION
+# ============================================================
+
+func login_internet_identity(nickname: String = "") -> void:
+	if _is_web:
+		if not _init_complete:
+			login_failed.emit("CheddaBoards not ready")
+			return
+		var safe_nickname: String = nickname.replace("'", "\\'").replace('"', '\\"')
+		JavaScriptBridge.eval("chedda_login_ii('%s')" % safe_nickname, true)
+		_log("Internet Identity login requested")
+		_start_login_timeout()
+	else:
+		if api_key.is_empty():
+			login_failed.emit("API key not set")
+			return
+		_nickname = nickname if nickname != "" else _get_default_nickname()
+		_auth_type = "api_key"
+		login_success.emit(_nickname)
+		_log("Native login (API key mode)")
+
+func login_chedda_id(nickname: String = "") -> void:
+	login_internet_identity(nickname)
+
+func login_google() -> void:
+	if _is_web:
+		if not _init_complete:
+			login_failed.emit("CheddaBoards not ready")
+			return
+		JavaScriptBridge.eval("chedda_login_google()", true)
+		_log("Google login requested")
+		_start_login_timeout()
+	else:
+		login_failed.emit("Google login only available in web builds")
+
+func login_apple() -> void:
+	if _is_web:
+		if not _init_complete:
+			login_failed.emit("CheddaBoards not ready")
+			return
+		JavaScriptBridge.eval("chedda_login_apple()", true)
+		_log("Apple login requested")
+		_start_login_timeout()
+	else:
+		login_failed.emit("Apple login only available in web builds")
+
+func login_anonymous(nickname: String = "") -> void:
+	if _is_web:
+		if not _init_complete:
+			login_failed.emit("CheddaBoards not ready")
+			return
+		var safe_nickname: String = nickname.replace("'", "\\'").replace('"', '\\"')
+		JavaScriptBridge.eval("chedda_login_anonymous('%s')" % safe_nickname, true)
+		_log("Anonymous login requested")
+		_start_login_timeout()
+	else:
+		_nickname = nickname if nickname != "" else _get_default_nickname()
+		_auth_type = "anonymous"
+		login_success.emit(_nickname)
+		_log("Anonymous login (native)")
+
+func logout() -> void:
+	if _is_web:
+		if not _init_complete:
+			return
+		JavaScriptBridge.eval("chedda_logout()", true)
+		_log("Logout requested")
+	else:
+		_cached_profile = {}
+		_auth_type = ""
+		_session_token = ""
+		logout_success.emit()
+		_log("Logged out (native)")
+
+func is_authenticated() -> bool:
+	if _is_web:
+		if not _init_complete:
+			return false
+		var result: Variant = JavaScriptBridge.eval("chedda_is_auth()", true)
+		return bool(result)
+	else:
+		return not api_key.is_empty() or not _session_token.is_empty()
+
+func is_anonymous() -> bool:
+	if _is_web:
+		if not _init_complete:
+			return true
+		var result: Variant = JavaScriptBridge.eval("chedda_is_anonymous()", true)
+		return bool(result)
+	else:
+		return _auth_type == "anonymous" or _session_token.is_empty()
+
+func has_account() -> bool:
+	return is_authenticated() and not is_anonymous()
+
+func refresh_profile() -> void:
+	if _is_refreshing_profile:
+		return
+	
+	var current_time: float = Time.get_ticks_msec() / 1000.0
+	if current_time - _last_profile_refresh < PROFILE_REFRESH_COOLDOWN:
+		return
+	
+	_is_refreshing_profile = true
+	_last_profile_refresh = current_time
+	
+	if _is_web:
+		if not _init_complete:
+			_is_refreshing_profile = false
+			return
+		JavaScriptBridge.eval("chedda_refresh_profile()", true)
+		_log("Profile refresh requested")
+	else:
+		get_player_profile()
+
+func change_nickname(new_nickname: String = "") -> void:
+	if _is_web:
+		if not _init_complete:
+			nickname_error.emit("CheddaBoards not ready")
+			return
+		
+		if new_nickname == "":
+			# No argument - show JS prompt
+			var current = get_nickname().replace("'", "\\'").replace('"', '\\"')
+			var js_code = """
+				(function() {
+					var result = prompt('Enter new nickname:', '%s');
+					if (result && result.trim().length >= 2) {
+						chedda_change_nickname(result.trim());
+					}
+				})();
+			""" % current
+			JavaScriptBridge.eval(js_code, true)
+		else:
+			# Argument provided - change directly
+			var safe_nickname: String = new_nickname.replace("'", "\\'").replace('"', '\\"')
+			JavaScriptBridge.eval("chedda_change_nickname('%s')" % safe_nickname, true)
+		_log("Nickname change requested")
+	else:
+		# Native - requires nickname argument
+		if new_nickname == "":
+			nickname_error.emit("Nickname required - use change_nickname('name')")
+			return
+		
+		if _session_token.is_empty():
+			_nickname = new_nickname
+			if not _cached_profile.is_empty():
+				_cached_profile["nickname"] = new_nickname
+			nickname_changed.emit(new_nickname)
+			_log("Nickname changed locally: %s" % new_nickname)
+		else:
+			var body = {"nickname": new_nickname}
+			_make_http_request("/auth/profile/nickname", HTTPClient.METHOD_POST, body, "change_nickname")
+			
+# ============================================================
+# PUBLIC API - SCORES
+# ============================================================
+
+func submit_score(score: int, streak: int = 0) -> void:
+	if not is_authenticated():
+		_log("Not authenticated, cannot submit")
+		score_error.emit("Not authenticated")
+		return
+	
+	if _is_submitting_score:
+		_log("Score submission already in progress")
+		return
+	
+	_is_submitting_score = true
+	_pending_score = score
+	_pending_streak = streak
+	
+	if is_anonymous() or _is_native:
+		var body = {
+			"playerId": get_player_id(),
+			"gameId": game_id,
+			"score": score,
+			"streak": streak,
+			"nickname": _nickname if _nickname != "" else _get_default_nickname()
+		}
+		_log("Submitting: score=%d, streak=%d, nickname=%s, gameId=%s, playerId=%s" % [score, streak, body.nickname, game_id, body.playerId])
+		_make_http_request("/scores", HTTPClient.METHOD_POST, body, "submit_score")
+		return
+	
+	if _is_web:
+		if not _init_complete:
+			_is_submitting_score = false
+			score_error.emit("CheddaBoards not ready")
+			return
+		var js_code: String = "chedda_submit_score(%d, %d)" % [score, streak]
+		JavaScriptBridge.eval(js_code, true)
+		_log("Score submitted: %d points, %d streak" % [score, streak])
+
+func get_leaderboard(sort_by: String = "score", limit: int = 100) -> void:
+	if is_anonymous() or _is_native:
+		var url = "/leaderboard?sort=%s&limit=%d" % [sort_by, limit]
+		_make_http_request(url, HTTPClient.METHOD_GET, {}, "leaderboard")
+		_log("Leaderboard requested (HTTP)")
+		return
+	
+	if _is_web:
+		if not _init_complete:
+			return
+		var js_code: String = "chedda_get_leaderboard('%s', %d)" % [sort_by, limit]
+		JavaScriptBridge.eval(js_code, true)
+		_log("Leaderboard requested (sort: %s, limit: %d)" % [sort_by, limit])
+
+func get_player_rank(sort_by: String = "score") -> void:
+	if is_anonymous() or _is_native:
+		var url = "/players/%s/rank?sort=%s" % [get_player_id().uri_encode(), sort_by]
+		_make_http_request(url, HTTPClient.METHOD_GET, {}, "player_rank")
+		_log("Player rank requested (HTTP)")
+		return
+	
+	if _is_web:
+		if not _init_complete:
+			return
+		var js_code: String = "chedda_get_player_rank('%s')" % sort_by
+		JavaScriptBridge.eval(js_code, true)
+		_log("Player rank requested (sort: %s)" % sort_by)
+
+func get_player_profile(player_id: String = "") -> void:
+	if _is_web:
+		refresh_profile()
+	else:
+		# OAuth session users - use /auth/profile
+		if not _session_token.is_empty():
+			_make_http_request("/auth/profile", HTTPClient.METHOD_GET, {}, "player_profile")
+			_log("Player profile requested (session)")
+		else:
+			# Anonymous/API-key users - use cached profile
+			# There's no server-side profile, scores are submitted with nickname
+			_log("Using cached profile (no server profile for API-key mode)")
+			if not _cached_profile.is_empty():
+				profile_loaded.emit(_nickname, get_high_score(), get_best_streak(), _cached_profile.get("achievements", []))
+			else:
+				no_profile.emit()
+
+# ============================================================
+# PUBLIC API - SCOREBOARDS (Time-based Leaderboards)
+# ============================================================
+
+## List all scoreboards for a game
+## Emits: scoreboards_loaded(scoreboards: Array)
+func get_scoreboards(for_game_id: String = "") -> void:
+	var gid = for_game_id if for_game_id != "" else game_id
+	if gid.is_empty():
+		scoreboard_error.emit("Game ID not set. Call set_game_id() first.")
+		return
+	
+	var url = "/games/%s/scoreboards" % gid.uri_encode()
+	_make_http_request(url, HTTPClient.METHOD_GET, {}, "list_scoreboards")
+	_log("Scoreboards list requested for game: %s" % gid)
+
+## Get a specific scoreboard's entries
+## Emits: scoreboard_loaded(scoreboard_id, config, entries)
+## @param scoreboard_id - e.g. "weekly", "all-time", "daily"
+## @param limit - max entries to return (1-1000)
+func get_scoreboard(scoreboard_id: String, limit: int = 100, for_game_id: String = "") -> void:
+	var gid = for_game_id if for_game_id != "" else game_id
+	if gid.is_empty():
+		scoreboard_error.emit("Game ID not set. Call set_game_id() first.")
+		return
+	
+	var url = "/games/%s/scoreboards/%s?limit=%d" % [gid.uri_encode(), scoreboard_id.uri_encode(), limit]
+	_make_http_request(url, HTTPClient.METHOD_GET, {}, "get_scoreboard", {"scoreboard_id": scoreboard_id})
+	_log("Scoreboard '%s' requested (limit: %d)" % [scoreboard_id, limit])
+
+## Get current player's rank on a specific scoreboard
+## Emits: scoreboard_rank_loaded(scoreboard_id, rank, score, streak, total)
+func get_scoreboard_rank(scoreboard_id: String, for_game_id: String = "") -> void:
+	var gid = for_game_id if for_game_id != "" else game_id
+	if gid.is_empty():
+		scoreboard_error.emit("Game ID not set. Call set_game_id() first.")
+		return
+	
+	if _session_token.is_empty():
+		scoreboard_error.emit("Session token required for rank lookup")
+		return
+	
+	var url = "/games/%s/scoreboards/%s/rank" % [gid.uri_encode(), scoreboard_id.uri_encode()]
+	_make_http_request(url, HTTPClient.METHOD_GET, {}, "scoreboard_rank", {"scoreboard_id": scoreboard_id})
+	_log("Scoreboard rank requested for '%s'" % scoreboard_id)
+
+## Convenience: Get weekly leaderboard
+func get_weekly_leaderboard(limit: int = 100, for_game_id: String = "") -> void:
+	get_scoreboard("weekly-scoreboard", limit, for_game_id)
+
+## Convenience: Get daily leaderboard
+func get_daily_leaderboard(limit: int = 100, for_game_id: String = "") -> void:
+	get_scoreboard("daily", limit, for_game_id)
+
+## Convenience: Get all-time leaderboard
+func get_alltime_leaderboard(limit: int = 100, for_game_id: String = "") -> void:
+	get_scoreboard("all-time-new", limit, for_game_id)
+
+## Convenience: Get monthly leaderboard
+func get_monthly_leaderboard(limit: int = 100, for_game_id: String = "") -> void:
+	get_scoreboard("monthly", limit, for_game_id)
+
+# ============================================================
+# PUBLIC API - SCOREBOARD ARCHIVES (NEW v1.4.0)
+# ============================================================
+
+## Get list of available archives for a scoreboard
+## Emits: archives_list_loaded(scoreboard_id, archives: Array)
+## Each archive: {archiveId, scoreboardId, periodStart, periodEnd, entryCount, topPlayer, topScore}
+func get_scoreboard_archives(scoreboard_id: String, for_game_id: String = "") -> void:
+	var gid = for_game_id if for_game_id != "" else game_id
+	if gid.is_empty():
+		archive_error.emit("Game ID not set. Call set_game_id() first.")
+		return
+	
+	var url = "/games/%s/scoreboards/%s/archives" % [gid.uri_encode(), scoreboard_id.uri_encode()]
+	_make_http_request(url, HTTPClient.METHOD_GET, {}, "list_archives", {"scoreboard_id": scoreboard_id})
+	_log("Archives list requested for '%s'" % scoreboard_id)
+
+## Get the most recent archived scoreboard (e.g., "last week's results")
+## Emits: archived_scoreboard_loaded(archive_id, config, entries)
+## Config includes: name, period, sortBy, periodStart, periodEnd
+func get_last_archived_scoreboard(scoreboard_id: String, limit: int = 100, for_game_id: String = "") -> void:
+	var gid = for_game_id if for_game_id != "" else game_id
+	if gid.is_empty():
+		archive_error.emit("Game ID not set. Call set_game_id() first.")
+		return
+	
+	var url = "/games/%s/scoreboards/%s/archives/latest?limit=%d" % [gid.uri_encode(), scoreboard_id.uri_encode(), limit]
+	_make_http_request(url, HTTPClient.METHOD_GET, {}, "get_last_archive", {"scoreboard_id": scoreboard_id})
+	_log("Last archive requested for '%s'" % scoreboard_id)
+
+## Get a specific archived scoreboard by its archive ID
+## Emits: archived_scoreboard_loaded(archive_id, config, entries)
+## Archive ID format: "gameId:scoreboardId:timestamp"
+func get_archived_scoreboard(archive_id: String, limit: int = 100) -> void:
+	var url = "/archives/%s?limit=%d" % [archive_id.uri_encode(), limit]
+	_make_http_request(url, HTTPClient.METHOD_GET, {}, "get_archive", {"archive_id": archive_id})
+	_log("Archive '%s' requested" % archive_id)
+
+## Get archives within a specific date range
+## Emits: archives_list_loaded(scoreboard_id, archives: Array)
+## @param after_timestamp - Unix timestamp in milliseconds (start of range)
+## @param before_timestamp - Unix timestamp in milliseconds (end of range)
+func get_archives_in_range(scoreboard_id: String, after_timestamp: int, before_timestamp: int, for_game_id: String = "") -> void:
+	var gid = for_game_id if for_game_id != "" else game_id
+	if gid.is_empty():
+		archive_error.emit("Game ID not set. Call set_game_id() first.")
+		return
+	
+	var url = "/games/%s/scoreboards/%s/archives?after=%d&before=%d" % [
+		gid.uri_encode(), 
+		scoreboard_id.uri_encode(), 
+		after_timestamp, 
+		before_timestamp
+	]
+	_make_http_request(url, HTTPClient.METHOD_GET, {}, "list_archives", {"scoreboard_id": scoreboard_id})
+	_log("Archives in range requested for '%s'" % scoreboard_id)
+
+## Get archive statistics for a game
+## Emits: archive_stats_loaded(total_archives, by_scoreboard: Array)
+func get_archive_stats(for_game_id: String = "") -> void:
+	var gid = for_game_id if for_game_id != "" else game_id
+	if gid.is_empty():
+		archive_error.emit("Game ID not set. Call set_game_id() first.")
+		return
+	
+	var url = "/games/%s/archives/stats" % gid.uri_encode()
+	_make_http_request(url, HTTPClient.METHOD_GET, {}, "archive_stats")
+	_log("Archive stats requested for game: %s" % gid)
+
+## Convenience: Get last week's scoreboard
+func get_last_week_scoreboard(limit: int = 100, for_game_id: String = "") -> void:
+	get_last_archived_scoreboard("weekly", limit, for_game_id)
+
+## Convenience: Get last month's scoreboard  
+func get_last_month_scoreboard(limit: int = 100, for_game_id: String = "") -> void:
+	get_last_archived_scoreboard("monthly", limit, for_game_id)
+
+## Convenience: Get yesterday's scoreboard
+func get_yesterday_scoreboard(limit: int = 100, for_game_id: String = "") -> void:
+	get_last_archived_scoreboard("daily", limit, for_game_id)
+
+# ============================================================
+# PUBLIC API - ACHIEVEMENTS
+# ============================================================
+
+func unlock_achievement(achievement_id: String, achievement_name: String = "", achievement_desc: String = "") -> void:
+	if _is_web:
+		if not _init_complete:
+			return
+		var safe_id: String = achievement_id.replace("'", "\\'").replace('"', '\\"')
+		var safe_name: String = achievement_name.replace("'", "\\'").replace('"', '\\"')
+		var safe_desc: String = achievement_desc.replace("'", "\\'").replace('"', '\\"')
+		var js_code: String = """
+			(function() {
+				try {
+					if (window.chedda && window.chedda.unlockAchievement) {
+						window.chedda.unlockAchievement('%s', '%s', '%s')
+							.then(result => console.log('[CheddaBoards] Achievement unlocked:', result))
+							.catch(error => console.error('[CheddaBoards] Achievement error:', error));
+					}
+				} catch(e) {
+					console.error('[CheddaBoards] Achievement unlock failed:', e);
+				}
+			})();
+		""" % [safe_id, safe_name, safe_desc]
+		JavaScriptBridge.eval(js_code, true)
+		_log("Achievement unlock: %s" % achievement_name)
+	else:
+		var body = {
+			"playerId": get_player_id(),
+			"achievementId": achievement_id
+		}
+		_make_http_request("/achievements", HTTPClient.METHOD_POST, body, "unlock_achievement")
+		_log("Achievement unlock (HTTP): %s" % achievement_id)
+
+func get_achievements(player_id: String = "") -> void:
+	var pid = player_id if player_id != "" else get_player_id()
+	if _is_web:
+		refresh_profile()
+	else:
+		var url = "/players/%s/achievements" % pid.uri_encode()
+		_make_http_request(url, HTTPClient.METHOD_GET, {}, "achievements")
+		_log("Achievements requested (HTTP)")
+
+func submit_score_with_achievements(score: int, streak: int, achievements: Array) -> void:
+	if not is_authenticated():
+		_log("Not authenticated, cannot submit")
+		score_error.emit("Not authenticated")
+		return
+	if _is_submitting_score:
+		_log("Score submission already in progress")
+		return
+	_is_submitting_score = true
+	_pending_score = score
+	_pending_streak = streak
+	
+	var ach_ids: Array = []
+	for ach in achievements:
+		if typeof(ach) == TYPE_STRING:
+			ach_ids.append(ach)
+		elif typeof(ach) == TYPE_DICTIONARY:
+			var ach_id = str(ach.get("id", ""))
+			if ach_id != "":
+				ach_ids.append(ach_id)
+	
+	if is_anonymous():
+		_log("Anonymous user - submitting score only (achievements disabled)")
+		var score_body = {
+			"playerId": get_player_id(),
+			"gameId": game_id,
+			"score": score,
+			"streak": streak,
+			"nickname": _nickname if _nickname != "" else _get_default_nickname()
+		}
+		_log("Submitting: score=%d, streak=%d, nickname=%s, gameId=%s, playerId=%s" % [score, streak, score_body.nickname, game_id, score_body.playerId])
+		_make_http_request("/scores", HTTPClient.METHOD_POST, score_body, "submit_score")
+		return
+	
+	if _is_web:
+		_log("Submitting score with %d achievements" % ach_ids.size())
+		var ach_json = JSON.stringify(ach_ids)
+		var js_code = "chedda_submit_score(%d, %d, %s)" % [score, streak, ach_json]
+		_log("Calling JS: %s" % js_code)
+		JavaScriptBridge.eval(js_code, true)
+		return
+	
+	_log("Submitting score with %d achievements (HTTP)" % ach_ids.size())
+	for ach_id in ach_ids:
+		var body = {
+			"playerId": get_player_id(),
+			"achievementId": ach_id
+		}
+		_make_http_request("/achievements", HTTPClient.METHOD_POST, body, "unlock_achievement")
+	
+	var score_body = {
+		"playerId": get_player_id(),
+		"gameId": game_id,
+		"score": score,
+		"streak": streak,
+		"nickname": _nickname if _nickname != "" else _get_default_nickname()
+	}
+	_log("Submitting: score=%d, streak=%d, nickname=%s, gameId=%s, playerId=%s" % [score, streak, score_body.nickname, game_id, score_body.playerId])
+	_make_http_request("/scores", HTTPClient.METHOD_POST, score_body, "submit_score")
+
+# ============================================================
+# PUBLIC API - ANALYTICS
+# ============================================================
+
+func track_event(event_type: String, metadata: Dictionary = {}) -> void:
+	if _is_web:
+		if not _init_complete:
+			return
+		var meta_json: String = JSON.stringify(metadata)
+		var js_code: String = """
+			if (window.chedda && window.chedda.trackEvent) {
+				window.chedda.trackEvent('%s', %s);
+			}
+		""" % [event_type, meta_json]
+		JavaScriptBridge.eval(js_code, true)
+		_log("Event tracked: %s" % event_type)
+	else:
+		_log("Event tracked (local): %s" % event_type)
+
+# ============================================================
+# PUBLIC API - GAME INFO
+# ============================================================
+
+func get_game_info() -> void:
+	if _is_native:
+		_make_http_request("/game", HTTPClient.METHOD_GET, {}, "game_info")
+
+func get_game_stats() -> void:
+	if _is_native:
+		_make_http_request("/game/stats", HTTPClient.METHOD_GET, {}, "game_stats")
+
+func health_check() -> void:
+	if _is_native:
+		_make_http_request("/health", HTTPClient.METHOD_GET, {}, "health")
+
+# ============================================================
+# HELPER FUNCTIONS
+# ============================================================
+
+func force_check_events() -> void:
+	if not _is_web or _is_checking_auth or not _init_complete:
+		return
+
+	_is_checking_auth = true
+	_log("Force checking auth status...")
+
+	var is_auth: bool = is_authenticated()
+
+	if is_auth:
+		_log("User is authenticated, checking profile...")
+		var js_profile: Dictionary = _get_profile_from_js()
+		if js_profile and not js_profile.is_empty():
+			_update_cached_profile(js_profile)
+		else:
+			refresh_profile()
+	else:
+		_log("User not authenticated")
+		no_profile.emit()
+
+	_is_checking_auth = false
+
+func _get_profile_from_js() -> Dictionary:
+	if not _is_web or not _init_complete:
+		return {}
+
+	var pvar: Variant = JavaScriptBridge.eval("chedda_get_profile()", true)
+	if pvar == null:
+		return {}
+
+	var profile_str: String = str(pvar)
+	if profile_str == "" or profile_str.to_lower() == "null":
+		return {}
+
+	var json := JSON.new()
+	var parse_result: int = json.parse(profile_str)
+	if parse_result == OK:
+		return json.data
+	return {}
+
+func debug_status() -> void:
 	print("")
-	print("========================================")
-	print("       MainMenu Debug v1.7.0           ")
-	print("========================================")
-	print(" State")
-	print("  - Is Logging In:   %s" % str(is_logging_in))
-	print("  - Waiting Profile: %s" % str(waiting_for_profile))
-	print("----------------------------------------")
-	print(" Anonymous Player")
-	print("  - Nickname:        %s" % anonymous_nickname)
-	print("  - Player ID:       %s" % anonymous_player_id)
-	print("----------------------------------------")
-	print(" Roguelike Progress")
-	print("  - Cheese Bank:     %d" % RunManager.cheese_bank)
-	print("  - Best Cycle:      %d" % RunManager.highest_cycle)
-	print("  - Best Level:      %d" % RunManager.highest_level)
-	print("  - Total Runs:      %d" % RunManager.total_runs)
-	print("  - Upgrades:        %d" % UpgradeManager.purchased.size())
-	print("----------------------------------------")
-	print(" CheddaBoards")
-	print("  - SDK Ready:       %s" % str(CheddaBoards.is_ready()))
-	print("  - Has Account:     %s" % str(CheddaBoards.has_account()))
-	print("  - Is Authenticated:%s" % str(CheddaBoards.is_authenticated()))
-	print("  - Is Anonymous:    %s" % str(CheddaBoards.is_anonymous()))
-	print("  - Nickname:        %s" % CheddaBoards.get_nickname())
-	print("----------------------------------------")
-	print(" Debug Shortcuts")
-	print("  - F5: Add 500 cheese")
-	print("  - F6: Submit 5 random test scores")
-	print("  - F7: Submit 1 random test score")
-	print("  - F8: Force profile refresh")
-	print("  - F9: This debug dump")
-	print("========================================")
+	print("╔══════════════════════════════════════════════╗")
+	print("║        CheddaBoards Debug Status v1.4.1      ║")
+	print("╠══════════════════════════════════════════════╣")
+	print("║ Environment                                  ║")
+	print("║  - Platform:         %s" % ("Web" if _is_web else "Native").rpad(24) + "║")
+	print("║  - Init Complete:    %s" % str(_init_complete).rpad(24) + "║")
+	print("║  - Init Attempts:    %s" % str(_init_attempts).rpad(24) + "║")
+	print("╠══════════════════════════════════════════════╣")
+	print("║ Configuration                                ║")
+	print("║  - Game ID:          %s" % game_id.left(20).rpad(24) + "║")
+	print("║  - API Key Set:      %s" % str(not api_key.is_empty()).rpad(24) + "║")
+	print("║  - Session Token:    %s" % str(not _session_token.is_empty()).rpad(24) + "║")
+	print("╠══════════════════════════════════════════════╣")
+	print("║ Authentication                               ║")
+	print("║  - Authenticated:    %s" % str(is_authenticated()).rpad(24) + "║")
+	print("║  - Auth Type:        %s" % _auth_type.rpad(24) + "║")
+	print("║  - Player ID:        %s" % get_player_id().left(20).rpad(24) + "║")
+	print("╠══════════════════════════════════════════════╣")
+	print("║ Profile                                      ║")
+	print("║  - Nickname:         %s" % get_nickname().rpad(24) + "║")
+	print("║  - High Score:       %s" % str(get_high_score()).rpad(24) + "║")
+	print("║  - Best Streak:      %s" % str(get_best_streak()).rpad(24) + "║")
+	print("╠══════════════════════════════════════════════╣")
+	print("║ State Flags                                  ║")
+	print("║  - Checking Auth:    %s" % str(_is_checking_auth).rpad(24) + "║")
+	print("║  - Refreshing:       %s" % str(_is_refreshing_profile).rpad(24) + "║")
+	print("║  - Submitting:       %s" % str(_is_submitting_score).rpad(24) + "║")
+	print("║  - HTTP Busy:        %s" % str(_http_busy).rpad(24) + "║")
+	print("║  - Queue Size:       %s" % str(_request_queue.size()).rpad(24) + "║")
+	print("║  - Pending Score:    %s" % str(_pending_score).rpad(24) + "║")
+	print("║  - Pending Streak:   %s" % str(_pending_streak).rpad(24) + "║")
+	print("╚══════════════════════════════════════════════╝")
+
+	if _is_web:
+		print("")
+		print("JavaScript Status:")
+		var js_status: Variant = JavaScriptBridge.eval("""
+			(function() {
+				return JSON.stringify({
+					sdkLoaded: window.CheddaBoards !== undefined,
+					instanceReady: window.chedda !== undefined,
+					isAuth: window.chedda_is_auth ? window.chedda_is_auth() : false
+				}, null, 2);
+			})();
+		""", true)
+		print(js_status)
 	print("")
 
 # ============================================================
 # CLEANUP
 # ============================================================
 
-func _exit_tree():
-	"""Cleanup"""
-	_stop_all_timers()
+func _exit_tree() -> void:
+	if _poll_timer:
+		_poll_timer.stop()
+		_poll_timer.queue_free()
+	_clear_login_timeout()
