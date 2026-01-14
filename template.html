@@ -87,7 +87,7 @@
 
   <script type="module">
     // ============================================================
-    // CheddaBoards Godot 4 Template v1.5.2
+    // CheddaBoards Godot 4 Template v1.5.3
     // WITH DEVICE ID / ANONYMOUS PLAY SUPPORT
     // WITH PLAY SESSION TIME VALIDATION SUPPORT (HTTP API for all users)
     // https://github.com/cheddatech/CheddaBoards-Godot
@@ -816,7 +816,7 @@
      * Call this when the game STARTS (before submitting any scores)
      * Returns the session token to be used with score submission
      * 
-     * v1.5.2: Now uses HTTP API for ALL users (simpler, works everywhere)
+     * v1.5.3: Fixed API response parsing, works for all users
      */
     window.chedda_start_play_session = async function(gameId) {
       try {
@@ -843,17 +843,27 @@
             
             if (response.ok) {
               const data = await response.json();
-              if (data.ok) {
-                playSessionToken = data.ok;
-                console.log('[Bridge] Play session started (HTTP):', playSessionToken.substring(0, 25) + '...');
-                return JSON.stringify({ ok: playSessionToken });
-              } else if (data.data && data.data.token) {
-                // Alternative response format
-                playSessionToken = data.data.token;
-                console.log('[Bridge] Play session started (HTTP):', playSessionToken.substring(0, 25) + '...');
+              console.log('[Bridge] Play session API response:', data);
+              
+              // Handle different response formats
+              let token = null;
+              if (data.data && data.data.token) {
+                // Format: { ok: true, data: { token: "xxx" } }
+                token = data.data.token;
+              } else if (typeof data.ok === 'string' && data.ok.length > 10) {
+                // Format: { ok: "token_string" }
+                token = data.ok;
+              } else if (data.token) {
+                // Format: { token: "xxx" }
+                token = data.token;
+              }
+              
+              if (token) {
+                playSessionToken = token;
+                console.log('[Bridge] Play session started (HTTP):', String(playSessionToken).substring(0, 25) + '...');
                 return JSON.stringify({ ok: playSessionToken });
               } else {
-                console.warn('[Bridge] HTTP API returned error:', data.error || data.err);
+                console.warn('[Bridge] Could not extract token from response:', data);
               }
             } else {
               const errorText = await response.text();
@@ -1136,7 +1146,7 @@
     // INITIALIZATION
     // ============================================================
     window.addEventListener('load', async () => {
-      console.log('[Init] CheddaBoards Template v1.5.2 (HTTP API play sessions)');
+      console.log('[Init] CheddaBoards Template v1.5.3 (HTTP API play sessions)');
       console.log('[Init] Game ID:', CONFIG.GAME_ID);
       console.log('[Init] Anonymous Play:', CONFIG.ALLOW_ANONYMOUS_PLAY ? 'Enabled' : 'Disabled');
 
@@ -1346,4 +1356,3 @@
   </script>
 </body>
 </html>
-
