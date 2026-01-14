@@ -1,4 +1,4 @@
-# Game.gd v1.5.0
+# Game.gd v1.6.0
 # Dynamic clicker game with moving targets, combo system, and LEVELS
 # Compatible with CheddaBoards SDK (Web + Native API)
 # https://github.com/cheddatech/CheddaBoards-SDK
@@ -13,6 +13,7 @@
 # - Time bonuses for quick consecutive clicks
 # - Difficulty scales with level (speed, spawns, size)
 # - Achievement system integration
+# - Play session support for time validation anti-cheat
 # - Works with both Web (JS bridge) and Native (HTTP API)
 #
 # ============================================================
@@ -154,6 +155,8 @@ func _ready():
 	# Connect CheddaBoards signals
 	CheddaBoards.score_submitted.connect(_on_score_submitted)
 	CheddaBoards.score_error.connect(_on_score_error)
+	CheddaBoards.play_session_started.connect(_on_play_session_started)
+	CheddaBoards.play_session_error.connect(_on_play_session_error)
 
 	# Connect game area click for misses
 	game_area.gui_input.connect(_on_game_area_input)
@@ -161,7 +164,7 @@ func _ready():
 	# Check if Achievements autoload exists
 	has_achievements = get_node_or_null("/root/Achievements") != null
 	
-	print("[Game] Starting dynamic game v1.5.0 (with levels + time extension!)")
+	print("[Game] Starting dynamic game v1.6.0 (with play session anti-cheat!)")
 	print("[Game] Platform: %s" % ("Web" if OS.get_name() == "Web" else "Native"))
 	print("[Game] Achievements: %s" % ("enabled" if has_achievements else "disabled"))
 	
@@ -200,6 +203,10 @@ func _start_game():
 	game_over_panel.visible = false
 	
 	print("[Game] Level 1 - GO!")
+	
+	# Start play session for time validation anti-cheat
+	if CheddaBoards.is_ready():
+		CheddaBoards.start_play_session()
 
 func _process(delta):
 	if not game_started or is_game_over:
@@ -711,8 +718,9 @@ func _set_buttons_disabled(disabled: bool):
 
 func _on_score_submitted(score: int, streak: int):
 	"""Called when score is successfully submitted"""
-	print("[Game] Score submitted: %d points" % score)
+	print("[Game] ✓ Score submitted: %d points" % score)
 	score_submitted = true
+	CheddaBoards.clear_play_session()
 	
 	var profile = CheddaBoards.get_cached_profile()
 	var previous_high = 0
@@ -731,12 +739,21 @@ func _on_score_submitted(score: int, streak: int):
 
 func _on_score_error(reason: String):
 	"""Called when score submission fails"""
-	print("[Game] Score submission failed: %s" % reason)
+	print("[Game] ✗ Score submission failed: %s" % reason)
+	CheddaBoards.clear_play_session()
 	
 	status_label.text = "Save failed: %s" % reason
 	status_label.add_theme_color_override("font_color", Color.RED)
 	
 	_set_buttons_disabled(false)
+
+func _on_play_session_started(token: String):
+	"""Called when play session is started for time validation"""
+	print("[Game] ✓ Play session started: %s" % token.left(30))
+
+func _on_play_session_error(reason: String):
+	"""Called when play session fails to start"""
+	print("[Game] ⚠ Play session error: %s (scores may be rejected)" % reason)
 
 # ============================================================
 # BUTTON HANDLERS
@@ -759,14 +776,6 @@ func _on_leaderboard_pressed():
 # ============================================================
 
 func _input(event):
-	# Debug click positions
-	if event is InputEventMouseButton and event.pressed:
-		print("=== CLICK DEBUG ===")
-		print("Mouse position: ", event.position)
-		print("Global mouse: ", get_global_mouse_position())
-		print("Viewport size: ", get_viewport().get_visible_rect().size)
-		print("Window size: ", DisplayServer.window_get_size())
-	
 	# Keyboard shortcuts
 	if event is InputEventKey and event.pressed:
 		# F9 for debug status
@@ -804,6 +813,7 @@ func _debug_status():
 	print(" Platform:     %s" % OS.get_name())
 	print(" SDK Ready:    %s" % CheddaBoards.is_ready())
 	print(" Authenticated: %s" % CheddaBoards.is_authenticated())
+	print(" Play Session: %s" % ("active" if CheddaBoards.has_play_session() else "none"))
 	print(" Achievements: %s" % ("enabled" if has_achievements else "disabled"))
 	if has_achievements:
 		print(" Games Played: %d" % Achievements.get_games_played())
