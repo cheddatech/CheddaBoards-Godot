@@ -1,4 +1,4 @@
-# CheddaBoards.gd v1.5.1
+# CheddaBoards.gd v1.5.2
 # CheddaBoards integration for Godot 4.x
 # https://github.com/cheddatech/CheddaBoards-Godot
 # https://cheddaboards.com
@@ -8,6 +8,7 @@
 # - Anonymous login uses HTTP API on ALL platforms for consistency
 # - Native exports (Windows/Mac/Linux/Mobile) use HTTP API
 #
+# v1.5.2: Play sessions for anonymous users now use HTTP API on web
 # v1.5.1: Anonymous login now uses HTTP API on web builds (bypasses JS bridge)
 # v1.5.0: Added play session support for time validation anti-cheat
 #
@@ -171,11 +172,11 @@ func _ready() -> void:
 	_setup_http_client()
 	
 	if _is_web:
-		_log("Initializing CheddaBoards v1.4.1 (Web Mode)...")
+		_log("Initializing CheddaBoards v1.5.2 (Web Mode)...")
 		_start_polling()
 		_check_chedda_ready()
 	else:
-		_log("Initializing CheddaBoards v1.4.1 (Native/HTTP API Mode)...")
+		_log("Initializing CheddaBoards v1.5.2 (Native/HTTP API Mode)...")
 		_init_complete = true
 		call_deferred("_emit_sdk_ready")
 
@@ -1030,11 +1031,21 @@ func submit_score(score: int, streak: int = 0) -> void:
 func start_play_session() -> void:
 	_play_session_token = ""
 	
+	# Anonymous users on ALL platforms use HTTP API (including web)
+	if is_anonymous():
+		var body = {
+			"gameId": game_id,
+			"playerId": get_player_id()
+		}
+		_make_http_request("/play-sessions/start", HTTPClient.METHOD_POST, body, "start_play_session")
+		_log("Play session requested (HTTP API) for game: %s, player: %s" % [game_id, get_player_id()])
+		return
+	
 	if _is_web:
 		if not _init_complete:
 			play_session_error.emit("CheddaBoards not ready")
 			return
-		# Web mode - call JavaScript bridge
+		# Web mode with real auth - call JavaScript bridge
 		var js_code: String = """
 			(async function() {
 				try {
@@ -1504,7 +1515,7 @@ func _get_profile_from_js() -> Dictionary:
 func debug_status() -> void:
 	print("")
 	print("╔══════════════════════════════════════════════╗")
-	print("║        CheddaBoards Debug Status v1.4.1      ║")
+	print("║        CheddaBoards Debug Status v1.5.2      ║")
 	print("╠══════════════════════════════════════════════╣")
 	print("║ Environment                                  ║")
 	print("║  - Platform:         %s" % ("Web" if _is_web else "Native").rpad(24) + "║")
