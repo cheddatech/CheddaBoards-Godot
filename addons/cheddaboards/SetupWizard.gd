@@ -1,9 +1,12 @@
 @tool
 extends EditorScript
 
-# CheddaBoards Ultimate Setup Wizard v2.4
+# CheddaBoards Ultimate Setup Wizard v2.5
 # Run via: File → Run (or Ctrl+Shift+X)
 # Performs all checks, auto-fixes, AND interactive configuration!
+#
+# v2.5 Changes:
+# - API Key now syncs to BOTH CheddaBoards.gd AND template.html
 #
 # v2.4 Changes:
 # - Added Google Client ID configuration
@@ -55,7 +58,7 @@ func _run():
 func _print_header():
 	print("")
 	print("╔══════════════════════════════════════════════════════════════╗")
-	print("║         🧀 CheddaBoards Ultimate Setup Wizard v2.4          ║")
+	print("║         🧀 CheddaBoards Ultimate Setup Wizard v2.5          ║")
 	print("║                                                              ║")
 	print("║  Automated checks • Auto-fixes • Configuration validation   ║")
 	print("╚══════════════════════════════════════════════════════════════╝")
@@ -110,7 +113,7 @@ func _print_next_steps():
 	print("")
 	print("  3. Run this wizard again to enter your credentials")
 	print("     • Game ID updates BOTH template.html and CheddaBoards.gd")
-	print("     • API Key updates CheddaBoards.gd")
+	print("     • API Key updates BOTH template.html and CheddaBoards.gd")
 	print("     • OAuth credentials update template.html")
 	print("")
 	print("  4. Export & Test:")
@@ -217,22 +220,25 @@ func _check_required_files():
 			print("   ✅ %s" % file_path.get_file())
 
 func _check_api_key():
-	_print_section("API Key (CheddaBoards.gd)")
+	_print_section("API Key Sync Check")
 	
-	var api_key = _get_current_api_key()
+	var gd_api_key = _get_current_api_key()
+	var template_api_key = _get_template_api_key()
 	
-	if api_key.is_empty():
-		print("   ⚠️  API Key not set")
-		print("      → Required for native builds")
+	print("   Native (CheddaBoards.gd): %s" % ("Not set" if gd_api_key.is_empty() else gd_api_key.substr(0, min(15, gd_api_key.length())) + "***"))
+	print("   Web (template.html):      %s" % ("Not set" if template_api_key.is_empty() else template_api_key.substr(0, min(15, template_api_key.length())) + "***"))
+	
+	if gd_api_key.is_empty() and template_api_key.is_empty():
+		print("   ⚠️  API Key not set in either file")
+		print("      → Required for native builds and play sessions")
 		print("      → Get one at cheddaboards.com/dashboard")
 		warnings.append("API Key not set - required for native/anonymous play")
-	elif api_key.begins_with("cb_"):
-		# Extract game name from key for display
-		var parts = api_key.split("_")
-		if parts.size() >= 2:
-			print("   ✅ API Key set: cb_%s_***" % parts[1])
-		else:
-			print("   ✅ API Key set: %s***" % api_key.substr(0, 6))
+	elif gd_api_key != template_api_key:
+		print("   ⚠️  API Key mismatch between files!")
+		print("      → Run wizard to sync them")
+		warnings.append("API Key mismatch: files have different keys")
+	elif gd_api_key.begins_with("cb_"):
+		print("   ✅ API Keys match and configured")
 	else:
 		print("   ⚠️  API Key format looks wrong (should start with cb_)")
 		warnings.append("API Key format may be incorrect")
@@ -437,7 +443,8 @@ func _interactive_config():
 	"""Interactive configuration via popup"""
 	var web_game_id = _get_current_game_id()
 	var native_game_id = _get_native_game_id()
-	var current_api_key = _get_current_api_key()
+	var gd_api_key = _get_current_api_key()
+	var template_api_key = _get_template_api_key()
 	var google_client_id = _get_google_client_id()
 	var apple_service_id = _get_apple_service_id()
 	var apple_redirect_uri = _get_apple_redirect_uri()
@@ -448,6 +455,9 @@ func _interactive_config():
 		current_game_id = native_game_id
 	elif native_game_id not in ["catch-the-cheese", "test-game", ""] and web_game_id != native_game_id:
 		current_game_id = native_game_id
+	
+	# Use whichever API key is set (prefer non-empty)
+	var current_api_key = gd_api_key if not gd_api_key.is_empty() else template_api_key
 	
 	# Show current config
 	print("")
@@ -460,10 +470,12 @@ func _interactive_config():
 	print("      Native (CheddaBoards.gd): '%s'" % native_game_id)
 	if web_game_id != native_game_id:
 		print("      ⚠️  MISMATCH - will sync on save!")
-	if current_api_key.is_empty():
-		print("   API Key (CheddaBoards.gd): Not set")
-	else:
-		print("   API Key (CheddaBoards.gd): %s***" % current_api_key.substr(0, min(15, current_api_key.length())))
+	print("")
+	print("   API Key (syncs to BOTH files):")
+	print("      Native (CheddaBoards.gd): %s" % ("Not set" if gd_api_key.is_empty() else gd_api_key.substr(0, min(15, gd_api_key.length())) + "***"))
+	print("      Web (template.html):      %s" % ("Not set" if template_api_key.is_empty() else template_api_key.substr(0, min(15, template_api_key.length())) + "***"))
+	if gd_api_key != template_api_key:
+		print("      ⚠️  MISMATCH - will sync on save!")
 	print("")
 	print("   OAuth (template.html):")
 	print("      Google Client ID: %s" % ("Not set" if google_client_id.is_empty() else google_client_id.substr(0, 20) + "..."))
@@ -472,9 +484,9 @@ func _interactive_config():
 	print("")
 	
 	# Show popup to edit all
-	_show_config_dialog(current_game_id, current_api_key, web_game_id, native_game_id, google_client_id, apple_service_id, apple_redirect_uri)
+	_show_config_dialog(current_game_id, current_api_key, web_game_id, native_game_id, gd_api_key, template_api_key, google_client_id, apple_service_id, apple_redirect_uri)
 
-func _show_config_dialog(current_game_id: String, current_api_key: String, web_game_id: String, native_game_id: String, google_client_id: String, apple_service_id: String, apple_redirect_uri: String):
+func _show_config_dialog(current_game_id: String, current_api_key: String, web_game_id: String, native_game_id: String, gd_api_key: String, template_api_key: String, google_client_id: String, apple_service_id: String, apple_redirect_uri: String):
 	"""Show a dialog to edit Game ID, API Key, and OAuth credentials"""
 	var editor = get_editor_interface()
 	var base_control = editor.get_base_control()
@@ -521,17 +533,21 @@ func _show_config_dialog(current_game_id: String, current_api_key: String, web_g
 	
 	# === API KEY SECTION ===
 	var api_key_header = Label.new()
-	api_key_header.text = "🔑 API Key (for native + anonymous play)"
+	api_key_header.text = "🔑 API Key (syncs to BOTH web & native)"
 	api_key_header.add_theme_font_size_override("font_size", 14)
 	vbox.add_child(api_key_header)
 	
 	var api_key_current = Label.new()
-	if current_api_key.is_empty():
-		api_key_current.text = "Current: Not set"
+	if gd_api_key == template_api_key:
+		if current_api_key.is_empty():
+			api_key_current.text = "Current: Not set"
+		else:
+			api_key_current.text = "Current: %s***" % current_api_key.substr(0, min(15, current_api_key.length()))
 	else:
-		api_key_current.text = "Current: %s***" % current_api_key.substr(0, min(15, current_api_key.length()))
+		api_key_current.text = "⚠️ MISMATCH! Will sync on save"
+		api_key_current.add_theme_color_override("font_color", Color.ORANGE)
 	api_key_current.add_theme_font_size_override("font_size", 11)
-	api_key_current.modulate = Color(0.7, 0.7, 0.7)
+	api_key_current.modulate = Color(0.7, 0.7, 0.7) if gd_api_key == template_api_key else Color.WHITE
 	vbox.add_child(api_key_current)
 	
 	var api_key_input = LineEdit.new()
@@ -654,6 +670,11 @@ func _show_config_dialog(current_game_id: String, current_api_key: String, web_g
 			status.text = "❌ Game ID cannot be empty"
 			had_error = true
 		
+		# Validate API Key format (if provided)
+		if not had_error and not new_api_key.is_empty() and not new_api_key.begins_with("cb_"):
+			status.text = "❌ API Key should start with 'cb_'"
+			had_error = true
+		
 		# Validate Google Client ID format (if provided)
 		if not had_error and not new_google_id.is_empty():
 			if not new_google_id.ends_with(".apps.googleusercontent.com"):
@@ -687,19 +708,23 @@ func _show_config_dialog(current_game_id: String, current_api_key: String, web_g
 					status.text = "❌ Failed to save Game ID to CheddaBoards.gd"
 					had_error = true
 		
-		# Save API Key
-		if not had_error and new_api_key != current_api_key:
-			if new_api_key.is_empty():
-				if _set_api_key(""):
+		# Save API Key to BOTH files
+		if not had_error:
+			# Update CheddaBoards.gd API Key
+			if new_api_key != gd_api_key:
+				if _set_api_key(new_api_key):
 					changes_made = true
-			elif not new_api_key.begins_with("cb_"):
-				status.text = "❌ API Key should start with 'cb_'"
-				had_error = true
-			elif _set_api_key(new_api_key):
-				changes_made = true
-			else:
-				status.text = "❌ Failed to save API Key"
-				had_error = true
+				else:
+					status.text = "❌ Failed to save API Key to CheddaBoards.gd"
+					had_error = true
+			
+			# Update template.html API Key
+			if not had_error and new_api_key != template_api_key:
+				if _set_template_api_key(new_api_key):
+					changes_made = true
+				else:
+					status.text = "❌ Failed to save API Key to template.html"
+					had_error = true
 		
 		# Save Google Client ID
 		if not had_error and new_google_id != google_client_id:
@@ -870,7 +895,7 @@ func _set_native_game_id(new_game_id: String) -> bool:
 	return true
 
 # ============================================================
-# API KEY FUNCTIONS
+# API KEY FUNCTIONS - NATIVE (CheddaBoards.gd)
 # ============================================================
 
 func _get_current_api_key() -> String:
@@ -915,7 +940,7 @@ func _set_api_key(new_api_key: String) -> bool:
 		print("   ⚠️  Could not find api_key to replace in CheddaBoards.gd")
 		return false
 	
-	file = FileAccess.open(TEMPLATE_HTML_PATH, FileAccess.WRITE)
+	file = FileAccess.open(CHEDDABOARDS_GD_PATH, FileAccess.WRITE)
 	if not file:
 		print("   ❌ Could not write to CheddaBoards.gd")
 		return false
@@ -924,9 +949,69 @@ func _set_api_key(new_api_key: String) -> bool:
 	file.close()
 	
 	if new_api_key.is_empty():
-		print("   ✅ API Key cleared")
+		print("   ✅ Native API Key cleared")
 	else:
-		print("   ✅ API Key updated: %s***" % new_api_key.substr(0, min(15, new_api_key.length())))
+		print("   ✅ Native API Key updated: %s***" % new_api_key.substr(0, min(15, new_api_key.length())))
+	return true
+
+# ============================================================
+# API KEY FUNCTIONS - WEB (template.html)
+# ============================================================
+
+func _get_template_api_key() -> String:
+	"""Extract API Key from template.html"""
+	if not FileAccess.file_exists(TEMPLATE_HTML_PATH):
+		return ""
+	
+	var file = FileAccess.open(TEMPLATE_HTML_PATH, FileAccess.READ)
+	if not file:
+		return ""
+	
+	var content = file.get_as_text()
+	file.close()
+	
+	var regex = RegEx.new()
+	regex.compile("API_KEY:\\s*['\"]([^'\"]*)['\"]")
+	var result = regex.search(content)
+	
+	return result.get_string(1) if result else ""
+
+func _set_template_api_key(new_api_key: String) -> bool:
+	"""Update API Key in template.html"""
+	new_api_key = new_api_key.strip_edges()
+	
+	if not FileAccess.file_exists(TEMPLATE_HTML_PATH):
+		print("   ❌ template.html not found")
+		return false
+	
+	var file = FileAccess.open(TEMPLATE_HTML_PATH, FileAccess.READ)
+	if not file:
+		print("   ❌ Could not read template.html")
+		return false
+	
+	var content = file.get_as_text()
+	file.close()
+	
+	var regex = RegEx.new()
+	regex.compile("API_KEY:\\s*['\"][^'\"]*['\"]")
+	var new_content = regex.sub(content, "API_KEY: '%s'" % new_api_key)
+	
+	if new_content == content:
+		print("   ⚠️  Could not find API_KEY to replace in template.html")
+		return false
+	
+	file = FileAccess.open(TEMPLATE_HTML_PATH, FileAccess.WRITE)
+	if not file:
+		print("   ❌ Could not write to template.html")
+		return false
+	
+	file.store_string(new_content)
+	file.close()
+	
+	if new_api_key.is_empty():
+		print("   ✅ Web API Key cleared")
+	else:
+		print("   ✅ Web API Key updated: %s***" % new_api_key.substr(0, min(15, new_api_key.length())))
 	return true
 
 # ============================================================
@@ -1125,6 +1210,8 @@ func get_project_status() -> Dictionary:
 	"""Get quick status of project setup"""
 	var web_game_id = _get_current_game_id()
 	var native_game_id = _get_native_game_id()
+	var gd_api_key = _get_current_api_key()
+	var template_api_key = _get_template_api_key()
 	
 	return {
 		"has_cheddaboards_autoload": ProjectSettings.has_setting("autoload/CheddaBoards"),
@@ -1135,9 +1222,11 @@ func get_project_status() -> Dictionary:
 		"web_game_id": web_game_id,
 		"native_game_id": native_game_id,
 		"game_ids_match": web_game_id == native_game_id,
-		"api_key": _get_current_api_key(),
+		"gd_api_key": gd_api_key,
+		"template_api_key": template_api_key,
+		"api_keys_match": gd_api_key == template_api_key,
 		"using_default_game_id": web_game_id in ["catch-the-cheese", "test-game"],
-		"has_api_key": not _get_current_api_key().is_empty(),
+		"has_api_key": not gd_api_key.is_empty() or not template_api_key.is_empty(),
 		"has_google": not _get_google_client_id().is_empty(),
 		"has_apple": not _get_apple_service_id().is_empty(),
 	}
@@ -1152,7 +1241,8 @@ func is_ready_to_export() -> bool:
 		status.has_cheddaboards_gd and
 		status.has_export_preset and
 		not status.web_game_id.is_empty() and
-		status.game_ids_match
+		status.game_ids_match and
+		status.api_keys_match
 	)
 
 func is_ready_for_native() -> bool:
