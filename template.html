@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>My Game</title>
+  <title>Chedz vs the Graters</title>
 
   <!-- Godot engine bootstrap -->
   <script src="index.js"></script>
@@ -87,9 +87,9 @@
 
   <script type="module">
     // ============================================================
-    // CheddaBoards Godot 4 Template v1.4.0
+    // CheddaBoards Godot 4 Template v1.5.0
     // WITH DEVICE ID / ANONYMOUS PLAY SUPPORT
-    // FIXED: Anonymous nickname now properly used
+    // WITH PLAY SESSION TIME VALIDATION SUPPORT
     // https://github.com/cheddatech/CheddaBoards-Godot
     // https://cheddaboards.com
     // ============================================================
@@ -164,6 +164,9 @@
     // Submission guards
     let isRefreshingProfile = false;
     let isSubmittingScore = false;
+    
+    // Play session for time validation anti-cheat
+    let playSessionToken = null;
 
     // ============================================================
     // DEVICE ID MANAGEMENT
@@ -378,6 +381,9 @@
       }
     };
 
+    /**
+     * Anonymous login - NOW ACCEPTS NICKNAME PARAMETER
+     */
     window.chedda_login_anonymous = async function(nickname) {
       try {
         console.log('[Bridge] Anonymous login requested with nickname:', nickname);
@@ -654,6 +660,9 @@
       }
     };
 
+    /**
+     * Submit score - FIXED: Submit score FIRST, then achievements
+     */
     window.chedda_submit_score = async function(score, streak, achievements = []) {
       if (isSubmittingScore) {
         console.log('[Bridge] Score submission already in progress');
@@ -795,6 +804,104 @@
       }
     };
 
+    /**
+     * Start a play session for time validation anti-cheat
+     * Call this when the game STARTS (before submitting any scores)
+     * Returns the session token to be used with score submission
+     */
+    window.chedda_start_play_session = async function(gameId) {
+      try {
+        console.log('[Bridge] Starting play session for game:', gameId || CONFIG.GAME_ID);
+        
+        const targetGameId = gameId || CONFIG.GAME_ID;
+        
+        if (chedda && chedda.startPlaySession) {
+          // SDK has native support
+          const result = await chedda.startPlaySession(targetGameId);
+          if (result && result.ok) {
+            playSessionToken = result.ok;
+            console.log('[Bridge] Play session started:', playSessionToken.substring(0, 25) + '...');
+            return JSON.stringify({ ok: playSessionToken });
+          } else {
+            console.warn('[Bridge] Play session failed:', result?.err);
+            return JSON.stringify({ err: result?.err || 'Failed to start session' });
+          }
+        } else if (chedda && chedda.actor) {
+          // Direct canister call
+          try {
+            const result = await chedda.actor.startGameSession(targetGameId);
+            if (result && result.ok) {
+              playSessionToken = result.ok;
+              console.log('[Bridge] Play session started (direct):', playSessionToken.substring(0, 25) + '...');
+              return JSON.stringify({ ok: playSessionToken });
+            } else {
+              console.warn('[Bridge] Play session failed (direct):', result?.err);
+              return JSON.stringify({ err: result?.err || 'Failed to start session' });
+            }
+          } catch (e) {
+            console.warn('[Bridge] Direct call failed, using fallback:', e.message);
+          }
+        }
+        
+        // Fallback: generate local token (time validation may not be enforced)
+        playSessionToken = 'local_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+        console.log('[Bridge] Play session fallback:', playSessionToken);
+        return JSON.stringify({ ok: playSessionToken });
+        
+      } catch (error) {
+        console.error('[Bridge] Play session error:', error);
+        // Generate fallback so game can continue
+        playSessionToken = 'error_' + Date.now();
+        return JSON.stringify({ ok: playSessionToken, fallback: true });
+      }
+    };
+
+    /**
+     * Get current play session token
+     */
+    window.chedda_get_play_session_token = function() {
+      return playSessionToken;
+    };
+
+    /**
+     * Clear play session (after score submitted)
+     */
+    window.chedda_clear_play_session = function() {
+      playSessionToken = null;
+      console.log('[Bridge] Play session cleared');
+    };
+
+    /**
+     * Submit score WITH play session token for time validation
+     */
+    window.chedda_submit_score_with_session = async function(score, streak, sessionToken) {
+      // Store the session token for this submission
+      const tokenToUse = sessionToken || playSessionToken;
+      console.log('[Bridge] Submitting score with session:', tokenToUse ? tokenToUse.substring(0, 20) + '...' : 'none');
+      
+      // Use the regular submit function - the SDK should handle the token
+      // We pass it through the chedda object if supported
+      if (chedda && chedda.submitScoreWithSession) {
+        try {
+          const result = await chedda.submitScoreWithSession(score, streak, tokenToUse);
+          responseQueue.push({
+            action: 'submitScore',
+            success: !result.err,
+            score: score,
+            streak: streak,
+            error: result.err
+          });
+          return;
+        } catch (e) {
+          console.warn('[Bridge] submitScoreWithSession not available, using standard submit');
+        }
+      }
+      
+      // Fallback: use standard submit (token may be ignored by older SDK)
+      // The Godot HTTP API will handle the token directly
+      await window.chedda_submit_score(score, streak);
+    };
+
     window.chedda_get_leaderboard = async function(sortBy = 'score', limit = 100) {
       try {
         console.log('[Bridge] Leaderboard requested:', sortBy, limit);
@@ -904,6 +1011,10 @@
       }
     };
 
+    /**
+     * Change nickname directly (called from Godot)
+     * FIXED: Now properly updates anonymous profiles
+     */
     window.chedda_change_nickname = async function(newNickname) {
       try {
         if (!newNickname || !newNickname.trim()) {
@@ -1003,7 +1114,7 @@
     // INITIALIZATION
     // ============================================================
     window.addEventListener('load', async () => {
-      console.log('[Init] CheddaBoards Template v1.4.0 (with Device ID + Nickname fix)');
+      console.log('[Init] CheddaBoards Template v1.5.0 (with Play Session Time Validation)');
       console.log('[Init] Game ID:', CONFIG.GAME_ID);
       console.log('[Init] Anonymous Play:', CONFIG.ALLOW_ANONYMOUS_PLAY ? 'Enabled' : 'Disabled');
 
@@ -1187,7 +1298,7 @@
     // ============================================================
     window.debugChedda = () => {
       console.log('═══════════════════════════════════════');
-      console.log('CheddaBoards Debug Info v1.4.0');
+      console.log('CheddaBoards Debug Info v1.5.0');
       console.log('═══════════════════════════════════════');
       console.log('Game ID:', CONFIG.GAME_ID);
       console.log('Anonymous Play:', CONFIG.ALLOW_ANONYMOUS_PLAY);
@@ -1199,6 +1310,8 @@
       console.log('Device ID:', deviceId ? deviceId.substring(0, 12) + '...' : 'Not set');
       console.log('Pending Nickname:', pendingNickname || 'None');
       console.log('───────────────────────────────────────');
+      console.log('Play Session:', playSessionToken ? playSessionToken.substring(0, 20) + '...' : 'None');
+      console.log('───────────────────────────────────────');
       console.log('Profile:', currentProfile);
       console.log('Response Queue:', responseQueue.length, 'items');
       console.log('Godot Ready:', godotReady);
@@ -1206,7 +1319,7 @@
       console.log('Google:', CONFIG.GOOGLE_CLIENT_ID ? 'Configured' : 'Disabled');
       console.log('Apple:', CONFIG.APPLE_SERVICE_ID ? 'Configured' : 'Disabled');
       console.log('═══════════════════════════════════════');
-      return { chedda, currentProfile, responseQueue, deviceId, pendingNickname, CONFIG };
+      return { chedda, currentProfile, responseQueue, deviceId, pendingNickname, playSessionToken, CONFIG };
     };
   </script>
 </body>
