@@ -87,9 +87,9 @@
 
   <script type="module">
     // ============================================================
-    // CheddaBoards Godot 4 Template v1.5.0
+    // CheddaBoards Godot 4 Template v1.5.2
     // WITH DEVICE ID / ANONYMOUS PLAY SUPPORT
-    // WITH PLAY SESSION TIME VALIDATION SUPPORT
+    // WITH PLAY SESSION TIME VALIDATION SUPPORT (HTTP API for all users)
     // https://github.com/cheddatech/CheddaBoards-Godot
     // https://cheddaboards.com
     // ============================================================
@@ -127,6 +127,13 @@
       // ANONYMOUS PLAY: Allow scores without login
       // ─────────────────────────────────────────────────────────
       ALLOW_ANONYMOUS_PLAY: true,  // Set to false to require login
+      
+      // ─────────────────────────────────────────────────────────
+      // API KEY: Required for anonymous play session validation
+      // Get from: https://cheddaboards.com/dashboard
+      // ─────────────────────────────────────────────────────────
+      API_KEY: 'cb_test-game_350355445',  // Your API key (cb_xxxxx)
+      API_BASE_URL: 'https://api.cheddaboards.com',
     };
 
     // ============================================================
@@ -808,49 +815,64 @@
      * Start a play session for time validation anti-cheat
      * Call this when the game STARTS (before submitting any scores)
      * Returns the session token to be used with score submission
+     * 
+     * v1.5.2: Now uses HTTP API for ALL users (simpler, works everywhere)
      */
     window.chedda_start_play_session = async function(gameId) {
       try {
         console.log('[Bridge] Starting play session for game:', gameId || CONFIG.GAME_ID);
         
         const targetGameId = gameId || CONFIG.GAME_ID;
+        const playerId = deviceId || getOrCreateDeviceId();
         
-        if (chedda && chedda.startPlaySession) {
-          // SDK has native support
-          const result = await chedda.startPlaySession(targetGameId);
-          if (result && result.ok) {
-            playSessionToken = result.ok;
-            console.log('[Bridge] Play session started:', playSessionToken.substring(0, 25) + '...');
-            return JSON.stringify({ ok: playSessionToken });
-          } else {
-            console.warn('[Bridge] Play session failed:', result?.err);
-            return JSON.stringify({ err: result?.err || 'Failed to start session' });
-          }
-        } else if (chedda && chedda.actor) {
-          // Direct canister call
+        // Use HTTP API for ALL users (authenticated and anonymous)
+        if (CONFIG.API_KEY) {
           try {
-            const result = await chedda.actor.startGameSession(targetGameId);
-            if (result && result.ok) {
-              playSessionToken = result.ok;
-              console.log('[Bridge] Play session started (direct):', playSessionToken.substring(0, 25) + '...');
-              return JSON.stringify({ ok: playSessionToken });
+            console.log('[Bridge] Starting play session via HTTP API...');
+            const response = await fetch(`${CONFIG.API_BASE_URL}/play-sessions/start`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-API-Key': CONFIG.API_KEY
+              },
+              body: JSON.stringify({
+                gameId: targetGameId,
+                playerId: playerId
+              })
+            });
+            
+            if (response.ok) {
+              const data = await response.json();
+              if (data.ok) {
+                playSessionToken = data.ok;
+                console.log('[Bridge] Play session started (HTTP):', playSessionToken.substring(0, 25) + '...');
+                return JSON.stringify({ ok: playSessionToken });
+              } else if (data.data && data.data.token) {
+                // Alternative response format
+                playSessionToken = data.data.token;
+                console.log('[Bridge] Play session started (HTTP):', playSessionToken.substring(0, 25) + '...');
+                return JSON.stringify({ ok: playSessionToken });
+              } else {
+                console.warn('[Bridge] HTTP API returned error:', data.error || data.err);
+              }
             } else {
-              console.warn('[Bridge] Play session failed (direct):', result?.err);
-              return JSON.stringify({ err: result?.err || 'Failed to start session' });
+              const errorText = await response.text();
+              console.warn('[Bridge] HTTP API failed:', response.status, errorText);
             }
           } catch (e) {
-            console.warn('[Bridge] Direct call failed, using fallback:', e.message);
+            console.warn('[Bridge] HTTP API error:', e.message);
           }
+        } else {
+          console.warn('[Bridge] No API_KEY configured - play sessions disabled');
         }
         
-        // Fallback: generate local token (time validation may not be enforced)
+        // Fallback: generate local token (time validation will NOT be enforced)
         playSessionToken = 'local_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
-        console.log('[Bridge] Play session fallback:', playSessionToken);
-        return JSON.stringify({ ok: playSessionToken });
+        console.log('[Bridge] Play session fallback (no server validation):', playSessionToken);
+        return JSON.stringify({ ok: playSessionToken, fallback: true });
         
       } catch (error) {
         console.error('[Bridge] Play session error:', error);
-        // Generate fallback so game can continue
         playSessionToken = 'error_' + Date.now();
         return JSON.stringify({ ok: playSessionToken, fallback: true });
       }
@@ -1114,7 +1136,7 @@
     // INITIALIZATION
     // ============================================================
     window.addEventListener('load', async () => {
-      console.log('[Init] CheddaBoards Template v1.5.0 (with Play Session Time Validation)');
+      console.log('[Init] CheddaBoards Template v1.5.2 (HTTP API play sessions)');
       console.log('[Init] Game ID:', CONFIG.GAME_ID);
       console.log('[Init] Anonymous Play:', CONFIG.ALLOW_ANONYMOUS_PLAY ? 'Enabled' : 'Disabled');
 
