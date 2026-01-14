@@ -1,4 +1,4 @@
-# CheddaBoards.gd v1.4.1
+# CheddaBoards.gd v1.5.0
 # CheddaBoards integration for Godot 4.x
 # https://github.com/cheddatech/CheddaBoards-Godot
 # https://cheddaboards.com
@@ -6,6 +6,8 @@
 # HYBRID SDK: Supports both Web (JavaScript Bridge) and Native (HTTP API)
 # - Web exports use JavaScript bridge for ICP authentication
 # - Native exports (Windows/Mac/Linux/Mobile) use HTTP API
+#
+# v1.5.0: Added play session support for time validation anti-cheat
 #
 # Add to Project Settings > Autoload as "CheddaBoards"
 
@@ -76,6 +78,10 @@ signal achievements_loaded(achievements: Array)
 # --- HTTP API Specific ---
 signal request_failed(endpoint: String, error: String)
 
+# --- Play Sessions (Time Validation) ---
+signal play_session_started(token: String)
+signal play_session_error(reason: String)
+
 # ============================================================
 # CONFIGURATION
 # ============================================================
@@ -89,6 +95,7 @@ var api_key: String = "cb_chedz-vs-the-graters_408970212"  ## Your API key
 var game_id: String = "chedz-vs-the-graters"  ## Your game ID for scoreboard operations
 var _player_id: String = ""
 var _session_token: String = ""  ## For OAuth session-based auth
+var _play_session_token: String = ""  ## For time validation
 
 # ============================================================
 # PLATFORM DETECTION
@@ -482,6 +489,20 @@ func _emit_http_success(data) -> void:
 		
 		"game_info", "game_stats", "health":
 			_log("API response: %s" % str(data))
+		
+		"start_play_session":
+			if data.has("ok"):
+				_play_session_token = str(data.get("ok", ""))
+				_log("Play session started (HTTP): %s" % _play_session_token.left(30))
+				play_session_started.emit(_play_session_token)
+			elif data.has("token"):
+				_play_session_token = str(data.get("token", ""))
+				_log("Play session started (HTTP): %s" % _play_session_token.left(30))
+				play_session_started.emit(_play_session_token)
+			else:
+				var err = str(data.get("err", data.get("error", "Unknown error")))
+				_log("Play session error (HTTP): %s" % err)
+				play_session_error.emit(err)
 	
 	_current_meta = {}
 	_http_busy = false
@@ -524,6 +545,10 @@ func _emit_http_failure(error: String) -> void:
 			var archive_id = _current_meta.get("archive_id", "")
 			archived_scoreboard_loaded.emit(archive_id, {}, [])
 			archive_error.emit(error)
+		# --- PLAY SESSION FAILURES ---
+		"start_play_session":
+			_log("Play session HTTP error: %s" % error)
+			play_session_error.emit(error)
 		"archive_stats":
 			archive_stats_loaded.emit(0, [])
 			archive_error.emit(error)
@@ -949,7 +974,10 @@ func submit_score(score: int, streak: int = 0) -> void:
 			"streak": streak,
 			"nickname": _nickname if _nickname != "" else _get_default_nickname()
 		}
-		_log("Submitting: score=%d, streak=%d, nickname=%s, gameId=%s, playerId=%s" % [score, streak, body.nickname, game_id, body.playerId])
+		# Include play session token if available (for time validation)
+		if _play_session_token != "":
+			body["playSessionToken"] = _play_session_token
+		_log("Submitting: score=%d, streak=%d, nickname=%s, gameId=%s, playerId=%s, session=%s" % [score, streak, body.nickname, game_id, body.playerId, _play_session_token.left(20)])
 		_make_http_request("/scores", HTTPClient.METHOD_POST, body, "submit_score")
 		return
 	
@@ -958,9 +986,120 @@ func submit_score(score: int, streak: int = 0) -> void:
 			_is_submitting_score = false
 			score_error.emit("CheddaBoards not ready")
 			return
-		var js_code: String = "chedda_submit_score(%d, %d)" % [score, streak]
+		# Include play session token in web submission
+		if _play_session_token != "":
+			var js_code: String = "chedda_submit_score_with_session(%d, %d, '%s')" % [score, streak, _play_session_token]
+			JavaScriptBridge.eval(js_code, true)
+		else:
+			var js_code: String = "chedda_submit_score(%d, %d)" % [score, streak]
+			JavaScriptBridge.eval(js_code, true)
+		_log("Score submitted: %d points, %d streak (session: %s)" % [score, streak, _play_session_token.left(20)])
+
+# ============================================================
+# PUBLIC API - PLAY SESSIONS (Time Validation)
+# ============================================================
+
+## Start a play session for time validation anti-cheat
+## Call this when the game STARTS, before any score submission
+## The server tracks how long the session lasts to validate scores
+func start_play_session() -> void:
+	_play_session_token = ""
+	
+	if _is_web:
+		if not _init_complete:
+			play_session_error.emit("CheddaBoards not ready")
+			return
+		# Web mode - call JavaScript bridge
+		var js_code: String = """
+			(async function() {
+				try {
+					window._cheddaPlaySession = null;
+					if (window.chedda && window.chedda.startPlaySession) {
+						const result = await window.chedda.startPlaySession('%s');
+						window._cheddaPlaySession = result.ok ? 
+							{success: true, token: result.ok} : 
+							{success: false, error: result.err || 'Unknown error'};
+					} else if (window.chedda_start_play_session) {
+						const result = await window.chedda_start_play_session('%s');
+						const parsed = typeof result === 'string' ? JSON.parse(result) : result;
+						window._cheddaPlaySession = parsed.ok ? 
+							{success: true, token: parsed.ok} : 
+							{success: false, error: parsed.err || 'Unknown error'};
+					} else {
+						// Fallback - generate local token if SDK doesn't support it yet
+						window._cheddaPlaySession = {success: true, token: 'local_' + Date.now()};
+					}
+				} catch(e) {
+					window._cheddaPlaySession = {success: false, error: e.message};
+				}
+			})();
+		""" % [game_id, game_id]
 		JavaScriptBridge.eval(js_code, true)
-		_log("Score submitted: %d points, %d streak" % [score, streak])
+		_log("Play session requested (web) for game: %s" % game_id)
+		# Poll for result
+		_poll_play_session_result()
+	else:
+		# Native/HTTP mode
+		if not _session_token.is_empty():
+			# OAuth session auth - call the API
+			var body = {"gameId": game_id}
+			_make_http_request("/play-sessions/start", HTTPClient.METHOD_POST, body, "start_play_session")
+			_log("Play session requested (HTTP) for game: %s" % game_id)
+		else:
+			# Anonymous user - generate local token
+			# (Time validation may not be enforced for anonymous users)
+			_play_session_token = "anon_%d_%d" % [Time.get_unix_time_from_system(), randi() % 10000]
+			_log("Anonymous play session: %s" % _play_session_token)
+			play_session_started.emit(_play_session_token)
+
+func _poll_play_session_result() -> void:
+	# Wait a moment for async JS to complete
+	await get_tree().create_timer(0.3).timeout
+	_check_play_session_result_web()
+
+func _check_play_session_result_web() -> void:
+	var result = JavaScriptBridge.eval("JSON.stringify(window._cheddaPlaySession || null)", true)
+	
+	if result == null or str(result) == "null":
+		# Not ready yet, try again
+		await get_tree().create_timer(0.2).timeout
+		result = JavaScriptBridge.eval("JSON.stringify(window._cheddaPlaySession || null)", true)
+	
+	if result != null and str(result) != "null":
+		var json := JSON.new()
+		if json.parse(str(result)) == OK:
+			var data: Dictionary = json.data
+			if data.get("success", false):
+				_play_session_token = str(data.get("token", ""))
+				_log("Play session started: %s" % _play_session_token.left(30))
+				play_session_started.emit(_play_session_token)
+			else:
+				var error = str(data.get("error", "Unknown error"))
+				_log("Play session failed: %s" % error)
+				play_session_error.emit(error)
+		else:
+			_log("Play session: Failed to parse response")
+			play_session_error.emit("Failed to parse response")
+		# Clear the JS variable
+		JavaScriptBridge.eval("window._cheddaPlaySession = null;", true)
+	else:
+		# Fallback - use local token so game can continue
+		_play_session_token = "fallback_%d" % Time.get_unix_time_from_system()
+		_log("Play session fallback: %s" % _play_session_token)
+		play_session_started.emit(_play_session_token)
+
+## Get the current play session token
+func get_play_session_token() -> String:
+	return _play_session_token
+
+## Check if a play session is active
+func has_play_session() -> bool:
+	return _play_session_token != ""
+
+## Clear the play session (call after score submitted or game cancelled)
+func clear_play_session() -> void:
+	_play_session_token = ""
+	_log("Play session cleared")
 
 func get_leaderboard(sort_by: String = "score", limit: int = 100) -> void:
 	if is_anonymous() or _is_native:
