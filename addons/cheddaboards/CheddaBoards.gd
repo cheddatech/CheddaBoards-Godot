@@ -1039,18 +1039,13 @@ func start_play_session() -> void:
 		# Poll for result
 		_poll_play_session_result()
 	else:
-		# Native/HTTP mode
-		if not _session_token.is_empty():
-			# OAuth session auth - call the API
-			var body = {"gameId": game_id}
-			_make_http_request("/play-sessions/start", HTTPClient.METHOD_POST, body, "start_play_session")
-			_log("Play session requested (HTTP) for game: %s" % game_id)
-		else:
-			# Anonymous user - generate local token
-			# (Time validation may not be enforced for anonymous users)
-			_play_session_token = "anon_%d_%d" % [Time.get_unix_time_from_system(), randi() % 10000]
-			_log("Anonymous play session: %s" % _play_session_token)
-			play_session_started.emit(_play_session_token)
+		# Native/HTTP mode - ALWAYS call the API (API key provides auth)
+		var body = {
+			"gameId": game_id,
+			"playerId": get_player_id()
+		}
+		_make_http_request("/play-sessions/start", HTTPClient.METHOD_POST, body, "start_play_session")
+		_log("Play session requested (HTTP) for game: %s, player: %s" % [game_id, get_player_id()])
 
 func _poll_play_session_result() -> void:
 	# Wait a moment for async JS to complete
