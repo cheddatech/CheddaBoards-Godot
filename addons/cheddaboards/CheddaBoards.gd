@@ -1,12 +1,14 @@
-# CheddaBoards.gd v1.5.0
+# CheddaBoards.gd v1.5.1
 # CheddaBoards integration for Godot 4.x
 # https://github.com/cheddatech/CheddaBoards-Godot
 # https://cheddaboards.com
 #
 # HYBRID SDK: Supports both Web (JavaScript Bridge) and Native (HTTP API)
-# - Web exports use JavaScript bridge for ICP authentication
+# - Web exports use JavaScript bridge for ICP authentication (Google, Apple, II)
+# - Anonymous login uses HTTP API on ALL platforms for consistency
 # - Native exports (Windows/Mac/Linux/Mobile) use HTTP API
 #
+# v1.5.1: Anonymous login now uses HTTP API on web builds (bypasses JS bridge)
 # v1.5.0: Added play session support for time validation anti-cheat
 #
 # Add to Project Settings > Autoload as "CheddaBoards"
@@ -841,26 +843,37 @@ func login_apple() -> void:
 		login_failed.emit("Apple login only available in web builds")
 
 func login_anonymous(nickname: String = "") -> void:
+	# Anonymous login uses HTTP API on ALL platforms (bypasses JS bridge on web)
+	# This ensures consistent behavior between web and native builds
+	
 	if _is_web:
 		if not _init_complete:
 			login_failed.emit("CheddaBoards not ready")
 			return
-		var safe_nickname: String = nickname.replace("'", "\\'").replace('"', '\\"')
-		JavaScriptBridge.eval("chedda_login_anonymous('%s')" % safe_nickname, true)
-		_log("Anonymous login requested")
-		_start_login_timeout()
-	else:
-		_nickname = nickname if nickname != "" else _get_default_nickname()
-		_auth_type = "anonymous"
-		login_success.emit(_nickname)
-		_log("Anonymous login (native)")
+		# Get device ID from JS (for localStorage persistence) but don't use JS bridge for login
+		var js_device_id = JavaScriptBridge.eval("chedda_get_device_id()", true)
+		if js_device_id and str(js_device_id) != "":
+			_player_id = str(js_device_id)
+			_log("Using device ID from browser: %s" % _player_id.left(12))
+	
+	# Set local state (same as native) - HTTP API will be used for score submission
+	_nickname = nickname if nickname != "" else _get_default_nickname()
+	_auth_type = "anonymous"
+	login_success.emit(_nickname)
+	_log("Anonymous login (HTTP API mode)")
 
 func logout() -> void:
 	if _is_web:
 		if not _init_complete:
 			return
+		# Clear local state first (for anonymous HTTP API mode)
+		_cached_profile = {}
+		_auth_type = ""
+		_nickname = ""
+		# Also call JS logout for OAuth users
 		JavaScriptBridge.eval("chedda_logout()", true)
 		_log("Logout requested")
+		logout_success.emit()
 	else:
 		_cached_profile = {}
 		_auth_type = ""
@@ -869,6 +882,10 @@ func logout() -> void:
 		_log("Logged out (native)")
 
 func is_authenticated() -> bool:
+	# Check local auth type first (for anonymous HTTP API mode on web)
+	if _auth_type == "anonymous":
+		return true
+	
 	if _is_web:
 		if not _init_complete:
 			return false
@@ -878,11 +895,19 @@ func is_authenticated() -> bool:
 		return not api_key.is_empty() or not _session_token.is_empty()
 
 func is_anonymous() -> bool:
+	# Check local auth type first (works for both web and native anonymous login)
+	if _auth_type == "anonymous":
+		return true
+	
 	if _is_web:
 		if not _init_complete:
 			return true
-		var result: Variant = JavaScriptBridge.eval("chedda_is_anonymous()", true)
-		return bool(result)
+		# Only check JS bridge if we haven't set local auth type
+		if _auth_type == "":
+			var result: Variant = JavaScriptBridge.eval("chedda_is_anonymous()", true)
+			return bool(result)
+		# If auth type is set but not "anonymous", user has a real account
+		return false
 	else:
 		return _auth_type == "anonymous" or _session_token.is_empty()
 
