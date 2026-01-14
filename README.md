@@ -4,7 +4,7 @@
 
 # CheddaBoards Godot 4 Template
 
-> **SDK Version:** 1.4.0 | [Changelog](docs/CHANGELOG.md)
+> **SDK Version:** 1.5.0 | [Changelog](docs/CHANGELOG.md)
 
 <p align="center">
   <img src="screenshots/cheddaboards1.png" alt="CheddaBoards Screenshot" width="400">
@@ -41,6 +41,13 @@ Zero servers. $0 for indie devs. Web, Windows, Mac, Linux, Mobile.
 - **Native exports** - HTTP API for Windows, Mac, Linux, Mobile
 - **Anonymous play** - No account required, instant play with device ID
 - **Cross-platform** - Same codebase works everywhere
+
+### Anti-Cheat (v1.5.0+)
+
+- **Play sessions** - Server-side time tracking
+- **Score validation** - Rejects impossible scores based on play time
+- **Rate limiting** - Prevents spam submissions
+- **Score caps** - Block obviously fake values
 
 ### Authentication
 
@@ -231,6 +238,41 @@ func _on_score_saved(score: int, streak: int):
 func _on_score_error(reason: String):
     print("Error: ", reason)
 ```
+
+### Play Sessions (Anti-Cheat) - v1.5.0+
+
+Server-side time validation prevents impossible scores:
+
+```gdscript
+func _ready():
+    await CheddaBoards.wait_until_ready()
+    
+    # Connect play session signals
+    CheddaBoards.play_session_started.connect(_on_play_session_started)
+    CheddaBoards.play_session_error.connect(_on_play_session_error)
+
+func _start_game():
+    # Start a timed session when gameplay begins
+    if CheddaBoards.is_ready():
+        CheddaBoards.start_play_session()
+
+func _on_play_session_started(token: String):
+    print("Session started: ", token.left(20))
+
+func _on_play_session_error(reason: String):
+    print("Session error: ", reason)  # Game still works, scores may be rejected
+
+func _on_score_submitted(score: int, streak: int):
+    # Clear session after successful submit
+    CheddaBoards.clear_play_session()
+```
+
+**How it works:**
+1. Game starts → `start_play_session()` records server timestamp
+2. Player plays for X seconds
+3. Score submitted with session token
+4. Backend validates: `score / elapsed_time ≤ maxScorePerSecond`
+5. Invalid scores rejected, valid scores saved
 
 ### Authentication Options
 
@@ -476,6 +518,10 @@ signal archive_error(reason: String)
 signal achievement_unlocked(achievement_id: String)
 signal achievements_loaded(achievements: Array)
 
+# Play Sessions (v1.5.0+)
+signal play_session_started(token: String)
+signal play_session_error(reason: String)
+
 # HTTP API
 signal request_failed(endpoint: String, error: String)
 ```
@@ -555,6 +601,7 @@ Achievements.debug_logging = true
 | "Game ID not set" | Set `game_id` in CheddaBoards.gd or run Setup Wizard |
 | "CheddaBoards not ready" | Use `await CheddaBoards.wait_until_ready()` |
 | Score not submitting | Check `is_authenticated()` and connect to `score_error` |
+| "Score too high for time played" | Play session detected cheating - score is legitimate? Adjust limits in dashboard |
 | Nickname not updating | Update to v1.4.0 (fixed in this version) |
 | Click offset on high-DPI | Enable "Allow Hidpi" in Project Settings |
 | Web: "Engine not defined" | Export must be named `index.html` |
@@ -601,18 +648,18 @@ func _on_exit_pressed():
 CheddaBoards-Godot/
 ├── addons/
 │   └── cheddaboards/
-│       ├── CheddaBoards.gd       # Core SDK (Autoload)
+│       ├── CheddaBoards.gd       # Core SDK (Autoload) v1.5.0
 │       ├── Achievements.gd       # Achievement system (Autoload)
 │       ├── SetupWizard.gd        # Setup & validation tool (v2.4)
 │       └── icon.png
 ├── scenes/
 │   ├── MainMenu.tscn/.gd         # Login & profile UI
-│   ├── Game.tscn/.gd             # Example game with levels
+│   ├── Game.tscn/.gd             # Example game with levels (v1.6.0)
 │   ├── Leaderboard.tscn/.gd      # Leaderboard with archives
 │   ├── AchievementsView.tscn/.gd # Achievement list
 │   └── AchievementNotification.* # Unlock popups
 ├── assets/                       # Sprites, fonts, etc.
-├── template.html                 # Web export template (v1.3.0)
+├── template.html                 # Web export template (v1.5.0)
 ├── project.godot                 # Pre-configured project
 ├── docs/
 │   ├── QUICKSTART.md
@@ -652,6 +699,7 @@ CheddaBoards-Godot/
 
 | Version | Date | Changes |
 |---------|------|---------|
+| v1.5.0 | 2026-01-14 | Play session anti-cheat, time validation |
 | v1.4.0 | 2026-01-04 | OAuth in Setup Wizard, nickname/score/player ID fixes |
 | v1.3.0 | 2025-12-30 | Timed scoreboards, archives, level system, debug shortcuts |
 | v1.2.2 | 2025-12-27 | Unique default nicknames |
