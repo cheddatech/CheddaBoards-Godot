@@ -1357,7 +1357,12 @@ func submit_score_with_achievements(score: int, streak: int, achievements: Array
 			"streak": streak,
 			"nickname": _nickname if _nickname != "" else _get_default_nickname()
 		}
-		_log("Submitting: score=%d, streak=%d, nickname=%s, gameId=%s, playerId=%s" % [score, streak, score_body.nickname, game_id, score_body.playerId])
+		# Include play session token if available
+		if _play_session_token != "":
+			score_body["playSessionToken"] = _play_session_token
+			_log("Submitting: score=%d, streak=%d, nickname=%s, gameId=%s, playerId=%s, session=%s..." % [score, streak, score_body.nickname, game_id, score_body.playerId, _play_session_token.substr(0, 25)])
+		else:
+			_log("Submitting: score=%d, streak=%d, nickname=%s, gameId=%s, playerId=%s (no session)" % [score, streak, score_body.nickname, game_id, score_body.playerId])
 		_make_http_request("/scores", HTTPClient.METHOD_POST, score_body, "submit_score")
 		return
 	
@@ -1384,7 +1389,12 @@ func submit_score_with_achievements(score: int, streak: int, achievements: Array
 		"streak": streak,
 		"nickname": _nickname if _nickname != "" else _get_default_nickname()
 	}
-	_log("Submitting: score=%d, streak=%d, nickname=%s, gameId=%s, playerId=%s" % [score, streak, score_body.nickname, game_id, score_body.playerId])
+	# Include play session token if available
+	if _play_session_token != "":
+		score_body["playSessionToken"] = _play_session_token
+		_log("Submitting: score=%d, streak=%d, nickname=%s, gameId=%s, playerId=%s, session=%s..." % [score, streak, score_body.nickname, game_id, score_body.playerId, _play_session_token.substr(0, 25)])
+	else:
+		_log("Submitting: score=%d, streak=%d, nickname=%s, gameId=%s, playerId=%s (no session)" % [score, streak, score_body.nickname, game_id, score_body.playerId])
 	_make_http_request("/scores", HTTPClient.METHOD_POST, score_body, "submit_score")
 
 # ============================================================
