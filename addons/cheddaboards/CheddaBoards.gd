@@ -1,14 +1,15 @@
-# CheddaBoards.gd v1.5.3
+# CheddaBoards.gd v1.5.4
 # CheddaBoards integration for Godot 4.x
 # https://github.com/cheddatech/CheddaBoards-Godot
 # https://cheddaboards.com
 #
 # HYBRID SDK: Supports both Web (JavaScript Bridge) and Native (HTTP API)
-# - Web exports use JavaScript bridge for ICP authentication (Google, Apple, II)
-# - Anonymous login uses HTTP API on ALL platforms for consistency
-# - Play sessions use HTTP API for ALL users (simpler, works everywhere)
+# - OAuth login (Google, Apple, II) uses JavaScript bridge on web
+# - ALL score submissions use HTTP API (simpler, works with play sessions)
+# - Play sessions use HTTP API for ALL users
 # - Native exports (Windows/Mac/Linux/Mobile) use HTTP API
 #
+# v1.5.4: ALL score submissions now use HTTP API (fixes play session validation)
 # v1.5.3: ALL users now use HTTP API for play sessions (fixes web auth issues)
 # v1.5.2: Play sessions for anonymous users now use HTTP API on web
 # v1.5.1: Anonymous login now uses HTTP API on web builds (bypasses JS bridge)
@@ -174,11 +175,11 @@ func _ready() -> void:
 	_setup_http_client()
 	
 	if _is_web:
-		_log("Initializing CheddaBoards v1.5.3 (Web Mode)...")
+		_log("Initializing CheddaBoards v1.5.4 (Web Mode)...")
 		_start_polling()
 		_check_chedda_ready()
 	else:
-		_log("Initializing CheddaBoards v1.5.3 (Native/HTTP API Mode)...")
+		_log("Initializing CheddaBoards v1.5.4 (Native/HTTP API Mode)...")
 		_init_complete = true
 		call_deferred("_emit_sdk_ready")
 
@@ -994,34 +995,19 @@ func submit_score(score: int, streak: int = 0) -> void:
 	_pending_score = score
 	_pending_streak = streak
 	
-	if is_anonymous() or _is_native:
-		var body = {
-			"playerId": get_player_id(),
-			"gameId": game_id,
-			"score": score,
-			"streak": streak,
-			"nickname": _nickname if _nickname != "" else _get_default_nickname()
-		}
-		# Include play session token if available (for time validation)
-		if _play_session_token != "":
-			body["playSessionToken"] = _play_session_token
-		_log("Submitting: score=%d, streak=%d, nickname=%s, gameId=%s, playerId=%s, session=%s" % [score, streak, body.nickname, game_id, body.playerId, _play_session_token.left(20)])
-		_make_http_request("/scores", HTTPClient.METHOD_POST, body, "submit_score")
-		return
-	
-	if _is_web:
-		if not _init_complete:
-			_is_submitting_score = false
-			score_error.emit("CheddaBoards not ready")
-			return
-		# Include play session token in web submission
-		if _play_session_token != "":
-			var js_code: String = "chedda_submit_score_with_session(%d, %d, '%s')" % [score, streak, _play_session_token]
-			JavaScriptBridge.eval(js_code, true)
-		else:
-			var js_code: String = "chedda_submit_score(%d, %d)" % [score, streak]
-			JavaScriptBridge.eval(js_code, true)
-		_log("Score submitted: %d points, %d streak (session: %s)" % [score, streak, _play_session_token.left(20)])
+	# ALL users submit via HTTP API (simpler, works with play sessions)
+	var body = {
+		"playerId": get_player_id(),
+		"gameId": game_id,
+		"score": score,
+		"streak": streak,
+		"nickname": _nickname if _nickname != "" else _get_default_nickname()
+	}
+	# Include play session token if available (for time validation)
+	if _play_session_token != "":
+		body["playSessionToken"] = _play_session_token
+	_log("Submitting: score=%d, streak=%d, nickname=%s, gameId=%s, playerId=%s, session=%s" % [score, streak, body.nickname, game_id, body.playerId, _play_session_token.left(20)])
+	_make_http_request("/scores", HTTPClient.METHOD_POST, body, "submit_score")
 
 # ============================================================
 # PUBLIC API - PLAY SESSIONS (Time Validation)
@@ -1343,40 +1329,19 @@ func submit_score_with_achievements(score: int, streak: int, achievements: Array
 			if ach_id != "":
 				ach_ids.append(ach_id)
 	
-	if is_anonymous():
-		_log("Anonymous user - submitting score only (achievements disabled)")
-		var score_body = {
-			"playerId": get_player_id(),
-			"gameId": game_id,
-			"score": score,
-			"streak": streak,
-			"nickname": _nickname if _nickname != "" else _get_default_nickname()
-		}
-		# Include play session token if available
-		if _play_session_token != "":
-			score_body["playSessionToken"] = _play_session_token
-			_log("Submitting: score=%d, streak=%d, nickname=%s, gameId=%s, playerId=%s, session=%s..." % [score, streak, score_body.nickname, game_id, score_body.playerId, _play_session_token.substr(0, 25)])
-		else:
-			_log("Submitting: score=%d, streak=%d, nickname=%s, gameId=%s, playerId=%s (no session)" % [score, streak, score_body.nickname, game_id, score_body.playerId])
-		_make_http_request("/scores", HTTPClient.METHOD_POST, score_body, "submit_score")
-		return
+	# ALL users submit via HTTP API
+	_log("Submitting score with %d achievements (HTTP API)" % ach_ids.size())
 	
-	if _is_web:
-		_log("Submitting score with %d achievements" % ach_ids.size())
-		var ach_json = JSON.stringify(ach_ids)
-		var js_code = "chedda_submit_score(%d, %d, %s)" % [score, streak, ach_json]
-		_log("Calling JS: %s" % js_code)
-		JavaScriptBridge.eval(js_code, true)
-		return
+	# Unlock achievements first (if not anonymous)
+	if not is_anonymous():
+		for ach_id in ach_ids:
+			var body = {
+				"playerId": get_player_id(),
+				"achievementId": ach_id
+			}
+			_make_http_request("/achievements", HTTPClient.METHOD_POST, body, "unlock_achievement")
 	
-	_log("Submitting score with %d achievements (HTTP)" % ach_ids.size())
-	for ach_id in ach_ids:
-		var body = {
-			"playerId": get_player_id(),
-			"achievementId": ach_id
-		}
-		_make_http_request("/achievements", HTTPClient.METHOD_POST, body, "unlock_achievement")
-	
+	# Submit score
 	var score_body = {
 		"playerId": get_player_id(),
 		"gameId": game_id,
@@ -1474,7 +1439,7 @@ func _get_profile_from_js() -> Dictionary:
 func debug_status() -> void:
 	print("")
 	print("╔══════════════════════════════════════════════╗")
-	print("║        CheddaBoards Debug Status v1.5.3      ║")
+	print("║        CheddaBoards Debug Status v1.5.4      ║")
 	print("╠══════════════════════════════════════════════╣")
 	print("║ Environment                                  ║")
 	print("║  - Platform:         %s" % ("Web" if _is_web else "Native").rpad(24) + "║")
