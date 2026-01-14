@@ -7,6 +7,87 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.0] - 2026-01-14
+
+### Play Session Anti-Cheat (Time Validation)
+
+Server-side time tracking to prevent impossible scores. The backend now validates that scores are achievable based on actual play time.
+
+### Added
+
+#### CheddaBoards.gd v1.5.0
+- `start_play_session()` - Start a timed session when game begins
+- `get_play_session_token()` - Get current session token
+- `has_play_session()` - Check if session is active
+- `clear_play_session()` - Clear session after score submit
+- Signal: `play_session_started(token: String)`
+- Signal: `play_session_error(reason: String)`
+
+#### template.html v1.5.0
+- `chedda_start_play_session(gameId)` - Start session (web)
+- `chedda_get_play_session_token()` - Get token (web)
+- `chedda_clear_play_session()` - Clear session (web)
+- `chedda_submit_score_with_session(score, streak, token)` - Submit with token
+
+#### Game.gd v1.6.0
+- Play session integration example
+- Connects `play_session_started` and `play_session_error` signals
+- Starts session in `_start_game()`
+- Clears session after score submit
+
+### How It Works
+
+1. Game starts → `CheddaBoards.start_play_session()`
+2. Backend records start time, returns session token
+3. Player plays for X seconds
+4. Score submitted with session token
+5. Backend validates: `score / elapsed_time ≤ maxScorePerSecond`
+6. Invalid scores rejected with reason
+
+### Security Improvement
+
+| Threat | Before | After |
+|--------|--------|-------|
+| Memory editors | Vulnerable | Blocked |
+| Instant high scores | Vulnerable | Blocked |
+| Score injection | Vulnerable | Blocked |
+| Replay attacks | Vulnerable | Harder |
+
+### Migration from v1.4.0
+
+1. **Update CheddaBoards.gd** - Replace with v1.5.0
+2. **Update template.html** - Replace with v1.5.0 (web builds)
+3. **Update Game.gd** - Add play session calls (see example)
+
+**Minimal Game.gd changes:**
+```gdscript
+# In _ready() - connect signals
+CheddaBoards.play_session_started.connect(_on_play_session_started)
+CheddaBoards.play_session_error.connect(_on_play_session_error)
+
+# In _start_game() - start session
+if CheddaBoards.is_ready():
+    CheddaBoards.start_play_session()
+
+# Add handlers
+func _on_play_session_started(token: String):
+    print("[Game] ✓ Play session started")
+
+func _on_play_session_error(reason: String):
+    print("[Game] ⚠ Play session error: %s" % reason)
+
+# In _on_score_submitted() - clear session
+CheddaBoards.clear_play_session()
+```
+
+### Notes
+
+- Sessions expire after configured duration (default: 60 mins)
+- Games without time validation enabled still work (backward compatible)
+- Configure limits in CheddaBoards dashboard: Security tab
+
+---
+
 ## [1.4.0] - 2026-01-04
 
 ### Bug Fixes & Setup Wizard OAuth Support
@@ -457,6 +538,7 @@ First public release of the CheddaBoards Godot 4 Template.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| **v1.5.0** | 2026-01-14 | Play session anti-cheat, time validation |
 | **v1.4.0** | 2026-01-04 | OAuth in wizard, nickname/score fixes, player ID fixes |
 | **v1.3.0** | 2025-12-30 | Time-based scoreboards, archives, level system |
 | **v1.2.2** | 2025-12-27 | Unique default nicknames fix |
@@ -468,6 +550,15 @@ First public release of the CheddaBoards Godot 4 Template.
 ---
 
 ## Upgrade Guide
+
+### From v1.4.0 to v1.5.0
+
+1. **Update CheddaBoards.gd** - Replace with v1.5.0
+2. **Update template.html** - Replace with v1.5.0 (web builds)
+3. **Update Game.gd** - Add play session integration (4 small changes)
+4. **Backend** - If self-hosting, deploy updated main.mo with play session functions
+
+**Play session is optional but recommended** - games without it continue to work.
 
 ### From v1.3.0 to v1.4.0
 
@@ -572,7 +663,7 @@ First public release of the CheddaBoards Godot 4 Template.
    - Change Custom HTML Shell to `res://template.html`
    - Always export as `index.html`
 
-### From Nothing to v1.4.0
+### From Nothing to v1.5.0
 
 1. Download/clone from GitHub
 2. Copy `addons/cheddaboards/` folder to your project
@@ -582,7 +673,8 @@ First public release of the CheddaBoards Godot 4 Template.
 6. **Optional**: Configure Google/Apple OAuth in wizard
 7. **For native**: Set API key in CheddaBoards.gd
 8. **For web**: Export as `index.html` and test!
-9. Users can play immediately on any platform!
+9. **Optional**: Add play session calls for anti-cheat
+10. Users can play immediately on any platform!
 
 ---
 
@@ -590,6 +682,7 @@ First public release of the CheddaBoards Godot 4 Template.
 
 ### Planned Features
 - [ ] Achievements for anonymous/API-key users
+- [ ] Session tokens with device fingerprinting (security upgrade)
 - [ ] Unity SDK
 - [ ] Unreal Plugin
 - [ ] Full REST API documentation (OpenAPI/Swagger)
