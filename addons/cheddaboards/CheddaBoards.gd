@@ -1,4 +1,4 @@
-# CheddaBoards.gd v1.5.2
+# CheddaBoards.gd v1.5.3
 # CheddaBoards integration for Godot 4.x
 # https://github.com/cheddatech/CheddaBoards-Godot
 # https://cheddaboards.com
@@ -6,8 +6,10 @@
 # HYBRID SDK: Supports both Web (JavaScript Bridge) and Native (HTTP API)
 # - Web exports use JavaScript bridge for ICP authentication (Google, Apple, II)
 # - Anonymous login uses HTTP API on ALL platforms for consistency
+# - Play sessions use HTTP API for ALL users (simpler, works everywhere)
 # - Native exports (Windows/Mac/Linux/Mobile) use HTTP API
 #
+# v1.5.3: ALL users now use HTTP API for play sessions (fixes web auth issues)
 # v1.5.2: Play sessions for anonymous users now use HTTP API on web
 # v1.5.1: Anonymous login now uses HTTP API on web builds (bypasses JS bridge)
 # v1.5.0: Added play session support for time validation anti-cheat
@@ -172,11 +174,11 @@ func _ready() -> void:
 	_setup_http_client()
 	
 	if _is_web:
-		_log("Initializing CheddaBoards v1.5.2 (Web Mode)...")
+		_log("Initializing CheddaBoards v1.5.3 (Web Mode)...")
 		_start_polling()
 		_check_chedda_ready()
 	else:
-		_log("Initializing CheddaBoards v1.5.2 (Native/HTTP API Mode)...")
+		_log("Initializing CheddaBoards v1.5.3 (Native/HTTP API Mode)...")
 		_init_complete = true
 		call_deferred("_emit_sdk_ready")
 
@@ -1031,57 +1033,14 @@ func submit_score(score: int, streak: int = 0) -> void:
 func start_play_session() -> void:
 	_play_session_token = ""
 	
-	# Anonymous users on ALL platforms use HTTP API (including web)
-	if is_anonymous():
-		var body = {
-			"gameId": game_id,
-			"playerId": get_player_id()
-		}
-		_make_http_request("/play-sessions/start", HTTPClient.METHOD_POST, body, "start_play_session")
-		_log("Play session requested (HTTP API) for game: %s, player: %s" % [game_id, get_player_id()])
-		return
-	
-	if _is_web:
-		if not _init_complete:
-			play_session_error.emit("CheddaBoards not ready")
-			return
-		# Web mode with real auth - call JavaScript bridge
-		var js_code: String = """
-			(async function() {
-				try {
-					window._cheddaPlaySession = null;
-					if (window.chedda && window.chedda.startPlaySession) {
-						const result = await window.chedda.startPlaySession('%s');
-						window._cheddaPlaySession = result.ok ? 
-							{success: true, token: result.ok} : 
-							{success: false, error: result.err || 'Unknown error'};
-					} else if (window.chedda_start_play_session) {
-						const result = await window.chedda_start_play_session('%s');
-						const parsed = typeof result === 'string' ? JSON.parse(result) : result;
-						window._cheddaPlaySession = parsed.ok ? 
-							{success: true, token: parsed.ok} : 
-							{success: false, error: parsed.err || 'Unknown error'};
-					} else {
-						// Fallback - generate local token if SDK doesn't support it yet
-						window._cheddaPlaySession = {success: true, token: 'local_' + Date.now()};
-					}
-				} catch(e) {
-					window._cheddaPlaySession = {success: false, error: e.message};
-				}
-			})();
-		""" % [game_id, game_id]
-		JavaScriptBridge.eval(js_code, true)
-		_log("Play session requested (web) for game: %s" % game_id)
-		# Poll for result
-		_poll_play_session_result()
-	else:
-		# Native/HTTP mode - ALWAYS call the API (API key provides auth)
-		var body = {
-			"gameId": game_id,
-			"playerId": get_player_id()
-		}
-		_make_http_request("/play-sessions/start", HTTPClient.METHOD_POST, body, "start_play_session")
-		_log("Play session requested (HTTP) for game: %s, player: %s" % [game_id, get_player_id()])
+	# ALL users use HTTP API for play sessions (simpler, works everywhere)
+	# This includes web authenticated users, web anonymous, and native
+	var body = {
+		"gameId": game_id,
+		"playerId": get_player_id()
+	}
+	_make_http_request("/play-sessions/start", HTTPClient.METHOD_POST, body, "start_play_session")
+	_log("Play session requested (HTTP API) for game: %s, player: %s" % [game_id, get_player_id()])
 
 func _poll_play_session_result() -> void:
 	# Wait a moment for async JS to complete
@@ -1515,7 +1474,7 @@ func _get_profile_from_js() -> Dictionary:
 func debug_status() -> void:
 	print("")
 	print("╔══════════════════════════════════════════════╗")
-	print("║        CheddaBoards Debug Status v1.5.2      ║")
+	print("║        CheddaBoards Debug Status v1.5.3      ║")
 	print("╠══════════════════════════════════════════════╣")
 	print("║ Environment                                  ║")
 	print("║  - Platform:         %s" % ("Web" if _is_web else "Native").rpad(24) + "║")
