@@ -53,3 +53,4 @@ theme_override_font_sizes/font_size = 16
 text = "Achievement description goes here"
 horizontal_alignment = 1
 autowrap_mode = 2
+
