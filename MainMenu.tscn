@@ -1,9 +1,6 @@
-[gd_scene load_steps=5 format=3 uid="uid://chvqlsbp0m0km"]
+[gd_scene load_steps=2 format=3 uid="uid://chvqlsbp0m0km"]
 
-[ext_resource type="Script" uid="uid://cjh58uo5ddjij" path="res://MainMenu.gd" id="1_eiy7p"]
-[ext_resource type="Texture2D" uid="uid://c4ifusj1tgphd" path="res://addons/cheddaboards/icon.png" id="2_eiy7p"]
-[ext_resource type="FontFile" uid="uid://cctneumd3ufx5" path="res://fonts/ZeroCool.ttf" id="3_qoqlk"]
-[ext_resource type="Theme" uid="uid://cg1jdv7rfyi22" path="res://fonts/Buttons.tres" id="4_iwfq2"]
+[ext_resource type="Script" uid="uid://bl2ia5phx1g4t" path="res://MainMenu.gd" id="1_script"]
 
 [node name="MainMenu" type="Control"]
 layout_mode = 3
@@ -12,32 +9,16 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-script = ExtResource("1_eiy7p")
+script = ExtResource("1_script")
 
-[node name="ColorRect" type="ColorRect" parent="."]
+[node name="Background" type="ColorRect" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0, 0, 0, 1)
-
-[node name="Background" type="TextureRect" parent="."]
-layout_mode = 1
-anchors_preset = 7
-anchor_left = 0.5
-anchor_top = 1.0
-anchor_right = 0.5
-anchor_bottom = 1.0
-offset_left = 720.0
-offset_top = -233.0
-offset_right = 944.0
-offset_bottom = -17.0
-grow_horizontal = 2
-grow_vertical = 0
-texture = ExtResource("2_eiy7p")
-expand_mode = 1
+color = Color(0.12, 0.06, 0.18, 1)
 
 [node name="LoginPanel" type="Panel" parent="."]
 layout_mode = 1
@@ -54,91 +35,96 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+theme_override_constants/margin_left = 40
+theme_override_constants/margin_top = 40
+theme_override_constants/margin_right = 40
+theme_override_constants/margin_bottom = 40
 
 [node name="VBoxContainer" type="VBoxContainer" parent="LoginPanel/MarginContainer"]
-custom_minimum_size = Vector2(0, 15)
 layout_mode = 2
+theme_override_constants/separation = 15
+alignment = 1
 
 [node name="TitleLabel" type="Label" parent="LoginPanel/MarginContainer/VBoxContainer"]
 layout_mode = 2
-theme_override_fonts/font = ExtResource("3_qoqlk")
-theme_override_font_sizes/font_size = 34
-text = "Welcome!"
+theme_override_font_sizes/font_size = 48
+text = "Your Game Title"
 horizontal_alignment = 1
 
 [node name="SubtitleLabel" type="Label" parent="LoginPanel/MarginContainer/VBoxContainer"]
 layout_mode = 2
-theme_override_fonts/font = ExtResource("3_qoqlk")
-theme_override_font_sizes/font_size = 28
-text = "Login to save your progress"
+theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
+theme_override_font_sizes/font_size = 18
+text = "Welcome!"
 horizontal_alignment = 1
 
 [node name="Spacer" type="Control" parent="LoginPanel/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(0, 20)
+custom_minimum_size = Vector2(0, 30)
 layout_mode = 2
 
 [node name="DirectPlayButton" type="Button" parent="LoginPanel/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(100, 100)
+custom_minimum_size = Vector2(300, 80)
 layout_mode = 2
-tooltip_text = "Play and submit scores without an account"
-theme = ExtResource("4_iwfq2")
+size_flags_horizontal = 4
 theme_override_colors/font_color = Color(0.3, 1, 0.4, 1)
 theme_override_font_sizes/font_size = 28
 text = "PLAY NOW"
 
 [node name="LeaderboardButton" type="Button" parent="LoginPanel/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(100, 80)
+custom_minimum_size = Vector2(300, 60)
 layout_mode = 2
-theme = ExtResource("4_iwfq2")
+size_flags_horizontal = 4
 theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
-theme_override_font_sizes/font_size = 24
+theme_override_font_sizes/font_size = 20
 text = "Leaderboard"
 
 [node name="Spacer2" type="Control" parent="LoginPanel/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(0, 10)
+custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 
 [node name="OrLabel" type="Label" parent="LoginPanel/MarginContainer/VBoxContainer"]
+visible = false
 layout_mode = 2
-theme_override_colors/font_color = Color(0.6, 0.6, 0.6, 1)
-theme_override_font_sizes/font_size = 20
+theme_override_colors/font_color = Color(0.5, 0.5, 0.5, 1)
+theme_override_font_sizes/font_size = 14
 text = "— or login to sync across devices —"
 horizontal_alignment = 1
 
-[node name="Spacer3" type="Control" parent="LoginPanel/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(0, 10)
-layout_mode = 2
-
 [node name="GoogleButton" type="Button" parent="LoginPanel/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(100, 100)
+visible = false
+custom_minimum_size = Vector2(300, 60)
 layout_mode = 2
-theme = ExtResource("4_iwfq2")
-theme_override_font_sizes/font_size = 24
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 18
 text = "Login with Google"
 
 [node name="AppleButton" type="Button" parent="LoginPanel/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(100, 100)
+visible = false
+custom_minimum_size = Vector2(300, 60)
 layout_mode = 2
-theme = ExtResource("4_iwfq2")
-theme_override_font_sizes/font_size = 24
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 18
 text = "Login with Apple"
 
 [node name="CheddaButton" type="Button" parent="LoginPanel/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(100, 100)
+visible = false
+custom_minimum_size = Vector2(300, 60)
 layout_mode = 2
-theme = ExtResource("4_iwfq2")
-theme_override_font_sizes/font_size = 24
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 18
 text = "Login with Chedda"
 
 [node name="ExitButton" type="Button" parent="LoginPanel/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(100, 80)
+custom_minimum_size = Vector2(300, 50)
 layout_mode = 2
-theme = ExtResource("4_iwfq2")
-theme_override_font_sizes/font_size = 24
+size_flags_horizontal = 4
+theme_override_colors/font_color = Color(0.6, 0.6, 0.6, 1)
+theme_override_font_sizes/font_size = 16
 text = "Exit"
 
 [node name="StatusLabel" type="Label" parent="LoginPanel/MarginContainer/VBoxContainer"]
 layout_mode = 2
+theme_override_font_sizes/font_size = 14
 horizontal_alignment = 1
 
 [node name="NameEntryPanel" type="Panel" parent="."]
@@ -174,7 +160,6 @@ theme_override_constants/separation = 15
 
 [node name="TitleLabel" type="Label" parent="NameEntryPanel/MarginContainer/VBoxContainer"]
 layout_mode = 2
-theme_override_fonts/font = ExtResource("3_qoqlk")
 theme_override_font_sizes/font_size = 28
 text = "Enter Your Name"
 horizontal_alignment = 1
@@ -182,7 +167,7 @@ horizontal_alignment = 1
 [node name="SubtitleLabel" type="Label" parent="NameEntryPanel/MarginContainer/VBoxContainer"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
-theme_override_font_sizes/font_size = 16
+theme_override_font_sizes/font_size = 14
 text = "This will appear on the leaderboard"
 horizontal_alignment = 1
 
@@ -191,17 +176,17 @@ custom_minimum_size = Vector2(0, 10)
 layout_mode = 2
 
 [node name="NameLineEdit" type="LineEdit" parent="NameEntryPanel/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(0, 60)
+custom_minimum_size = Vector2(0, 50)
 layout_mode = 2
-theme_override_font_sizes/font_size = 24
+theme_override_font_sizes/font_size = 20
 placeholder_text = "Enter your name..."
 alignment = 1
 max_length = 16
 
 [node name="NameStatusLabel" type="Label" parent="NameEntryPanel/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(0, 25)
+custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
-theme_override_font_sizes/font_size = 14
+theme_override_font_sizes/font_size = 12
 horizontal_alignment = 1
 
 [node name="Spacer2" type="Control" parent="NameEntryPanel/MarginContainer/VBoxContainer"]
@@ -209,20 +194,126 @@ custom_minimum_size = Vector2(0, 10)
 layout_mode = 2
 
 [node name="ConfirmNameButton" type="Button" parent="NameEntryPanel/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(0, 70)
+custom_minimum_size = Vector2(0, 60)
 layout_mode = 2
-theme = ExtResource("4_iwfq2")
 theme_override_colors/font_color = Color(0.3, 1, 0.4, 1)
-theme_override_font_sizes/font_size = 24
+theme_override_font_sizes/font_size = 22
 text = "LET'S GO!"
 
 [node name="CancelNameButton" type="Button" parent="NameEntryPanel/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(0, 50)
+custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
-theme = ExtResource("4_iwfq2")
-theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
-theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color(0.6, 0.6, 0.6, 1)
+theme_override_font_sizes/font_size = 16
 text = "Back"
+
+[node name="AnonymousPanel" type="Panel" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="MarginContainer" type="MarginContainer" parent="AnonymousPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 40
+theme_override_constants/margin_top = 40
+theme_override_constants/margin_right = 40
+theme_override_constants/margin_bottom = 40
+
+[node name="VBoxContainer" type="VBoxContainer" parent="AnonymousPanel/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 15
+alignment = 1
+
+[node name="WelcomeLabel" type="Label" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+text = "Welcome back, Player!"
+horizontal_alignment = 1
+
+[node name="HSeparator" type="HSeparator" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="StatsPanel" type="PanelContainer" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="AnonymousPanel/MarginContainer/VBoxContainer/StatsPanel"]
+layout_mode = 2
+theme_override_constants/separation = 5
+
+[node name="WeeklyScoreLabel" type="Label" parent="AnonymousPanel/MarginContainer/VBoxContainer/StatsPanel/VBoxContainer"]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "This Week: 0"
+horizontal_alignment = 1
+
+[node name="RankLabel" type="Label" parent="AnonymousPanel/MarginContainer/VBoxContainer/StatsPanel/VBoxContainer"]
+visible = false
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.4, 1)
+theme_override_font_sizes/font_size = 20
+text = "Rank: --"
+horizontal_alignment = 1
+
+[node name="PlaysLabel" type="Label" parent="AnonymousPanel/MarginContainer/VBoxContainer/StatsPanel/VBoxContainer"]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "Games Played: 0"
+horizontal_alignment = 1
+
+[node name="HSeparator2" type="HSeparator" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="PlayButton" type="Button" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(300, 80)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_colors/font_color = Color(0.3, 1, 0.4, 1)
+theme_override_font_sizes/font_size = 28
+text = "PLAY NOW"
+
+[node name="LeaderboardButton" type="Button" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(300, 60)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
+theme_override_font_sizes/font_size = 20
+text = "Leaderboard"
+
+[node name="AchievementsButton" type="Button" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(300, 60)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 20
+text = "Achievements"
+
+[node name="ChangeNameButton" type="Button" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
+visible = false
+custom_minimum_size = Vector2(300, 50)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
+theme_override_font_sizes/font_size = 16
+text = "Change Name"
+
+[node name="ExitButton" type="Button" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(300, 50)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_colors/font_color = Color(0.6, 0.6, 0.6, 1)
+theme_override_font_sizes/font_size = 16
+text = "Exit"
 
 [node name="MainPanel" type="Panel" parent="."]
 visible = false
@@ -235,21 +326,24 @@ grow_vertical = 2
 
 [node name="MarginContainer" type="MarginContainer" parent="MainPanel"]
 layout_mode = 1
-anchors_preset = 5
-anchor_left = 0.5
-anchor_right = 0.5
-offset_left = -200.0
-offset_right = 200.0
-offset_bottom = 691.0
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
 grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 40
+theme_override_constants/margin_top = 40
+theme_override_constants/margin_right = 40
+theme_override_constants/margin_bottom = 40
 
 [node name="VBoxContainer" type="VBoxContainer" parent="MainPanel/MarginContainer"]
 layout_mode = 2
+theme_override_constants/separation = 15
+alignment = 1
 
 [node name="WelcomeLabel" type="Label" parent="MainPanel/MarginContainer/VBoxContainer"]
 layout_mode = 2
-theme_override_fonts/font = ExtResource("3_qoqlk")
-theme_override_font_sizes/font_size = 34
+theme_override_font_sizes/font_size = 32
 text = "Welcome, Player!"
 horizontal_alignment = 1
 
@@ -261,74 +355,68 @@ layout_mode = 2
 
 [node name="VBoxContainer" type="VBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsPanel"]
 layout_mode = 2
+theme_override_constants/separation = 5
 
-[node name="ScoreLabel" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsPanel/VBoxContainer"]
-custom_minimum_size = Vector2(100, 50)
+[node name="WeeklyScoreLabel" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsPanel/VBoxContainer"]
+custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
-theme_override_fonts/font = ExtResource("3_qoqlk")
-theme_override_font_sizes/font_size = 24
-text = "High Score: 0"
+theme_override_font_sizes/font_size = 20
+text = "This Week: 0"
 horizontal_alignment = 1
 
-[node name="StreakLabel" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsPanel/VBoxContainer"]
-custom_minimum_size = Vector2(100, 50)
+[node name="RankLabel" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsPanel/VBoxContainer"]
+custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
-theme_override_fonts/font = ExtResource("3_qoqlk")
-theme_override_font_sizes/font_size = 24
-text = "Best Streak: 0"
+theme_override_colors/font_color = Color(1, 0.85, 0.4, 1)
+theme_override_font_sizes/font_size = 20
+text = "Rank: --"
 horizontal_alignment = 1
 
 [node name="PlaysLabel" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsPanel/VBoxContainer"]
-custom_minimum_size = Vector2(100, 50)
+custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
-theme_override_fonts/font = ExtResource("3_qoqlk")
-theme_override_font_sizes/font_size = 24
-text = "Play Count: 0"
+theme_override_font_sizes/font_size = 20
+text = "Games Played: 0"
 horizontal_alignment = 1
 
 [node name="HSeparator2" type="HSeparator" parent="MainPanel/MarginContainer/VBoxContainer"]
 layout_mode = 2
 
 [node name="PlayButton" type="Button" parent="MainPanel/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(400, 100)
+custom_minimum_size = Vector2(300, 80)
 layout_mode = 2
-theme = ExtResource("4_iwfq2")
+size_flags_horizontal = 4
 theme_override_colors/font_color = Color(0.3, 1, 0.4, 1)
-theme_override_font_sizes/font_size = 34
+theme_override_font_sizes/font_size = 28
 text = "PLAY NOW"
 
 [node name="LeaderboardButton" type="Button" parent="MainPanel/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(400, 100)
+custom_minimum_size = Vector2(300, 60)
 layout_mode = 2
-theme = ExtResource("4_iwfq2")
+size_flags_horizontal = 4
 theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
-theme_override_font_sizes/font_size = 34
+theme_override_font_sizes/font_size = 20
 text = "Leaderboard"
 
-[node name="ChangeNicknameButton" type="Button" parent="MainPanel/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(400, 100)
-layout_mode = 2
-theme = ExtResource("4_iwfq2")
-theme_override_font_sizes/font_size = 34
-text = "Change Nickname"
-
 [node name="AchievementsButton" type="Button" parent="MainPanel/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(400, 100)
+custom_minimum_size = Vector2(300, 60)
 layout_mode = 2
-theme = ExtResource("4_iwfq2")
-theme_override_font_sizes/font_size = 34
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 20
 text = "Achievements"
 
-[node name="SettingsButton" type="Button" parent="MainPanel/MarginContainer/VBoxContainer"]
-visible = false
-custom_minimum_size = Vector2(400, 100)
+[node name="ChangeNicknameButton" type="Button" parent="MainPanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(300, 50)
 layout_mode = 2
-theme_override_font_sizes/font_size = 34
-text = "Settings"
+size_flags_horizontal = 4
+theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
+theme_override_font_sizes/font_size = 16
+text = "Change Nickname"
 
 [node name="LogoutButton" type="Button" parent="MainPanel/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(400, 100)
+custom_minimum_size = Vector2(300, 50)
 layout_mode = 2
-theme = ExtResource("4_iwfq2")
-theme_override_font_sizes/font_size = 34
+size_flags_horizontal = 4
+theme_override_colors/font_color = Color(0.6, 0.6, 0.6, 1)
+theme_override_font_sizes/font_size = 16
 text = "Logout"
