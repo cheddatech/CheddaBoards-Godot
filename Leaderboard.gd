@@ -1,6 +1,7 @@
-# Leaderboard.gd v1.4.0
+# Leaderboard.gd v1.5.0
 # Leaderboard display with time periods, sorting options, and archive viewing
 # Supports: All Time / Weekly switching + Current / Last Period archives
+# v1.5.0: Added client-side sorting (fixes unsorted archive data)
 # https://github.com/cheddatech/CheddaBoards-Godot
 #
 # ============================================================
@@ -173,7 +174,7 @@ func _ready():
 	# Initial load
 	_load_leaderboard()
 	
-	print("[Leaderboard] v1.4.0 initialized")
+	print("[Leaderboard] v1.5.0 initialized")
 
 # ============================================================
 # LOADING FUNCTIONS
@@ -427,10 +428,41 @@ func _display_entries(entries: Array):
 	# Clear existing entries
 	_clear_leaderboard()
 	
+	# Sort entries client-side (archives may come unsorted from backend)
+	var sorted_entries = _sort_entries(entries)
+	
 	# Add entries
-	for i in range(entries.size()):
-		var entry = entries[i]
+	for i in range(sorted_entries.size()):
+		var entry = sorted_entries[i]
 		_add_leaderboard_entry(i + 1, entry)
+
+func _sort_entries(entries: Array) -> Array:
+	"""Sort entries by current sort method (score or streak), descending"""
+	var sorted = entries.duplicate()
+	
+	sorted.sort_custom(func(a, b):
+		var a_value = _get_sort_value(a)
+		var b_value = _get_sort_value(b)
+		return a_value > b_value  # Descending order (highest first)
+	)
+	
+	return sorted
+
+func _get_sort_value(entry) -> int:
+	"""Extract the sort value from an entry based on current_sort_by"""
+	if typeof(entry) == TYPE_ARRAY:
+		# Array format: [nickname, score, streak]
+		if current_sort_by == "streak":
+			return entry[2] if entry.size() > 2 else 0
+		else:
+			return entry[1] if entry.size() > 1 else 0
+	elif typeof(entry) == TYPE_DICTIONARY:
+		# Dictionary format
+		if current_sort_by == "streak":
+			return entry.get("streak", entry.get("bestStreak", 0))
+		else:
+			return entry.get("score", entry.get("highScore", 0))
+	return 0
 
 func _add_leaderboard_entry(rank: int, entry) -> void:
 	"""Add a single leaderboard entry (handles both array and dictionary formats)"""
@@ -727,4 +759,3 @@ func show_last_period():
 func _exit_tree():
 	"""Clean up on exit"""
 	_clear_load_timeout()
-
