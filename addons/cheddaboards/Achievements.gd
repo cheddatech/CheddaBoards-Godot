@@ -1,4 +1,4 @@
-# Achievements.gd v1.4.0
+# Achievements.gd v1.5.0
 # Backend-first achievement system with local caching
 # https://github.com/cheddatech/CheddaBoards-Godot
 # https://cheddaboards.com
@@ -10,6 +10,9 @@
 # ============================================================
 # 1. Define your achievements in the ACHIEVEMENTS constant below
 # 2. Call check methods during gameplay:
+#
+#    # At game start
+#    Achievements.start_new_session()
 #
 #    # During game
 #    Achievements.check_score(current_score)
@@ -25,6 +28,7 @@
 # 3. Connect to signals for UI notifications:
 #
 #    Achievements.achievement_unlocked.connect(_show_notification)
+#    Achievements.submission_complete.connect(_on_submission_done)
 #
 # ============================================================
 
@@ -45,6 +49,9 @@ signal achievements_synced()
 
 ## Emitted when achievements are ready to display (after initial load)
 signal achievements_ready()
+
+## Emitted when score/achievement submission completes (v1.5.0)
+signal submission_complete(success: bool)
 
 # ============================================================
 # ACHIEVEMENT DEFINITIONS
@@ -204,7 +211,7 @@ var progress_tracking: Dictionary = {}
 ## Achievements waiting to be synced to backend
 var pending_achievements: Array = []
 
-## Notification queue for UI (display one at a time)
+## Notification queue for UI (display one at a time or stacked)
 var notification_queue: Array = []
 
 ## Whether we've synced with backend at least once
@@ -219,8 +226,28 @@ var games_played: int = 0
 ## Track time remaining for speed achievements (set by Game.gd)
 var current_time_remaining: float = 0.0
 
+# ============================================================
+# SESSION TRACKING (v1.5.0)
+# Track per-game/per-session stats for conditional achievements
+# Customize these for your game's needs
+# ============================================================
+
+var session_damage_taken: bool = false
+var session_max_combo: int = 0
+var session_special_actions: int = 0  # e.g., double jumps, special moves
+
+# ============================================================
+# SUBMISSION STATE (v1.5.0)
+# Score-first approach: submit score immediately, achievements async
+# ============================================================
+
+var is_submitting_score: bool = false
+var is_submitting_achievements: bool = false
+var last_submission_success: bool = false
+var deferred_achievements: Array = []
+
 const SAVE_PATH = "user://achievements_cache.save"
-const CACHE_VERSION = 5  # Bumped for level achievements
+const CACHE_VERSION = 6  # Bumped for v1.5.0 session tracking
 
 # ============================================================
 # INITIALIZATION
@@ -235,6 +262,16 @@ func _ready():
 	CheddaBoards.logout_success.connect(_on_logout)
 	CheddaBoards.sdk_ready.connect(_on_sdk_ready)
 	CheddaBoards.login_success.connect(_on_login_success)
+	
+	# Connect for score-first submission (v1.5.0)
+	CheddaBoards.score_submitted.connect(_on_score_submitted)
+	CheddaBoards.score_error.connect(_on_score_error)
+	
+	# Connect for silent achievement submission (optional signals)
+	if CheddaBoards.has_signal("achievements_unlocked"):
+		CheddaBoards.achievements_unlocked.connect(_on_achievements_synced)
+	if CheddaBoards.has_signal("request_failed"):
+		CheddaBoards.request_failed.connect(_on_achievement_sync_failed)
 	
 	_log("Initialized - %d cached achievements, %d games played" % [unlocked_achievements.size(), games_played])
 	
@@ -408,12 +445,16 @@ func get_progress(achievement_id: String) -> Dictionary:
 	return progress_tracking.get(achievement_id, {"current": 0, "total": 0})
 
 # ============================================================
-# NOTIFICATION QUEUE
+# NOTIFICATION QUEUE (v1.5.0 - Batch support)
 # ============================================================
 
 func has_pending_notification() -> bool:
 	"""Check if there are notifications to show"""
 	return notification_queue.size() > 0
+
+func get_pending_notification_count() -> int:
+	"""Get number of pending notifications"""
+	return notification_queue.size()
 
 func get_next_notification() -> Dictionary:
 	"""Get and remove next notification from queue"""
@@ -421,29 +462,124 @@ func get_next_notification() -> Dictionary:
 		return {}
 	return notification_queue.pop_front()
 
+func get_all_pending_notifications() -> Array:
+	"""Get all pending notifications at once (for stacked display)"""
+	var all = notification_queue.duplicate()
+	notification_queue.clear()
+	return all
+
 func clear_notifications():
 	"""Clear all pending notifications"""
 	notification_queue.clear()
 
 # ============================================================
-# SCORE SUBMISSION WITH ACHIEVEMENTS
+# SCORE SUBMISSION (v1.5.0 - Score-First Approach)
+# Submit score FIRST, then sync achievements silently afterward
 # ============================================================
 
 func submit_with_score(score: int, streak: int = 0):
-	"""Submit score along with any pending achievements"""
-	if pending_achievements.is_empty():
-		_log("📤 Submitting score (no pending achievements)")
-		CheddaBoards.submit_score(score, streak)
+	"""Submit score FIRST, then sync achievements silently afterward"""
+	if is_submitting_score:
+		_log("⚠️ Already submitting score, skipping")
+		return
+	
+	is_submitting_score = true
+	
+	# Store achievements to submit AFTER score succeeds
+	deferred_achievements = pending_achievements.duplicate()
+	
+	# Always submit score first - achievements go in background
+	_log("📤 Submitting score: %d (will sync %d achievements after)" % [score, deferred_achievements.size()])
+	CheddaBoards.submit_score(score, streak)
+
+func _on_score_submitted(submitted_score: int, _streak: int):
+	"""Called when score submission succeeds - now sync achievements silently"""
+	is_submitting_score = false
+	last_submission_success = true
+	_log("✅ Score submitted: %d" % submitted_score)
+	
+	# Now submit achievements in background (non-blocking)
+	if not deferred_achievements.is_empty():
+		_submit_achievements_silent()
+	
+	submission_complete.emit(true)
+
+func _on_score_error(reason: String):
+	"""Called when score submission fails"""
+	is_submitting_score = false
+	last_submission_success = false
+	_log("❌ Score error: %s" % reason)
+	
+	# Keep achievements pending for next attempt
+	submission_complete.emit(false)
+
+func _submit_achievements_silent():
+	"""Submit achievements in background - failures are silent, cached for retry"""
+	if deferred_achievements.is_empty():
+		return
+	
+	if is_submitting_achievements:
+		_log("⚠️ Already syncing achievements")
+		return
+	
+	is_submitting_achievements = true
+	_log("🔄 Syncing %d achievements silently..." % deferred_achievements.size())
+	
+	# Use unlock_achievements if available, otherwise they'll sync on next profile load
+	if CheddaBoards.has_method("unlock_achievements"):
+		CheddaBoards.unlock_achievements(deferred_achievements.duplicate())
+	elif CheddaBoards.has_method("unlock_achievements_batch"):
+		CheddaBoards.unlock_achievements_batch(deferred_achievements.duplicate())
 	else:
-		_log("📤 Submitting score with %d achievements: %s" % [
-			pending_achievements.size(), 
-			str(pending_achievements)
-		])
-		CheddaBoards.submit_score_with_achievements(score, streak, pending_achievements.duplicate())
-		
-		# Clear pending after submit
-		pending_achievements.clear()
+		# Fallback: achievements will sync via profile on next login
+		_log("📦 Achievements cached locally (no batch method available)")
+		is_submitting_achievements = false
+		return
+	
+	# Clear pending after submission attempt
+	pending_achievements.clear()
+	deferred_achievements.clear()
+	_save_local_cache()
+
+func _on_achievements_synced(_achievements: Array = []):
+	"""Called when achievements sync successfully"""
+	is_submitting_achievements = false
+	_log("✅ Achievements synced")
+
+func _on_achievement_sync_failed(endpoint: String, _error: String):
+	"""Called when achievement sync fails - keep cached for retry"""
+	if endpoint == "unlock_achievements_batch" or endpoint == "unlock_achievements":
+		is_submitting_achievements = false
+		_log("⚠️ Achievement sync failed - cached for retry")
+		# Re-add to pending for next attempt
+		for ach_id in deferred_achievements:
+			if not pending_achievements.has(ach_id):
+				pending_achievements.append(ach_id)
 		_save_local_cache()
+
+func is_submission_pending() -> bool:
+	"""Check if a submission is in progress"""
+	return is_submitting_score or is_submitting_achievements
+
+func get_pending_achievements_count() -> int:
+	"""Get number of achievements waiting to sync"""
+	return pending_achievements.size()
+
+# ============================================================
+# SESSION MANAGEMENT (v1.5.0)
+# Call at start of each game/run to reset per-session tracking
+# ============================================================
+
+func start_new_session():
+	"""Reset session tracking for a new game/run"""
+	session_damage_taken = false
+	session_max_combo = 0
+	session_special_actions = 0
+	_log("🎮 New session started")
+
+## Alias for start_new_session
+func start_new_run():
+	start_new_session()
 
 # ============================================================
 # CHECK METHODS - Call these during gameplay
@@ -527,6 +663,10 @@ func check_clicks(clicks: int):
 
 func check_combo(combo: int):
 	"""Check and unlock combo-based achievements"""
+	# Track session max
+	if combo > session_max_combo:
+		session_max_combo = combo
+	
 	if combo >= 200:
 		unlock("combo_200")
 	if combo >= 100:
@@ -547,6 +687,19 @@ func check_game_over(score: int, clicks: int = 0, max_combo: int = 0):
 	
 	if max_combo > 0:
 		check_combo(max_combo)
+
+# ============================================================
+# SESSION EVENT HANDLERS (v1.5.0)
+# Call these during gameplay for conditional achievements
+# ============================================================
+
+func on_damage_taken():
+	"""Call when player takes damage (for no-damage achievements)"""
+	session_damage_taken = true
+
+func on_special_action():
+	"""Call when player performs a special action (customize as needed)"""
+	session_special_actions += 1
 
 # ============================================================
 # GAMES PLAYED HELPERS
@@ -595,7 +748,8 @@ func get_unlocked_achievements() -> Array:
 	"""Get data for unlocked achievements"""
 	var unlocked = []
 	for achievement_id in unlocked_achievements:
-		unlocked.append(get_achievement(achievement_id))
+		if ACHIEVEMENTS.has(achievement_id):
+			unlocked.append(get_achievement(achievement_id))
 	return unlocked
 
 func get_achievements_by_category(prefix: String) -> Array:
@@ -677,6 +831,15 @@ func _reset_state():
 	backend_synced = false
 	games_played = 0
 	current_time_remaining = 0.0
+	# Session tracking
+	session_damage_taken = false
+	session_max_combo = 0
+	session_special_actions = 0
+	# Submission state
+	is_submitting_score = false
+	is_submitting_achievements = false
+	last_submission_success = false
+	deferred_achievements = []
 
 func clear_local_cache():
 	"""Clear local cache (for logout or testing)"""
@@ -707,12 +870,13 @@ func debug_status():
 	
 	print("")
 	print("╔══════════════════════════════════════════════╗")
-	print("║      Achievements Debug v1.4.0 (Levels)      ║")
+	print("║      Achievements Debug v1.5.0               ║")
 	print("╠══════════════════════════════════════════════╣")
 	print("║ Status                                       ║")
 	print("║  - Ready:            %s" % str(is_ready).rpad(24) + "║")
 	print("║  - Backend Synced:   %s" % str(backend_synced).rpad(24) + "║")
 	print("║  - Authenticated:    %s" % str(CheddaBoards.is_authenticated()).rpad(24) + "║")
+	print("║  - Submitting:       %s" % str(is_submission_pending()).rpad(24) + "║")
 	print("╠══════════════════════════════════════════════╣")
 	print("║ Stats                                        ║")
 	print("║  - Games (Local):    %s" % str(games_played).rpad(24) + "║")
