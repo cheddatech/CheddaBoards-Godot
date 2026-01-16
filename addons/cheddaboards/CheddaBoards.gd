@@ -1,14 +1,17 @@
-# CheddaBoards.gd v1.5.4
+# CheddaBoards.gd v1.5.7
 # CheddaBoards integration for Godot 4.x
 # https://github.com/cheddatech/CheddaBoards-Godot
 # https://cheddaboards.com
 #
 # HYBRID SDK: Supports both Web (JavaScript Bridge) and Native (HTTP API)
 # - OAuth login (Google, Apple, II) uses JavaScript bridge on web
-# - ALL score submissions use HTTP API (simpler, works with play sessions)
+# - OAuth score submissions use JS bridge (knows ICP identity)
+# - Anonymous/Native score submissions use HTTP API
 # - Play sessions use HTTP API for ALL users
-# - Native exports (Windows/Mac/Linux/Mobile) use HTTP API
 #
+# v1.5.7: Anonymous profiles now fetch from API, nickname changes use API
+# v1.5.6: OAuth users submit scores via JS bridge (fixes scores not saving)
+# v1.5.5: Batch achievement unlocks (single request instead of N requests)
 # v1.5.4: ALL score submissions now use HTTP API (fixes play session validation)
 # v1.5.3: ALL users now use HTTP API for play sessions (fixes web auth issues)
 # v1.5.2: Play sessions for anonymous users now use HTTP API on web
@@ -97,8 +100,8 @@ var debug_logging: bool = true
 
 ## HTTP API Configuration (for native builds)
 const API_BASE_URL = "https://api.cheddaboards.com"
-var api_key: String = "cb_test-game_350355445"  ## Your API key
-var game_id: String = "test-game"  ## Your game ID for scoreboard operations
+var api_key: String = "cb_chedz-vs-the-graters_408970212"  ## Your API key
+var game_id: String = "chedz-vs-the-graters"  ## Your game ID for scoreboard operations
 var _player_id: String = ""
 var _session_token: String = ""  ## For OAuth session-based auth
 var _play_session_token: String = ""  ## For time validation
@@ -175,11 +178,11 @@ func _ready() -> void:
 	_setup_http_client()
 	
 	if _is_web:
-		_log("Initializing CheddaBoards v1.5.4 (Web Mode)...")
+		_log("Initializing CheddaBoards v1.5.7 (Web Mode)...")
 		_start_polling()
 		_check_chedda_ready()
 	else:
-		_log("Initializing CheddaBoards v1.5.4 (Native/HTTP API Mode)...")
+		_log("Initializing CheddaBoards v1.5.7 (Native/HTTP API Mode)...")
 		_init_complete = true
 		call_deferred("_emit_sdk_ready")
 
@@ -426,6 +429,7 @@ func _emit_http_success(data) -> void:
 			player_rank_loaded.emit(rank, score_val, streak_val, total)
 		
 		"player_profile":
+			_is_refreshing_profile = false
 			if data and not data.is_empty():
 				_update_cached_profile(data)
 			else:
@@ -439,6 +443,17 @@ func _emit_http_success(data) -> void:
 					_cached_profile["nickname"] = new_nick
 				nickname_changed.emit(new_nick)
 				_log("Nickname changed to: %s" % new_nick)
+		
+		"change_nickname_anonymous":
+			var new_nick = str(data.get("nickname", ""))
+			if new_nick != "":
+				_nickname = new_nick
+				if not _cached_profile.is_empty():
+					_cached_profile["nickname"] = new_nick
+				nickname_changed.emit(new_nick)
+				_log("Anonymous nickname changed to: %s" % new_nick)
+			# Also refresh profile to get updated data
+			get_player_profile()
 		
 		"unlock_achievement":
 			var ach_id = str(data.get("achievementId", ""))
@@ -524,8 +539,9 @@ func _emit_http_failure(error: String) -> void:
 		"player_rank":
 			rank_error.emit(error)
 		"player_profile":
+			_is_refreshing_profile = false
 			no_profile.emit()
-		"change_nickname":
+		"change_nickname", "change_nickname_anonymous":
 			nickname_error.emit(error)
 		"unlock_achievement":
 			pass
@@ -645,9 +661,30 @@ func _update_cached_profile(profile: Dictionary) -> void:
 	_cached_profile = profile
 
 	var nickname: String = str(profile.get("nickname", profile.get("username", _get_default_nickname())))
-	var score: int = int(profile.get("score", profile.get("highScore", 0)))
-	var streak: int = int(profile.get("streak", profile.get("bestStreak", 0)))
-	var achievements: Array = profile.get("achievements", [])
+	
+	# Handle nested gameProfile from API (GET /players/:id/profile returns gameProfile object)
+	var game_profile = profile.get("gameProfile", {})
+	var score: int = 0
+	var streak: int = 0
+	var achievements: Array = []
+	var play_count: int = 0
+	
+	if game_profile and not game_profile.is_empty():
+		score = int(game_profile.get("score", 0))
+		streak = int(game_profile.get("streak", 0))
+		achievements = game_profile.get("achievements", [])
+		play_count = int(game_profile.get("playCount", 0))
+		# Store flattened for easier access
+		_cached_profile["score"] = score
+		_cached_profile["streak"] = streak
+		_cached_profile["achievements"] = achievements
+		_cached_profile["playCount"] = play_count
+	else:
+		# Fallback to direct fields (JS bridge format)
+		score = int(profile.get("score", profile.get("highScore", 0)))
+		streak = int(profile.get("streak", profile.get("bestStreak", 0)))
+		achievements = profile.get("achievements", [])
+		play_count = int(profile.get("playCount", profile.get("plays", 0)))
 	
 	_nickname = nickname
 
@@ -729,12 +766,35 @@ func get_nickname() -> String:
 func get_high_score() -> int:
 	if _cached_profile.is_empty():
 		return 0
-	return int(_cached_profile.get("score", 0))
+	# Check flattened field first, then nested gameProfile
+	if _cached_profile.has("score"):
+		return int(_cached_profile.get("score", 0))
+	var gp = _cached_profile.get("gameProfile", {})
+	if gp and not gp.is_empty():
+		return int(gp.get("score", 0))
+	return 0
 
 func get_best_streak() -> int:
 	if _cached_profile.is_empty():
 		return 0
-	return int(_cached_profile.get("streak", 0))
+	# Check flattened field first, then nested gameProfile
+	if _cached_profile.has("streak"):
+		return int(_cached_profile.get("streak", 0))
+	var gp = _cached_profile.get("gameProfile", {})
+	if gp and not gp.is_empty():
+		return int(gp.get("streak", 0))
+	return 0
+
+func get_play_count() -> int:
+	if _cached_profile.is_empty():
+		return 0
+	# Check flattened field first, then nested gameProfile
+	if _cached_profile.has("playCount"):
+		return int(_cached_profile.get("playCount", 0))
+	var gp = _cached_profile.get("gameProfile", {})
+	if gp and not gp.is_empty():
+		return int(gp.get("playCount", 0))
+	return 0
 
 func get_cached_profile() -> Dictionary:
 	return _cached_profile
@@ -929,17 +989,21 @@ func refresh_profile() -> void:
 	_is_refreshing_profile = true
 	_last_profile_refresh = current_time
 	
-	if _is_web:
+	if _is_web and not is_anonymous():
+		# OAuth users on web - use JS bridge
 		if not _init_complete:
 			_is_refreshing_profile = false
 			return
 		JavaScriptBridge.eval("chedda_refresh_profile()", true)
-		_log("Profile refresh requested")
+		_log("Profile refresh requested (JS)")
 	else:
+		# Anonymous or native - use API
 		get_player_profile()
+		_log("Profile refresh requested (API)")
 
 func change_nickname(new_nickname: String = "") -> void:
-	if _is_web:
+	if _is_web and not is_anonymous():
+		# OAuth users on web - use JS bridge
 		if not _init_complete:
 			nickname_error.emit("CheddaBoards not ready")
 			return
@@ -960,22 +1024,28 @@ func change_nickname(new_nickname: String = "") -> void:
 			# Argument provided - change directly
 			var safe_nickname: String = new_nickname.replace("'", "\\'").replace('"', '\\"')
 			JavaScriptBridge.eval("chedda_change_nickname('%s')" % safe_nickname, true)
-		_log("Nickname change requested")
-	else:
-		# Native - requires nickname argument
+		_log("Nickname change requested (JS)")
+	elif not _session_token.is_empty():
+		# OAuth session users (native) - use session endpoint
 		if new_nickname == "":
 			nickname_error.emit("Nickname required - use change_nickname('name')")
 			return
-		
-		if _session_token.is_empty():
-			_nickname = new_nickname
-			if not _cached_profile.is_empty():
-				_cached_profile["nickname"] = new_nickname
-			nickname_changed.emit(new_nickname)
-			_log("Nickname changed locally: %s" % new_nickname)
-		else:
-			var body = {"nickname": new_nickname}
-			_make_http_request("/auth/profile/nickname", HTTPClient.METHOD_POST, body, "change_nickname")
+		var body = {"nickname": new_nickname}
+		_make_http_request("/profile/nickname", HTTPClient.METHOD_PUT, body, "change_nickname")
+		_log("Nickname change requested (session)")
+	else:
+		# Anonymous/API-key users - use player endpoint
+		if new_nickname == "":
+			nickname_error.emit("Nickname required - use change_nickname('name')")
+			return
+		var pid = get_player_id()
+		if pid.is_empty():
+			nickname_error.emit("No player ID set")
+			return
+		var body = {"nickname": new_nickname}
+		var url = "/players/%s/nickname" % pid.uri_encode()
+		_make_http_request(url, HTTPClient.METHOD_PUT, body, "change_nickname_anonymous")
+		_log("Nickname change requested (HTTP API) for: %s -> %s" % [pid, new_nickname])
 			
 # ============================================================
 # PUBLIC API - SCORES
@@ -1106,21 +1176,23 @@ func get_player_rank(sort_by: String = "score") -> void:
 		_log("Player rank requested (sort: %s)" % sort_by)
 
 func get_player_profile(player_id: String = "") -> void:
-	if _is_web:
+	if _is_web and not is_anonymous():
+		# OAuth users on web - use JS bridge
 		refresh_profile()
+	elif not _session_token.is_empty():
+		# OAuth session users (native) - use /auth/profile
+		_make_http_request("/auth/profile", HTTPClient.METHOD_GET, {}, "player_profile")
+		_log("Player profile requested (session)")
 	else:
-		# OAuth session users - use /auth/profile
-		if not _session_token.is_empty():
-			_make_http_request("/auth/profile", HTTPClient.METHOD_GET, {}, "player_profile")
-			_log("Player profile requested (session)")
-		else:
-			# Anonymous/API-key users - use cached profile
-			# There's no server-side profile, scores are submitted with nickname
-			_log("Using cached profile (no server profile for API-key mode)")
-			if not _cached_profile.is_empty():
-				profile_loaded.emit(_nickname, get_high_score(), get_best_streak(), _cached_profile.get("achievements", []))
-			else:
-				no_profile.emit()
+		# Anonymous/API-key users - fetch from API!
+		var pid = player_id if player_id != "" else get_player_id()
+		if pid.is_empty():
+			_log("No player ID for profile fetch")
+			no_profile.emit()
+			return
+		var url = "/players/%s/profile" % pid.uri_encode()
+		_make_http_request(url, HTTPClient.METHOD_GET, {}, "player_profile")
+		_log("Player profile requested (HTTP API) for: %s" % pid)
 
 # ============================================================
 # PUBLIC API - SCOREBOARDS (Time-based Leaderboards)
@@ -1329,33 +1401,61 @@ func submit_score_with_achievements(score: int, streak: int, achievements: Array
 			if ach_id != "":
 				ach_ids.append(ach_id)
 	
-	# ALL users submit via HTTP API
-	_log("Submitting score with %d achievements (HTTP API)" % ach_ids.size())
+	# Route based on auth type:
+	# - OAuth users on web → JS bridge (knows their identity)
+	# - Anonymous users on web → HTTP API (device ID)
+	# - Native → HTTP API
 	
-	# Unlock achievements first (if not anonymous)
-	if not is_anonymous():
-		for ach_id in ach_ids:
-			var body = {
-				"playerId": get_player_id(),
-				"achievementId": ach_id
-			}
-			_make_http_request("/achievements", HTTPClient.METHOD_POST, body, "unlock_achievement")
-	
-	# Submit score
-	var score_body = {
-		"playerId": get_player_id(),
-		"gameId": game_id,
-		"score": score,
-		"streak": streak,
-		"nickname": _nickname if _nickname != "" else _get_default_nickname()
-	}
-	# Include play session token if available
-	if _play_session_token != "":
-		score_body["playSessionToken"] = _play_session_token
-		_log("Submitting: score=%d, streak=%d, nickname=%s, gameId=%s, playerId=%s, session=%s..." % [score, streak, score_body.nickname, game_id, score_body.playerId, _play_session_token.substr(0, 25)])
+	if _is_web and not is_anonymous():
+		# OAuth users: use JS bridge which knows their ICP identity
+		_log("Submitting score with %d achievements (JS Bridge - OAuth user)" % ach_ids.size())
+		var ach_json = JSON.stringify(ach_ids)
+		var js_code = """
+			(function() {
+				window.chedda_submit_score(%d, %d, %s)
+					.then(function(result) {
+						console.log('[CheddaBoards] JS Bridge score submitted:', result);
+					})
+					.catch(function(error) {
+						console.error('[CheddaBoards] JS Bridge score error:', error);
+					});
+			})();
+		""" % [score, streak, ach_json]
+		JavaScriptBridge.eval(js_code, true)
+		# The response will come through the polling mechanism
+		# Set a timer to reset _is_submitting_score after a delay
+		get_tree().create_timer(2.0).timeout.connect(func():
+			if _is_submitting_score:
+				_is_submitting_score = false
+				score_submitted.emit(_pending_score, _pending_streak)
+		)
 	else:
-		_log("Submitting: score=%d, streak=%d, nickname=%s, gameId=%s, playerId=%s (no session)" % [score, streak, score_body.nickname, game_id, score_body.playerId])
-	_make_http_request("/scores", HTTPClient.METHOD_POST, score_body, "submit_score")
+		# Anonymous or native: use HTTP API
+		_log("Submitting score with %d achievements (HTTP API)" % ach_ids.size())
+		
+		# Batch unlock achievements first (if has achievements)
+		if ach_ids.size() > 0:
+			var ach_body = {
+				"playerId": get_player_id(),
+				"achievementIds": ach_ids  # Send all at once!
+			}
+			_make_http_request("/achievements", HTTPClient.METHOD_POST, ach_body, "unlock_achievements_batch")
+		
+		# Submit score
+		var score_body = {
+			"playerId": get_player_id(),
+			"gameId": game_id,
+			"score": score,
+			"streak": streak,
+			"nickname": _nickname if _nickname != "" else _get_default_nickname()
+		}
+		# Include play session token if available
+		if _play_session_token != "":
+			score_body["playSessionToken"] = _play_session_token
+			_log("Submitting: score=%d, streak=%d, nickname=%s, gameId=%s, playerId=%s, session=%s..." % [score, streak, score_body.nickname, game_id, score_body.playerId, _play_session_token.substr(0, 25)])
+		else:
+			_log("Submitting: score=%d, streak=%d, nickname=%s, gameId=%s, playerId=%s (no session)" % [score, streak, score_body.nickname, game_id, score_body.playerId])
+		_make_http_request("/scores", HTTPClient.METHOD_POST, score_body, "submit_score")
 
 # ============================================================
 # PUBLIC API - ANALYTICS
@@ -1439,7 +1539,7 @@ func _get_profile_from_js() -> Dictionary:
 func debug_status() -> void:
 	print("")
 	print("╔══════════════════════════════════════════════╗")
-	print("║        CheddaBoards Debug Status v1.5.4      ║")
+	print("║        CheddaBoards Debug Status v1.5.7      ║")
 	print("╠══════════════════════════════════════════════╣")
 	print("║ Environment                                  ║")
 	print("║  - Platform:         %s" % ("Web" if _is_web else "Native").rpad(24) + "║")
