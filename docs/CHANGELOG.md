@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.6.0] - 2026-01-16
+
+### Added
+- **Anonymous Dashboard** - Returning anonymous players now see a personalized dashboard with stats
+  - Weekly score display
+  - Rank display (fetched via API)
+  - Games played count
+  - Quick access to achievements & leaderboard
+  - Change name option
+- **Score-First Achievement Submission** - `Achievements.submit_with_score()` now submits score immediately, then syncs achievements silently in background
+- **Deferred Achievement Queue** - Failed achievement syncs are re-queued automatically
+- **Session Tracking** - New per-run tracking for damage, combos, special actions
+  - `Achievements.start_new_session()` / `start_new_run()`
+  - `Achievements.on_damage_taken()` / `on_special_action()`
+  - `session_damage_taken`, `session_max_combo`, `session_special_actions` vars
+- **Batch Notifications** - `get_all_pending_notifications()` for stacked popups
+- **Submission State Tracking** - `is_submitting_score`, `is_submitting_achievements`, `is_submission_pending()`
+
+### Changed
+- MainMenu.gd upgraded to v1.5.0 with four-panel auth flow
+- Achievements.gd upgraded to v1.5.0 with score-first pattern
+- Leaderboard.gd upgraded to v1.5.0
+- Removed MobileUI, RunManager, UpgradeManager dependencies from templates
+
+### Fixed
+- Anonymous player achievements now work correctly with local caching
+- Silent login no longer triggers full login flow on anonymous dashboard
+- Duplicate SDK ready handling prevented with `_sdk_ready_handled` flag
+
+### Known Issues
+- **OAuth temporarily disabled** - Google/Apple Sign-In paused during REST API migration
+
+---
+
+[1.5.0] - 2026-01-14
+Added
+
+Play Sessions - Server-side time tracking for anti-cheat
+Score Validation - Backend rejects impossible scores based on play time
+start_play_session() / clear_play_session() methods
+play_session_started / play_session_error signals
+
+Changed
+
+template.html updated with play session support
 ## [1.5.0] - 2026-01-14
 
 ### Play Session Anti-Cheat (Time Validation)
