@@ -299,7 +299,7 @@ theme_override_font_sizes/font_size = 20
 text = "Achievements"
 
 [node name="ChangeNameButton" type="Button" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
-visible = false
+visible = true
 custom_minimum_size = Vector2(300, 50)
 layout_mode = 2
 size_flags_horizontal = 4
