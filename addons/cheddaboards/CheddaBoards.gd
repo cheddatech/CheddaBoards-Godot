@@ -1,4 +1,4 @@
-# CheddaBoards.gd v1.5.7
+# CheddaBoards.gd v1.5.9
 # CheddaBoards integration for Godot 4.x
 # https://github.com/cheddatech/CheddaBoards-Godot
 # https://cheddaboards.com
@@ -9,7 +9,9 @@
 # - Anonymous/Native score submissions use HTTP API
 # - Play sessions use HTTP API for ALL users
 #
-# v1.5.7: Anonymous profiles now fetch from API, nickname changes use API
+# v1.5.9: Persistent device IDs - anonymous players keep same identity across sessions
+#          Device ID saved to user://cheddaboards_device.cfg
+#          Fixes nickname conflicts when same player gets new random ID on restart
 # v1.5.6: OAuth users submit scores via JS bridge (fixes scores not saving)
 # v1.5.5: Batch achievement unlocks (single request instead of N requests)
 # v1.5.4: ALL score submissions now use HTTP API (fixes play session validation)
@@ -100,8 +102,8 @@ var debug_logging: bool = true
 
 ## HTTP API Configuration (for native builds)
 const API_BASE_URL = "https://api.cheddaboards.com"
-var api_key: String = "cb_test-game_350355445"  ## Your API key
-var game_id: String = "test-game"  ## Your game ID for scoreboard operations
+var api_key: String = "cb_chedda-match_3128807400"  ## Your API key
+var game_id: String = "chedda-match"  ## Your game ID for scoreboard operations
 var _player_id: String = ""
 var _session_token: String = ""  ## For OAuth session-based auth
 var _play_session_token: String = ""  ## For time validation
@@ -168,6 +170,12 @@ var _http_busy: bool = false
 var _request_queue: Array = []
 
 # ============================================================
+# PERSISTENT DEVICE ID
+# ============================================================
+
+const DEVICE_ID_PATH = "user://cheddaboards_device.cfg"
+
+# ============================================================
 # INITIALIZATION
 # ============================================================
 
@@ -178,11 +186,11 @@ func _ready() -> void:
 	_setup_http_client()
 	
 	if _is_web:
-		_log("Initializing CheddaBoards v1.5.7 (Web Mode)...")
+		_log("Initializing CheddaBoards v1.5.8 (Web Mode)...")
 		_start_polling()
 		_check_chedda_ready()
 	else:
-		_log("Initializing CheddaBoards v1.5.7 (Native/HTTP API Mode)...")
+		_log("Initializing CheddaBoards v1.5.8 (Native/HTTP API Mode)...")
 		_init_complete = true
 		call_deferred("_emit_sdk_ready")
 
@@ -524,6 +532,9 @@ func _emit_http_success(data) -> void:
 				var err = str(data.get("err", data.get("error", "Unknown error")))
 				_log("Play session error (HTTP): %s" % err)
 				play_session_error.emit(err)
+		
+		"end_play_session":
+			_log("Play session ended on server successfully")
 	
 	_current_meta = {}
 	_http_busy = false
@@ -571,6 +582,9 @@ func _emit_http_failure(error: String) -> void:
 		"start_play_session":
 			_log("Play session HTTP error: %s" % error)
 			play_session_error.emit(error)
+		"end_play_session":
+			_log("End play session HTTP error (ignored): %s" % error)
+			# Don't emit error - ending session is best-effort
 		"archive_stats":
 			archive_stats_loaded.emit(0, [])
 			archive_error.emit(error)
@@ -827,20 +841,51 @@ func get_player_id() -> String:
 	if not _player_id.is_empty():
 		return _player_id
 	
+	# 1. Try web localStorage (browser persistence)
 	if _is_web:
 		var js_device_id = JavaScriptBridge.eval("chedda_get_device_id()", true)
 		if js_device_id and str(js_device_id) != "":
 			_player_id = str(js_device_id)
+			_save_device_id(_player_id)
 			return _player_id
 	
+	# 2. Try loading saved device ID from disk
+	var saved_id = _load_device_id()
+	if saved_id != "":
+		_player_id = saved_id
+		_log("Loaded persistent device ID: %s" % _player_id.left(12))
+		return _player_id
+	
+	# 3. Generate new persistent device ID (first launch only)
 	randomize()
-	_player_id = "player_" + str(randi() % 1000000000)
+	var timestamp = str(Time.get_unix_time_from_system()).replace(".", "")
+	var random_part = "%08x" % (randi() & 0x7FFFFFFF)
+	_player_id = "dev_" + timestamp + "_" + random_part
+	_save_device_id(_player_id)
+	_log("Generated new persistent device ID: %s" % _player_id)
 	return _player_id
+
+func _save_device_id(device_id: String) -> void:
+	var config = ConfigFile.new()
+	config.set_value("device", "id", device_id)
+	config.set_value("device", "created", Time.get_unix_time_from_system())
+	var err = config.save(DEVICE_ID_PATH)
+	if err == OK:
+		_log("Device ID saved to %s" % DEVICE_ID_PATH)
+	else:
+		_log("WARNING: Failed to save device ID (error %d)" % err)
+
+func _load_device_id() -> String:
+	var config = ConfigFile.new()
+	var err = config.load(DEVICE_ID_PATH)
+	if err == OK:
+		return config.get_value("device", "id", "")
+	return ""
 
 func _sanitize_player_id(raw_id: String) -> String:
 	if raw_id.is_empty():
-		randomize()
-		return "player_" + str(randi() % 1000000000)
+		# Use persistent device ID instead of random throwaway
+		return get_player_id()
 	
 	var sanitized = ""
 	for c in raw_id:
@@ -849,7 +894,7 @@ func _sanitize_player_id(raw_id: String) -> String:
 	
 	if sanitized.is_empty():
 		randomize()
-		return "player_" + str(abs(raw_id.hash()))
+		return "p_" + str(abs(raw_id.hash()))
 	
 	if sanitized[0] >= "0" and sanitized[0] <= "9":
 		sanitized = "p_" + sanitized
@@ -1142,10 +1187,30 @@ func get_play_session_token() -> String:
 func has_play_session() -> bool:
 	return _play_session_token != ""
 
-## Clear the play session (call after score submitted or game cancelled)
+## End the play session on the server (call when game cancelled without score submission)
+func end_play_session() -> void:
+	if _play_session_token == "" or _play_session_token.begins_with("fallback_"):
+		_log("No active server session to end")
+		_play_session_token = ""
+		return
+	
+	_log("Ending play session on server: %s" % _play_session_token.left(30))
+	var body = {
+		"gameId": game_id,
+		"playerId": get_player_id(),
+		"token": _play_session_token
+	}
+	# Fire and forget - don't wait for response
+	_make_http_request("/play-sessions/end", HTTPClient.METHOD_POST, body, "end_play_session")
+	_play_session_token = ""  # Clear locally immediately
+
+## Clear the play session (also ends it on server if active)
 func clear_play_session() -> void:
-	_play_session_token = ""
-	_log("Play session cleared")
+	if _play_session_token != "" and not _play_session_token.begins_with("fallback_"):
+		end_play_session()
+	else:
+		_play_session_token = ""
+		_log("Play session cleared (local only)")
 
 func get_leaderboard(sort_by: String = "score", limit: int = 100) -> void:
 	if is_anonymous() or _is_native:
@@ -1539,7 +1604,7 @@ func _get_profile_from_js() -> Dictionary:
 func debug_status() -> void:
 	print("")
 	print("╔══════════════════════════════════════════════╗")
-	print("║        CheddaBoards Debug Status v1.5.7      ║")
+	print("║        CheddaBoards Debug Status v1.5.8      ║")
 	print("╠══════════════════════════════════════════════╣")
 	print("║ Environment                                  ║")
 	print("║  - Platform:         %s" % ("Web" if _is_web else "Native").rpad(24) + "║")
