@@ -1,6 +1,6 @@
 [gd_scene load_steps=2 format=3 uid="uid://dt1mgh2gutj6k"]
 
-[ext_resource type="Script" uid="uid://dlqhhckb1bpav" path="res://AchievementNotification.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://dgj2g1r7ul0gg" path="res://scripts/AchievementNotification.gd" id="1_script"]
 
 [node name="AchievementNotification" type="Control"]
 layout_mode = 3
@@ -53,4 +53,3 @@ theme_override_font_sizes/font_size = 16
 text = "Achievement description goes here"
 horizontal_alignment = 1
 autowrap_mode = 2
-
