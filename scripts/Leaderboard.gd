@@ -1,7 +1,8 @@
-# Leaderboard.gd v1.5.0
+# Leaderboard.gd v1.7.0
 # Leaderboard display with time periods, sorting options, and archive viewing
-# Supports: All Time / Weekly switching + Current / Last Period archives
-# v1.5.0: Added client-side sorting (fixes unsorted archive data)
+# Supports: All Time / Weekly / Legacy switching + Current / Last Period archives
+# v1.7.0: Added Legacy scoreboard tab for pre-rebalance scores
+# v1.6.0: Added MobileUI scaling for mobile devices
 # https://github.com/cheddatech/CheddaBoards-Godot
 #
 # ============================================================
@@ -9,6 +10,7 @@
 # ============================================================
 # Required Autoloads:
 #   - CheddaBoards
+#   - MobileUI
 #
 # Required nodes in scene:
 #   - MarginContainer/VBoxContainer/HeaderContainer/TitleLabel
@@ -40,20 +42,26 @@ const LEADERBOARD_LIMIT: int = 100
 const LOAD_TIMEOUT_SECONDS: float = 15.0
 
 ## Scene paths (adjust to match your project structure)
-const SCENE_MAIN_MENU: String = "res://MainMenu.tscn"
-const SCENE_GAME: String = "res://Game.tscn"
+const SCENE_MAIN_MENU: String = "res://scenes/MainMenu.tscn"
+const SCENE_GAME: String = "res://scenes/Game.tscn"
 
-## Scoreboard IDs - must match your backend configuration
-const SCOREBOARD_ALL_TIME: String = "all-time"  #
-const SCOREBOARD_WEEKLY: String = "weekly"
+## Scoreboard IDs - NEW API (v2.8+ rebalanced game)
+const SCOREBOARD_ALL_TIME: String = "all-time"  # Update to your new scoreboard ID
+const SCOREBOARD_WEEKLY: String = "weekly"      # Update to your new scoreboard ID
+
+## Legacy scoreboard - OLD API (pre-rebalance scores, read-only)
+const LEGACY_API_KEY: String = ""  # Your OLD API key
+const LEGACY_GAME_ID: String = ""                # Your OLD game ID
+const LEGACY_SCOREBOARD_ID: String = "all-time"              # Your OLD scoreboard ID
 
 ## Which scoreboard to show by default (change to match your preference)
-@export var scoreboard_id: String = "weekly"
+@export var scoreboard_id: String = "all-time"
 
 # ============================================================
 # NODE REFERENCES - HEADER
 # ============================================================
 
+@onready var margin_container = $MarginContainer
 @onready var title_label = $MarginContainer/VBoxContainer/HeaderContainer/TitleLabel
 @onready var refresh_button = $MarginContainer/VBoxContainer/HeaderContainer/RefreshButton
 
@@ -64,6 +72,7 @@ const SCOREBOARD_WEEKLY: String = "weekly"
 @onready var time_container = $MarginContainer/VBoxContainer/HeaderContainer/TimeContainer if has_node("MarginContainer/VBoxContainer/HeaderContainer/TimeContainer") else null
 @onready var all_time_button = $MarginContainer/VBoxContainer/HeaderContainer/TimeContainer/AllTimeButton if time_container else null
 @onready var weekly_button = $MarginContainer/VBoxContainer/HeaderContainer/TimeContainer/WeeklyButton if time_container else null
+@onready var legacy_button = $MarginContainer/VBoxContainer/HeaderContainer/TimeContainer/LegacyButton if time_container else null
 
 # ============================================================
 # NODE REFERENCES - ARCHIVE BUTTONS (Current / Last Period)
@@ -77,6 +86,7 @@ const SCOREBOARD_WEEKLY: String = "weekly"
 # NODE REFERENCES - SORT BUTTONS
 # ============================================================
 
+@onready var sort_container = $MarginContainer/VBoxContainer/HeaderContainer/SortContainer if has_node("MarginContainer/VBoxContainer/HeaderContainer/SortContainer") else null
 @onready var sort_by_score_button = $MarginContainer/VBoxContainer/HeaderContainer/SortContainer/SortByScoreButton
 @onready var sort_by_streak_button = $MarginContainer/VBoxContainer/HeaderContainer/SortContainer/SortByStreakButton
 
@@ -84,7 +94,9 @@ const SCOREBOARD_WEEKLY: String = "weekly"
 # NODE REFERENCES - LEADERBOARD DISPLAY
 # ============================================================
 
+@onready var leaderboard_scroll = $MarginContainer/VBoxContainer/LeaderboardScroll
 @onready var leaderboard_list = $MarginContainer/VBoxContainer/LeaderboardScroll/LeaderboardList
+@onready var your_rank_panel = $MarginContainer/VBoxContainer/YourRankPanel
 @onready var your_rank_label = $MarginContainer/VBoxContainer/YourRankPanel/MarginContainer/YourRankLabel
 @onready var status_label = $MarginContainer/VBoxContainer/StatusLabel
 
@@ -92,6 +104,7 @@ const SCOREBOARD_WEEKLY: String = "weekly"
 # NODE REFERENCES - NAVIGATION BUTTONS
 # ============================================================
 
+@onready var buttons_container = $MarginContainer/VBoxContainer/ButtonsContainer
 @onready var back_button = $MarginContainer/VBoxContainer/ButtonsContainer/BackButton
 @onready var play_again_button = $MarginContainer/VBoxContainer/ButtonsContainer/PlayAgainButton
 
@@ -114,6 +127,12 @@ var current_player_nickname: String = ""
 ## View mode: "current" for live scoreboard, "archive" for past period
 var view_mode: String = "current"
 
+## Whether viewing legacy scoreboard (uses different API)
+var is_legacy_view: bool = false
+
+## HTTPRequest node for legacy API calls
+var _legacy_http: HTTPRequest = null
+
 ## Cached archive configuration for display purposes
 var current_archive_config: Dictionary = {}
 
@@ -123,6 +142,9 @@ var current_archive_config: Dictionary = {}
 
 func _ready():
 	"""Initialize the leaderboard scene"""
+	# Scale UI for mobile
+	_scale_ui()
+	
 	# Wait for CheddaBoards to be ready
 	if not CheddaBoards.is_ready():
 		status_label.text = "Connecting..."
@@ -139,6 +161,8 @@ func _ready():
 		all_time_button.pressed.connect(_on_all_time_pressed)
 	if weekly_button:
 		weekly_button.pressed.connect(_on_weekly_pressed)
+	if legacy_button:
+		legacy_button.pressed.connect(_on_legacy_pressed)
 	
 	# Connect archive buttons (Current / Last Period)
 	if current_button:
@@ -168,13 +192,73 @@ func _ready():
 	CheddaBoards.archived_scoreboard_loaded.connect(_on_archived_scoreboard_loaded)
 	CheddaBoards.archive_error.connect(_on_archive_error)
 	
+	# Create HTTPRequest for legacy API calls
+	_legacy_http = HTTPRequest.new()
+	_legacy_http.request_completed.connect(_on_legacy_request_completed)
+	add_child(_legacy_http)
+	
 	# Update all button states
 	_update_all_buttons()
 	
 	# Initial load
 	_load_leaderboard()
 	
-	print("[Leaderboard] v1.5.0 initialized")
+	print("[Leaderboard] v1.7.0 initialized (Mobile: %s, Scale: %.2f)" % [MobileUI.is_mobile, MobileUI.ui_scale])
+
+# ============================================================
+# UI SCALING
+# ============================================================
+
+func _scale_ui():
+	"""Scale all UI elements for mobile"""
+	# Scale main margin container
+	if margin_container:
+		MobileUI.scale_container_margins(margin_container, 16)
+	
+	# Title
+	MobileUI.scale_label(title_label, 28)
+	title_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	title_label.add_theme_constant_override("outline_size", int(MobileUI.get_size(2)))
+	
+	# Refresh button
+	MobileUI.scale_button(refresh_button, 16, 44)
+	
+	# Time period buttons
+	if all_time_button:
+		MobileUI.scale_button(all_time_button, 14, 40)
+	if weekly_button:
+		MobileUI.scale_button(weekly_button, 14, 40)
+	if legacy_button:
+		MobileUI.scale_button(legacy_button, 14, 40)
+	
+	# Archive buttons
+	if current_button:
+		MobileUI.scale_button(current_button, 14, 40)
+	if last_period_button:
+		MobileUI.scale_button(last_period_button, 14, 40)
+	
+	# Sort buttons
+	MobileUI.scale_button(sort_by_score_button, 14, 40)
+	MobileUI.scale_button(sort_by_streak_button, 14, 40)
+	
+	# Your rank panel
+	MobileUI.scale_label(your_rank_label, 18)
+	your_rank_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	your_rank_label.add_theme_constant_override("outline_size", int(MobileUI.get_size(1)))
+	
+	if your_rank_panel:
+		your_rank_panel.custom_minimum_size.y = MobileUI.get_touch_size(50)
+	
+	# Status label
+	MobileUI.scale_label(status_label, 16)
+	
+	# Navigation buttons
+	MobileUI.scale_button(back_button, 18, 48)
+	MobileUI.scale_button(play_again_button, 20, 52)
+	
+	# Scale button container spacing
+	if buttons_container and buttons_container is HBoxContainer:
+		buttons_container.add_theme_constant_override("separation", int(MobileUI.get_size(16)))
 
 # ============================================================
 # LOADING FUNCTIONS
@@ -202,7 +286,10 @@ func _load_leaderboard():
 	# Start timeout timer
 	_start_load_timeout()
 	
-	if view_mode == "archive":
+	if is_legacy_view:
+		# Use direct HTTP request for legacy API
+		_load_legacy_scoreboard()
+	elif view_mode == "archive":
 		# Load archived scoreboard (past period results)
 		print("[Leaderboard] Requesting last archive for '%s'" % scoreboard_id)
 		CheddaBoards.get_last_archived_scoreboard(scoreboard_id, LEADERBOARD_LIMIT)
@@ -213,13 +300,84 @@ func _load_leaderboard():
 		print("[Leaderboard] Requesting scoreboard '%s' (limit: %d)" % [scoreboard_id, LEADERBOARD_LIMIT])
 		CheddaBoards.get_scoreboard(scoreboard_id, LEADERBOARD_LIMIT)
 		
-		# Only request player rank if user has a real account
 		if CheddaBoards.has_account():
 			your_rank_label.text = "Loading your rank..."
 			CheddaBoards.get_scoreboard_rank(scoreboard_id)
 		else:
 			your_rank_label.text = "Login to see your rank"
 			your_rank_label.add_theme_color_override("font_color", Color.GRAY)
+
+func _load_legacy_scoreboard():
+	"""Load legacy scoreboard via direct HTTP request"""
+	var url = "https://api.cheddaboards.com/games/%s/scoreboards/%s?limit=%d" % [
+		LEGACY_GAME_ID.uri_encode(),
+		LEGACY_SCOREBOARD_ID.uri_encode(),
+		LEADERBOARD_LIMIT
+	]
+	var headers = [
+		"Content-Type: application/json",
+		"X-API-Key: " + LEGACY_API_KEY
+	]
+	
+	print("[Leaderboard] Loading legacy scoreboard: %s" % url)
+	print("[Leaderboard] Legacy API key: %s..." % LEGACY_API_KEY.substr(0, 20))
+	your_rank_label.text = "Legacy scores (pre-v2.8)"
+	your_rank_label.add_theme_color_override("font_color", Color(1.0, 0.8, 0.4))
+	
+	var error = _legacy_http.request(url, headers, HTTPClient.METHOD_GET)
+	if error != OK:
+		print("[Leaderboard] Legacy HTTP request failed: %d" % error)
+		_on_scoreboard_error("Failed to connect to legacy API")
+
+func _on_legacy_request_completed(result: int, response_code: int, headers: PackedStringArray, body: PackedByteArray):
+	"""Handle legacy API response"""
+	_clear_load_timeout()
+	is_loading = false
+	_set_loading_ui(false)
+	
+	print("[Leaderboard] Legacy response: result=%d, code=%d, body_size=%d" % [result, response_code, body.size()])
+	
+	if result != HTTPRequest.RESULT_SUCCESS:
+		print("[Leaderboard] Legacy request failed: result=%d" % result)
+		status_label.text = "Failed to load legacy scores"
+		status_label.add_theme_color_override("font_color", Color.RED)
+		return
+	
+	if response_code != 200:
+		print("[Leaderboard] Legacy API error: %d" % response_code)
+		print("[Leaderboard] Response body: %s" % body.get_string_from_utf8())
+		status_label.text = "Legacy API error: %d" % response_code
+		status_label.add_theme_color_override("font_color", Color.RED)
+		return
+	
+	var body_text = body.get_string_from_utf8()
+	print("[Leaderboard] Legacy raw response: %s" % body_text.substr(0, 500))
+	
+	var json = JSON.new()
+	var parse_result = json.parse(body_text)
+	if parse_result != OK:
+		print("[Leaderboard] Failed to parse legacy response: %s" % json.get_error_message())
+		status_label.text = "Failed to parse legacy data"
+		status_label.add_theme_color_override("font_color", Color.RED)
+		return
+	
+	var data = json.get_data()
+	print("[Leaderboard] Legacy parsed data keys: %s" % str(data.keys() if data is Dictionary else "NOT A DICT"))
+	
+	# API wraps response in {"ok": true, "data": {...}}
+	if data.has("data"):
+		data = data.get("data")
+	
+	var config = data.get("config", {})
+	var entries = data.get("entries", [])
+	
+	print("[Leaderboard] Legacy scoreboard loaded: %d entries" % entries.size())
+	
+	# Update title
+	title_label.text = "Legacy (Pre-v2.8) - By Score"
+	
+	# Display entries
+	_display_entries(entries)
 
 func _set_loading_ui(loading: bool):
 	"""Update UI elements based on loading state"""
@@ -241,14 +399,16 @@ func _update_all_buttons():
 	sort_by_score_button.disabled = is_loading or current_sort_by == "score"
 	sort_by_streak_button.disabled = is_loading or current_sort_by == "streak"
 	
-	# Time period buttons (All Time / Weekly)
+	# Time period buttons (All Time / Weekly / Legacy)
 	if all_time_button:
-		all_time_button.disabled = is_loading or scoreboard_id == SCOREBOARD_ALL_TIME
+		all_time_button.disabled = is_loading or (scoreboard_id == SCOREBOARD_ALL_TIME and not is_legacy_view)
 	if weekly_button:
-		weekly_button.disabled = is_loading or scoreboard_id == SCOREBOARD_WEEKLY
+		weekly_button.disabled = is_loading or (scoreboard_id == SCOREBOARD_WEEKLY and not is_legacy_view)
+	if legacy_button:
+		legacy_button.disabled = is_loading or is_legacy_view
 	
-	# Hide archive buttons for all-time (no archives for all-time scoreboard)
-	var show_archive_buttons = (scoreboard_id != SCOREBOARD_ALL_TIME)
+	# Hide archive buttons for all-time and legacy (no archives)
+	var show_archive_buttons = (scoreboard_id != SCOREBOARD_ALL_TIME and not is_legacy_view)
 	if period_container:
 		period_container.visible = show_archive_buttons
 	
@@ -367,7 +527,9 @@ func _update_title_from_config(config: Dictionary):
 
 func _get_scoreboard_display_name() -> String:
 	"""Get display name for current scoreboard"""
-	if scoreboard_id == SCOREBOARD_ALL_TIME:
+	if is_legacy_view:
+		return "Legacy (Pre-v2.8)"
+	elif scoreboard_id == SCOREBOARD_ALL_TIME:
 		return "All Time"
 	elif scoreboard_id == SCOREBOARD_WEEKLY:
 		return "Weekly"
@@ -491,38 +653,42 @@ func _add_leaderboard_entry(rank: int, entry) -> void:
 	
 	# Create entry container
 	var entry_container = PanelContainer.new()
-	entry_container.custom_minimum_size = Vector2(0, 50)
+	entry_container.custom_minimum_size = Vector2(0, MobileUI.get_touch_size(50))
 	
 	# Highlight current player or archive winner
 	if is_current_player:
 		var stylebox = StyleBoxFlat.new()
 		stylebox.bg_color = Color(0.2, 0.5, 0.2, 0.4)  # Green tint for current player
-		stylebox.set_corner_radius_all(5)
+		stylebox.set_corner_radius_all(int(MobileUI.get_size(5)))
 		entry_container.add_theme_stylebox_override("panel", stylebox)
 	elif view_mode == "archive" and rank == 1:
 		# Highlight the winner in archive view with gold
 		var stylebox = StyleBoxFlat.new()
 		stylebox.bg_color = Color(0.5, 0.4, 0.1, 0.4)  # Gold tint for winner
-		stylebox.set_corner_radius_all(5)
+		stylebox.set_corner_radius_all(int(MobileUI.get_size(5)))
 		entry_container.add_theme_stylebox_override("panel", stylebox)
 	
 	# Add margin container
 	var margin = MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 10)
-	margin.add_theme_constant_override("margin_right", 10)
-	margin.add_theme_constant_override("margin_top", 5)
-	margin.add_theme_constant_override("margin_bottom", 5)
+	var entry_margin = int(MobileUI.get_size(10))
+	var entry_margin_v = int(MobileUI.get_size(5))
+	margin.add_theme_constant_override("margin_left", entry_margin)
+	margin.add_theme_constant_override("margin_right", entry_margin)
+	margin.add_theme_constant_override("margin_top", entry_margin_v)
+	margin.add_theme_constant_override("margin_bottom", entry_margin_v)
 	entry_container.add_child(margin)
 	
 	# Create horizontal layout
 	var hbox = HBoxContainer.new()
-	hbox.add_theme_constant_override("separation", 20)
+	hbox.add_theme_constant_override("separation", int(MobileUI.get_size(16)))
 	margin.add_child(hbox)
 	
 	# Rank label with medal colors for top 3
 	var rank_label = Label.new()
-	rank_label.custom_minimum_size = Vector2(60, 0)
-	rank_label.add_theme_font_size_override("font_size", 26)
+	rank_label.custom_minimum_size = Vector2(MobileUI.get_size(50), 0)
+	rank_label.add_theme_font_size_override("font_size", MobileUI.get_font_size(22))
+	rank_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	rank_label.add_theme_constant_override("outline_size", int(MobileUI.get_size(1)))
 	
 	match rank:
 		1:
@@ -543,11 +709,13 @@ func _add_leaderboard_entry(rank: int, entry) -> void:
 	var nickname_label = Label.new()
 	nickname_label.text = nickname
 	nickname_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	nickname_label.add_theme_font_size_override("font_size", 24)
+	nickname_label.add_theme_font_size_override("font_size", MobileUI.get_font_size(20))
+	nickname_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	nickname_label.add_theme_constant_override("outline_size", int(MobileUI.get_size(1)))
 	
 	# Add crown emoji for archive winner
 	if view_mode == "archive" and rank == 1:
-		nickname_label.text = "👑 " + nickname
+		nickname_label.text = nickname
 	
 	hbox.add_child(nickname_label)
 	
@@ -559,8 +727,10 @@ func _add_leaderboard_entry(rank: int, entry) -> void:
 		value_label.text = "%d streak" % streak
 	
 	value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	value_label.custom_minimum_size = Vector2(120, 0)
-	value_label.add_theme_font_size_override("font_size", 24)
+	value_label.custom_minimum_size = Vector2(MobileUI.get_size(100), 0)
+	value_label.add_theme_font_size_override("font_size", MobileUI.get_font_size(20))
+	value_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	value_label.add_theme_constant_override("outline_size", int(MobileUI.get_size(1)))
 	hbox.add_child(value_label)
 	
 	# Add to list
@@ -639,23 +809,36 @@ func _on_archive_error(reason: String):
 
 func _on_all_time_pressed():
 	"""Switch to All Time scoreboard"""
-	if scoreboard_id == SCOREBOARD_ALL_TIME:
+	if scoreboard_id == SCOREBOARD_ALL_TIME and not is_legacy_view:
 		return
 	
 	print("[Leaderboard] Switching to All Time")
 	scoreboard_id = SCOREBOARD_ALL_TIME
-	view_mode = "current"  # All time has no archives
+	is_legacy_view = false
+	view_mode = "current"
 	_update_all_buttons()
 	_load_leaderboard()
 
 func _on_weekly_pressed():
 	"""Switch to Weekly scoreboard"""
-	if scoreboard_id == SCOREBOARD_WEEKLY:
+	if scoreboard_id == SCOREBOARD_WEEKLY and not is_legacy_view:
 		return
 	
 	print("[Leaderboard] Switching to Weekly")
 	scoreboard_id = SCOREBOARD_WEEKLY
+	is_legacy_view = false
 	view_mode = "current"
+	_update_all_buttons()
+	_load_leaderboard()
+
+func _on_legacy_pressed():
+	"""Switch to Legacy scoreboard (pre-rebalance scores from old API)"""
+	if is_legacy_view:
+		return
+	
+	print("[Leaderboard] Switching to Legacy")
+	is_legacy_view = true
+	view_mode = "current"  # Legacy has no archives
 	_update_all_buttons()
 	_load_leaderboard()
 
