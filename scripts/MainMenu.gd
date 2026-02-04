@@ -1,17 +1,24 @@
-# MainMenu.gd v1.5.0
+# MainMenu.gd v1.8.5
 # Main menu with authentication flow and profile display
 # - Login panel: PLAY NOW (with name entry), Leaderboard, and login buttons
 # - Name entry panel: For new anonymous players to set their display name
 # - Anonymous panel: Dashboard for returning anonymous players (after first game)
 # - Main panel: Profile stats when logged in (Google/Apple/Chedda)
+# - Account upgrade: Anonymous players can link Google/Apple/Chedda accounts (web only)
 # - Shows weekly score and games played
+# - MobileUI integration for responsive scaling
 # https://github.com/cheddatech/CheddaBoards-Godot
+#
+# v1.8.5: Fixed mobile prompt using _realPrompt to bypass SDK prompt guard.
+# v1.8.4: Fixed anonymous nickname not updating after auto-suffix.
+#         When backend returns "Player_345" for entered "Player", local storage now syncs.
 #
 # ============================================================
 # SETUP
 # ============================================================
 # Required Autoloads (in order):
 #   - CheddaBoards
+#   - MobileUI
 #   - Achievements (optional)
 #
 # ============================================================
@@ -22,13 +29,12 @@ extends Control
 # CONFIGURATION
 # ============================================================
 
-const SCENE_GAME: String = "res://Game.tscn"
-const SCENE_LEADERBOARD: String = "res://Leaderboard.tscn"
-const SCENE_ACHIEVEMENTS: String = "res://AchievementsView.tscn"
+const SCENE_GAME: String = "res://scenes/Game.tscn"
+const SCENE_LEADERBOARD: String = "res://scenes/Leaderboard.tscn"
+const SCENE_ACHIEVEMENTS: String = "res://scenes/AchievementsView.tscn"
 const DEVICE_ID_FILE: String = "user://device_id.txt"
 
 # CheddaBoards configuration for rank fetching
-const GAME_ID: String = "your-game-id"  # Your game ID on CheddaBoards
 const SCOREBOARD_ID: String = "weekly"  # Scoreboard to fetch rank from
 
 const UI_TIMEOUT_DURATION: float = 40.0
@@ -51,6 +57,7 @@ const MAX_NAME_LENGTH: int = 16
 @onready var google_button = $LoginPanel/MarginContainer/VBoxContainer/GoogleButton
 @onready var apple_button = $LoginPanel/MarginContainer/VBoxContainer/AppleButton
 @onready var chedda_button = $LoginPanel/MarginContainer/VBoxContainer/CheddaButton
+@onready var or_label = $LoginPanel/MarginContainer/VBoxContainer/OrLabel
 @onready var exit_button = $LoginPanel/MarginContainer/VBoxContainer/ExitButton
 @onready var status_label = $LoginPanel/MarginContainer/VBoxContainer/StatusLabel
 
@@ -78,6 +85,14 @@ const MAX_NAME_LENGTH: int = 16
 @onready var anon_achievement_button = $AnonymousPanel/MarginContainer/VBoxContainer/AchievementsButton
 @onready var anon_leaderboard_button = $AnonymousPanel/MarginContainer/VBoxContainer/LeaderboardButton
 @onready var anon_exit_button = $AnonymousPanel/MarginContainer/VBoxContainer/ExitButton
+
+# --- Upgrade buttons (web only) ---
+@onready var upgrade_label = $AnonymousPanel/MarginContainer/VBoxContainer/UpgradeLabel
+@onready var upgrade_separator = $AnonymousPanel/MarginContainer/VBoxContainer/UpgradeSeparator
+@onready var upgrade_google_button = $AnonymousPanel/MarginContainer/VBoxContainer/UpgradeGoogleButton
+@onready var upgrade_apple_button = $AnonymousPanel/MarginContainer/VBoxContainer/UpgradeAppleButton
+@onready var upgrade_ii_button = $AnonymousPanel/MarginContainer/VBoxContainer/UpgradeIIButton
+@onready var upgrade_status_label = $AnonymousPanel/MarginContainer/VBoxContainer/UpgradeStatusLabel
 
 # ============================================================
 # NODE REFERENCES - MAIN PANEL (Logged in users)
@@ -117,6 +132,12 @@ var _is_silent_login: bool = false
 # Prevent duplicate SDK ready handling
 var _sdk_ready_handled: bool = false
 
+# Upgrade flow (anonymous → verified account)
+var _is_upgrading: bool = false
+
+# Name entry context: "first_play" = start game after, "rename" = return to dashboard after
+var _name_entry_mode: String = "first_play"
+
 # ============================================================
 # TIMERS
 # ============================================================
@@ -153,6 +174,16 @@ func _ready():
 	CheddaBoards.logout_success.connect(_on_logout_success)
 	CheddaBoards.nickname_changed.connect(_on_nickname_changed)
 	
+	# Connect upgrade signals (web only)
+	if CheddaBoards.has_signal("account_upgraded"):
+		CheddaBoards.account_upgraded.connect(_on_upgrade_success)
+	if CheddaBoards.has_signal("account_upgrade_failed"):
+		CheddaBoards.account_upgrade_failed.connect(_on_upgrade_failed)
+	
+	# Connect scoreboard rank signal (rank display via SDK)
+	if CheddaBoards.has_signal("scoreboard_rank_loaded"):
+		CheddaBoards.scoreboard_rank_loaded.connect(_on_scoreboard_rank_loaded)
+	
 	# Connect LOGIN PANEL buttons
 	if direct_play_button:
 		direct_play_button.pressed.connect(_on_direct_play_pressed)
@@ -188,6 +219,14 @@ func _ready():
 	if anon_exit_button:
 		anon_exit_button.pressed.connect(_on_exit_button_pressed)
 	
+	# Connect UPGRADE buttons (AnonymousPanel - web only)
+	if upgrade_google_button:
+		upgrade_google_button.pressed.connect(_on_upgrade_google_pressed)
+	if upgrade_apple_button:
+		upgrade_apple_button.pressed.connect(_on_upgrade_apple_pressed)
+	if upgrade_ii_button:
+		upgrade_ii_button.pressed.connect(_on_upgrade_ii_pressed)
+	
 	# Connect MAIN PANEL buttons
 	if play_button:
 		play_button.pressed.connect(_on_play_button_pressed)
@@ -200,16 +239,150 @@ func _ready():
 	if logout_button:
 		logout_button.pressed.connect(_on_logout_pressed)
 	
+	# Apply MobileUI scaling
+	_scale_ui()
+	
+	# Connect to scale changes for responsive updates
+	if MobileUI.has_signal("scale_changed"):
+		MobileUI.scale_changed.connect(_on_scale_changed)
+	
 	# Initial state - show login panel
 	_show_login_panel()
 	status_label.text = "Connecting..."
 	_enable_login_buttons(false)
 	
-	_log("MainMenu v1.5.0 initialized")
+	_log("MainMenu v1.6.0 initialized | Mobile: %s | UI Scale: %.2f" % [MobileUI.is_mobile, MobileUI.ui_scale])
 	
 	# Check if SDK already ready
 	if CheddaBoards.is_ready():
 		_on_sdk_ready()
+
+# ============================================================
+# MOBILE UI SCALING
+# ============================================================
+
+func _scale_ui():
+	"""Apply MobileUI scaling to all UI elements"""
+	# Scale LOGIN PANEL elements
+	_scale_login_panel()
+	
+	# Scale NAME ENTRY PANEL elements
+	_scale_name_entry_panel()
+	
+	# Scale ANONYMOUS PANEL elements
+	_scale_anonymous_panel()
+	
+	# Scale MAIN PANEL elements
+	_scale_main_panel()
+
+func _scale_login_panel():
+	"""Scale login panel UI elements"""
+	if not login_panel:
+		return
+	
+	# Scale buttons
+	MobileUI.scale_button(direct_play_button, 20, 50)
+	MobileUI.scale_button(login_leaderboard_button, 18, 44)
+	MobileUI.scale_button(google_button, 18, 44)
+	MobileUI.scale_button(apple_button, 18, 44)
+	MobileUI.scale_button(chedda_button, 18, 44)
+	MobileUI.scale_button(exit_button, 16, 40)
+	
+	# Scale status label
+	MobileUI.scale_label(status_label, 16)
+	
+	# Scale margin container if exists
+	var margin = login_panel.get_node_or_null("MarginContainer")
+	if margin is MarginContainer:
+		MobileUI.scale_container_margins(margin, 20)
+
+func _scale_name_entry_panel():
+	"""Scale name entry panel UI elements"""
+	if not name_entry_panel:
+		return
+	
+	# Scale buttons
+	MobileUI.scale_button(confirm_name_button, 18, 48)
+	MobileUI.scale_button(cancel_name_button, 16, 44)
+	
+	# Scale labels
+	MobileUI.scale_label(name_status_label, 14)
+	
+	# Scale line edit
+	if name_line_edit:
+		name_line_edit.add_theme_font_size_override("font_size", MobileUI.get_font_size(18))
+		name_line_edit.custom_minimum_size.y = MobileUI.get_touch_size(44)
+	
+	# Scale margin container
+	var margin = name_entry_panel.get_node_or_null("MarginContainer")
+	if margin is MarginContainer:
+		MobileUI.scale_container_margins(margin, 20)
+
+func _scale_anonymous_panel():
+	"""Scale anonymous panel UI elements"""
+	if not anonymous_panel:
+		return
+	
+	# Scale welcome label (larger)
+	MobileUI.scale_label(anon_welcome_label, 24)
+	
+	# Scale stats labels
+	MobileUI.scale_label(anon_weekly_score_label, 18)
+	MobileUI.scale_label(anon_rank_label, 18)
+	MobileUI.scale_label(anon_plays_label, 18)
+	
+	# Scale buttons
+	MobileUI.scale_button(anon_play_button, 20, 50)
+	MobileUI.scale_button(anon_change_name_button, 16, 44)
+	MobileUI.scale_button(anon_achievement_button, 16, 44)
+	MobileUI.scale_button(anon_leaderboard_button, 16, 44)
+	MobileUI.scale_button(anon_exit_button, 16, 40)
+	
+	# Scale upgrade buttons
+	if upgrade_google_button:
+		MobileUI.scale_button(upgrade_google_button, 16, 44)
+	if upgrade_apple_button:
+		MobileUI.scale_button(upgrade_apple_button, 16, 44)
+	if upgrade_ii_button:
+		MobileUI.scale_button(upgrade_ii_button, 16, 44)
+	if upgrade_label:
+		MobileUI.scale_label(upgrade_label, 14)
+	if upgrade_status_label:
+		MobileUI.scale_label(upgrade_status_label, 14)
+	
+	# Scale margin container
+	var margin = anonymous_panel.get_node_or_null("MarginContainer")
+	if margin is MarginContainer:
+		MobileUI.scale_container_margins(margin, 20)
+
+func _scale_main_panel():
+	"""Scale main panel UI elements"""
+	if not main_panel:
+		return
+	
+	# Scale welcome label (larger)
+	MobileUI.scale_label(welcome_label, 24)
+	
+	# Scale stats labels
+	MobileUI.scale_label(weekly_score_label, 18)
+	MobileUI.scale_label(rank_label, 18)
+	MobileUI.scale_label(plays_label, 18)
+	
+	# Scale buttons
+	MobileUI.scale_button(play_button, 20, 50)
+	MobileUI.scale_button(change_nickname_button, 16, 44)
+	MobileUI.scale_button(achievement_button, 16, 44)
+	MobileUI.scale_button(leaderboard_button, 16, 44)
+	MobileUI.scale_button(logout_button, 16, 40)
+	
+	# Scale margin container
+	var margin = main_panel.get_node_or_null("MarginContainer")
+	if margin is MarginContainer:
+		MobileUI.scale_container_margins(margin, 20)
+
+func _on_scale_changed(_new_scale: float):
+	"""Handle window resize / scale changes"""
+	_scale_ui()
 
 func _on_sdk_ready():
 	"""Called when CheddaBoards SDK is ready"""
@@ -471,10 +644,15 @@ func _clear_ui_timeout():
 		ui_timeout_timer = null
 
 func _on_ui_timeout():
-	"""Handle login timeout"""
-	_log("Login timeout")
-	_set_status("Login timeout. Please try again.", true)
-	_enable_login_buttons(true)
+	"""Handle login/upgrade timeout"""
+	_log("UI timeout")
+	if _is_upgrading:
+		_is_upgrading = false
+		_enable_upgrade_buttons(true)
+		_set_upgrade_status("Timed out. Please try again.", true)
+	else:
+		_set_status("Login timeout. Please try again.", true)
+		_enable_login_buttons(true)
 	_stop_all_timers()
 	is_logging_in = false
 
@@ -503,19 +681,58 @@ func _show_login_panel():
 	
 	_stop_all_timers()
 	_enable_login_buttons(true)
+	
+	# Show OAuth login buttons only on web (needs JS bridge)
+	var show_oauth = OS.get_name() == "Web"
+	if or_label:
+		or_label.visible = show_oauth
+	if google_button:
+		google_button.visible = show_oauth
+	if apple_button:
+		apple_button.visible = show_oauth
+	if chedda_button:
+		chedda_button.visible = false  # TEMP: Hidden until II/Chedda flow is ready
 
-func _show_name_entry_panel():
-	"""Show name entry panel for new anonymous players"""
+func _show_name_entry_panel(mode: String = "first_play"):
+	"""Show name entry panel. Mode: 'first_play' = start game after, 'rename' = return to dashboard"""
+	_name_entry_mode = mode
 	login_panel.visible = false
 	main_panel.visible = false
 	name_entry_panel.visible = true
 	if anonymous_panel:
 		anonymous_panel.visible = false
 	
-	if not anonymous_nickname.is_empty():
-		name_line_edit.text = anonymous_nickname
+	# Set title/subtitle based on context
+	var title_label = name_entry_panel.get_node_or_null("MarginContainer/VBoxContainer/TitleLabel")
+	var subtitle_label = name_entry_panel.get_node_or_null("MarginContainer/VBoxContainer/SubtitleLabel")
+	var confirm_btn = name_entry_panel.get_node_or_null("MarginContainer/VBoxContainer/ConfirmNameButton")
+	
+	if mode == "rename":
+		if title_label:
+			title_label.text = "Change Name"
+		if subtitle_label:
+			subtitle_label.text = "This will update the leaderboard too"
+		if confirm_btn:
+			confirm_btn.text = "SAVE"
+		# Pre-fill with current nickname
+		var current_nick = CheddaBoards.get_nickname()
+		if current_nick != "":
+			name_line_edit.text = current_nick
+		elif not anonymous_nickname.is_empty():
+			name_line_edit.text = anonymous_nickname
+		else:
+			name_line_edit.text = ""
 	else:
-		name_line_edit.text = _generate_default_name()
+		if title_label:
+			title_label.text = "Enter Your Name"
+		if subtitle_label:
+			subtitle_label.text = "This will appear on the leaderboard"
+		if confirm_btn:
+			confirm_btn.text = "LET'S GO!"
+		if not anonymous_nickname.is_empty():
+			name_line_edit.text = anonymous_nickname
+		else:
+			name_line_edit.text = _generate_default_name()
 	
 	name_line_edit.placeholder_text = "Enter your name..."
 	name_status_label.text = ""
@@ -535,6 +752,9 @@ func _show_anonymous_panel():
 	waiting_for_profile = false
 	_stop_all_timers()
 	
+	# Sync any pending achievements when dashboard is shown
+	Achievements.force_sync_pending()
+	
 	# Update welcome message
 	if anon_welcome_label:
 		anon_welcome_label.text = "Welcome back, %s!" % anonymous_nickname
@@ -549,6 +769,22 @@ func _show_anonymous_panel():
 	
 	# Update achievement button
 	_update_anon_achievement_button()
+	
+	# Show upgrade buttons only on web (OAuth needs JS bridge)
+	var show_upgrade = OS.get_name() == "Web"
+	if upgrade_separator:
+		upgrade_separator.visible = show_upgrade
+	if upgrade_label:
+		upgrade_label.visible = show_upgrade
+	if upgrade_google_button:
+		upgrade_google_button.visible = show_upgrade
+	if upgrade_apple_button:
+		upgrade_apple_button.visible = show_upgrade
+	if upgrade_ii_button:
+		upgrade_ii_button.visible = false  # TEMP: Hidden until II/Chedda flow is ready
+	if upgrade_status_label:
+		upgrade_status_label.visible = show_upgrade
+		upgrade_status_label.text = ""
 	
 	# Auto-login anonymously and fetch stats
 	_silent_anonymous_login()
@@ -591,76 +827,23 @@ func _fetch_stats_after_delay():
 	_log("Stats polling: gave up after %d attempts" % max_attempts)
 
 func _fetch_player_rank():
-	"""Fetch player's rank from the leaderboard API"""
-	_log("Fetching player rank...")
-	
-	# Get session token from CheddaBoards
-	var session_token = ""
-	if CheddaBoards.has_method("get_session_token"):
-		session_token = CheddaBoards.get_session_token()
-	elif CheddaBoards.has_method("get_session"):
-		session_token = CheddaBoards.get_session()
-	
-	if session_token.is_empty():
-		_log("No session token for rank fetch - trying alternative method")
-		if CheddaBoards.get("_session_token"):
-			session_token = CheddaBoards._session_token
-	
-	if session_token.is_empty():
-		_log("No session token available for rank fetch")
-		return
-	
-	# Make HTTP request to rank endpoint
-	var url = "https://api.cheddaboards.com/games/%s/scoreboards/%s/rank" % [GAME_ID, SCOREBOARD_ID]
-	_log("Rank request URL: %s" % url)
-	
-	var http = HTTPRequest.new()
-	add_child(http)
-	http.request_completed.connect(_on_rank_request_completed.bind(http))
-	
-	var headers = [
-		"Content-Type: application/json",
-		"X-Session-Token: %s" % session_token
-	]
-	
-	var err = http.request(url, headers, HTTPClient.METHOD_GET)
-	if err != OK:
-		_log("Rank request failed to start: %d" % err)
-		http.queue_free()
+	"""Fetch player's rank via CheddaBoards SDK"""
+	_log("Fetching player rank via SDK...")
+	CheddaBoards.get_scoreboard_rank(SCOREBOARD_ID)
 
-func _on_rank_request_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray, http: HTTPRequest):
-	"""Handle rank API response"""
-	http.queue_free()
-	
-	if result != HTTPRequest.RESULT_SUCCESS:
-		_log("Rank request failed: result=%d" % result)
+func _on_scoreboard_rank_loaded(scoreboard_id: String, rank: int, _score: int, _streak: int, total: int):
+	"""Handle rank response from CheddaBoards SDK"""
+	if scoreboard_id != SCOREBOARD_ID:
 		return
 	
-	var body_str = body.get_string_from_utf8()
-	_log("Rank response (code %d): %s" % [response_code, body_str.left(200)])
-	
-	if response_code != 200:
-		_log("Rank request returned non-200: %d" % response_code)
-		return
-	
-	var json = JSON.parse_string(body_str)
-	if json == null or not json.get("ok", false):
-		_log("Rank response invalid or error")
-		return
-	
-	var data = json.get("data", {})
-	if data.get("found", false):
-		var rank = int(data.get("rank", 0))
-		var total = int(data.get("totalPlayers", 0))
-		_log("Player rank fetched: #%d of %d" % [rank, total])
-		
-		# Update the rank label
+	if rank > 0:
+		_log("Player rank: #%d of %d" % [rank, total])
 		if anonymous_panel and anonymous_panel.visible and anon_rank_label:
 			anon_rank_label.text = "Rank: #%d" % rank
 		elif main_panel and main_panel.visible and rank_label:
 			rank_label.text = "Rank: #%d" % rank
 	else:
-		_log("Player not ranked yet: %s" % data.get("message", "unknown"))
+		_log("Player not ranked yet")
 
 func _load_anonymous_stats():
 	"""Load and display stats for anonymous player from CheddaBoards API"""
@@ -686,6 +869,15 @@ func _load_anonymous_stats():
 func _update_anonymous_panel_stats(profile: Dictionary):
 	"""Update the anonymous panel with profile stats from dictionary"""
 	_log("Updating from profile: %s" % str(profile))
+	
+	# Update nickname if backend has a different one (e.g. auto-suffixed)
+	var profile_nickname = profile.get("nickname", "")
+	if not profile_nickname.is_empty() and profile_nickname != anonymous_nickname:
+		_log("Updating nickname from profile: '%s' -> '%s'" % [anonymous_nickname, profile_nickname])
+		anonymous_nickname = profile_nickname
+		_save_player_data()
+		if anon_welcome_label:
+			anon_welcome_label.text = "Welcome back, %s!" % profile_nickname
 	
 	var weekly_score = int(profile.get("score", 0))
 	var play_count = int(profile.get("playCount", profile.get("plays", 0)))
@@ -925,7 +1117,88 @@ func _on_anon_play_pressed():
 func _on_anon_change_name_pressed():
 	"""Change name from anonymous dashboard"""
 	_log("Anonymous change name pressed")
-	_show_name_entry_panel()
+	if OS.get_name() == "Web" and _is_mobile_web():
+		_show_mobile_name_prompt("rename")
+	else:
+		_show_name_entry_panel("rename")
+
+# ============================================================
+# ACCOUNT UPGRADE HANDLERS (Web only - Anonymous → Verified)
+# ============================================================
+
+func _on_upgrade_google_pressed():
+	"""Upgrade anonymous account to Google"""
+	_log("Upgrade to Google pressed")
+	_start_upgrade("google")
+	JavaScriptBridge.eval("chedda_upgrade_to_google()", true)
+
+func _on_upgrade_apple_pressed():
+	"""Upgrade anonymous account to Apple"""
+	_log("Upgrade to Apple pressed")
+	_start_upgrade("apple")
+	JavaScriptBridge.eval("chedda_upgrade_to_apple()", true)
+
+func _on_upgrade_ii_pressed():
+	"""Upgrade anonymous account to Internet Identity"""
+	_log("Upgrade to Internet Identity pressed")
+	_start_upgrade("ii")
+	var nick = anonymous_nickname.replace("'", "\\'").replace('"', '\\"')
+	JavaScriptBridge.eval("chedda_upgrade_to_ii('%s')" % nick, true)
+
+func _start_upgrade(provider: String):
+	"""Common setup for upgrade flow"""
+	_is_upgrading = true
+	_set_upgrade_status("Linking %s account..." % provider.capitalize())
+	_enable_upgrade_buttons(false)
+	_start_ui_timeout()
+
+func _enable_upgrade_buttons(enabled: bool):
+	"""Enable/disable upgrade buttons"""
+	if upgrade_google_button:
+		upgrade_google_button.disabled = not enabled
+	if upgrade_apple_button:
+		upgrade_apple_button.disabled = not enabled
+	if upgrade_ii_button:
+		upgrade_ii_button.disabled = not enabled
+
+func _set_upgrade_status(message: String, is_error: bool = false):
+	"""Set upgrade status label text"""
+	if not upgrade_status_label:
+		return
+	upgrade_status_label.text = message
+	if is_error:
+		upgrade_status_label.add_theme_color_override("font_color", Color.RED)
+	else:
+		upgrade_status_label.remove_theme_color_override("font_color")
+
+func _on_upgrade_success(profile: Dictionary, migration: Dictionary):
+	"""Handle successful account upgrade"""
+	_is_upgrading = false
+	_clear_ui_timeout()
+	
+	var migrated_games = int(migration.get("migratedGames", 0))
+	var migrated_scoreboards = int(migration.get("migratedScoreboards", 0))
+	_log("Upgrade success! Migrated %d games, %d scoreboards" % [migrated_games, migrated_scoreboards])
+	
+	# Clear anonymous state - player now has a real account
+	_auth_type_after_upgrade(profile)
+	
+	# Transition to main panel with the merged profile
+	_show_main_panel(profile)
+
+func _auth_type_after_upgrade(profile: Dictionary):
+	"""Update auth state after successful upgrade"""
+	# The JS bridge has already updated CheddaBoards auth state via the login
+	# Just clear our local anonymous tracking
+	_log("Account upgraded - transitioning to authenticated state")
+
+func _on_upgrade_failed(error: String):
+	"""Handle failed account upgrade"""
+	_is_upgrading = false
+	_clear_ui_timeout()
+	_enable_upgrade_buttons(true)
+	_set_upgrade_status("Upgrade failed: %s" % error, true)
+	_log("Upgrade failed: %s" % error)
 
 # ============================================================
 # NAME ENTRY PANEL HANDLERS
@@ -946,10 +1219,21 @@ func _generate_default_name() -> String:
 	var suffix = str(randi() % 10000).pad_zeros(4)
 	return "Player_%s" % suffix
 
-func _show_mobile_name_prompt():
+func _show_mobile_name_prompt(mode: String = "first_play"):
 	"""Show native prompt for mobile web users"""
-	var default_name = anonymous_nickname if anonymous_nickname != "" else _generate_default_name()
-	var js_code = "prompt('Enter your name:', '%s')" % default_name.replace("'", "\\'")
+	var default_name: String
+	if mode == "rename":
+		var current_nick = CheddaBoards.get_nickname()
+		default_name = current_nick if current_nick != "" else (anonymous_nickname if anonymous_nickname != "" else "")
+	else:
+		default_name = anonymous_nickname if anonymous_nickname != "" else _generate_default_name()
+	
+	var prompt_text = "Enter new name:" if mode == "rename" else "Enter your name:"
+	# Use _realPrompt to bypass the SDK prompt guard in template.html
+	var js_code = "window._realPrompt ? window._realPrompt('%s', '%s') : prompt('%s', '%s')" % [
+		prompt_text, default_name.replace("'", "\\'"),
+		prompt_text, default_name.replace("'", "\\'")
+	]
 	var result = JavaScriptBridge.eval(js_code, true)
 	
 	if result == null or str(result) == "null" or str(result).strip_edges() == "":
@@ -962,15 +1246,22 @@ func _show_mobile_name_prompt():
 		JavaScriptBridge.eval("alert('Name must be %d-%d characters')" % [MIN_NAME_LENGTH, MAX_NAME_LENGTH], true)
 		return
 	
-	anonymous_nickname = name_text
-	_mark_anonymous_has_played()
-	
-	CheddaBoards.set_player_id(anonymous_player_id)
-	CheddaBoards.change_nickname(name_text)
-	CheddaBoards.login_anonymous(name_text)
-	
-	_log("Starting game as: %s (ID: %s)" % [anonymous_nickname, anonymous_player_id])
-	get_tree().change_scene_to_file(SCENE_GAME)
+	if mode == "rename":
+		# Just rename and stay on current screen
+		_log("Mobile rename to: %s" % name_text)
+		anonymous_nickname = name_text
+		CheddaBoards.change_nickname(name_text)
+	else:
+		# First play flow
+		anonymous_nickname = name_text
+		_mark_anonymous_has_played()
+		
+		CheddaBoards.set_player_id(anonymous_player_id)
+		CheddaBoards.change_nickname(name_text)
+		CheddaBoards.login_anonymous(name_text)
+		
+		_log("Starting game as: %s (ID: %s)" % [anonymous_nickname, anonymous_player_id])
+		get_tree().change_scene_to_file(SCENE_GAME)
 
 func _on_name_text_changed(_new_text: String):
 	"""Handle name text changes"""
@@ -983,10 +1274,10 @@ func _on_name_submitted(_name_text: String):
 		_on_confirm_name_pressed()
 
 func _on_confirm_name_pressed():
-	"""Confirm name and start game"""
+	"""Confirm name - behaviour depends on _name_entry_mode"""
 	var name_text = name_line_edit.text.strip_edges()
 	
-	_log("=== NAME CONFIRMATION ===")
+	_log("=== NAME CONFIRMATION (mode: %s) ===" % _name_entry_mode)
 	_log("Entered name: '%s'" % name_text)
 	_log("Player ID: '%s'" % anonymous_player_id)
 	
@@ -1000,20 +1291,49 @@ func _on_confirm_name_pressed():
 		name_status_label.add_theme_color_override("font_color", Color.RED)
 		return
 	
-	anonymous_nickname = name_text
-	_mark_anonymous_has_played()
-	
-	CheddaBoards.set_player_id(anonymous_player_id)
-	CheddaBoards.change_nickname(name_text)
-	CheddaBoards.login_anonymous(name_text)
-	
-	_log("Starting game as: %s (ID: %s)" % [anonymous_nickname, anonymous_player_id])
-	get_tree().change_scene_to_file(SCENE_GAME)
+	if _name_entry_mode == "rename":
+		# Just change the nickname and return to the appropriate dashboard
+		_log("Renaming to: %s" % name_text)
+		anonymous_nickname = name_text
+		CheddaBoards.change_nickname(name_text)
+		
+		name_status_label.text = "Saving..."
+		name_status_label.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
+		
+		# Return to the right panel after a short delay
+		# (nickname_changed signal will also fire and update welcome labels)
+		await get_tree().create_timer(0.5).timeout
+		if CheddaBoards.is_anonymous():
+			_show_anonymous_panel()
+		else:
+			# Show main panel directly (don't re-fetch profile)
+			name_entry_panel.visible = false
+			main_panel.visible = true
+			welcome_label.text = "Welcome, %s!" % name_text
+	else:
+		# First play: set up anonymous identity and start the game
+		anonymous_nickname = name_text
+		_mark_anonymous_has_played()
+		
+		CheddaBoards.set_player_id(anonymous_player_id)
+		CheddaBoards.change_nickname(name_text)
+		CheddaBoards.login_anonymous(name_text)
+		
+		_log("Starting game as: %s (ID: %s)" % [anonymous_nickname, anonymous_player_id])
+		get_tree().change_scene_to_file(SCENE_GAME)
 
 func _on_cancel_name_pressed():
 	"""Cancel name entry, go back to previous panel"""
-	_log("Name entry cancelled")
-	if anonymous_has_played:
+	_log("Name entry cancelled (mode: %s)" % _name_entry_mode)
+	if _name_entry_mode == "rename":
+		# Return to whichever dashboard was showing
+		if CheddaBoards.is_anonymous():
+			_show_anonymous_panel()
+		else:
+			# Show main panel directly (don't re-fetch profile)
+			name_entry_panel.visible = false
+			main_panel.visible = true
+	elif anonymous_has_played:
 		_show_anonymous_panel()
 	else:
 		_show_login_panel()
@@ -1067,6 +1387,17 @@ func _on_profile_loaded(nickname: String, score: int, _streak: int, achievements
 	"""Profile loaded from backend"""
 	_log("Profile loaded: %s (weekly score: %d)" % [nickname, score])
 	
+	# CRITICAL: If backend has different nickname (e.g. auto-suffixed), update local storage
+	# This handles the case where user enters "Player" but backend assigns "Player_345"
+	if CheddaBoards.is_anonymous() and not nickname.is_empty():
+		if anonymous_nickname != nickname:
+			_log("Updating local nickname: '%s' -> '%s' (backend sync)" % [anonymous_nickname, nickname])
+			anonymous_nickname = nickname
+			_save_player_data()
+			# Also update the welcome label if visible
+			if anonymous_panel and anonymous_panel.visible and anon_welcome_label:
+				anon_welcome_label.text = "Welcome back, %s!" % nickname
+	
 	var cached = CheddaBoards.get_cached_profile()
 	var play_count = 0
 	
@@ -1118,8 +1449,9 @@ func _on_logout_success():
 	_show_login_panel()
 
 func _on_nickname_changed(new_nickname: String):
-	"""Nickname changed"""
+	"""Nickname changed - update all UI and local state"""
 	_log("Nickname changed: %s" % new_nickname)
+	anonymous_nickname = new_nickname
 	if main_panel.visible:
 		welcome_label.text = "Welcome, %s!" % new_nickname
 	elif anonymous_panel and anonymous_panel.visible:
@@ -1135,9 +1467,12 @@ func _on_play_button_pressed():
 	get_tree().change_scene_to_file(SCENE_GAME)
 
 func _on_change_nickname_pressed():
-	"""Change nickname"""
+	"""Change nickname from authenticated dashboard"""
 	_log("Change nickname pressed")
-	CheddaBoards.change_nickname()
+	if OS.get_name() == "Web" and _is_mobile_web():
+		_show_mobile_name_prompt("rename")
+	else:
+		_show_name_entry_panel("rename")
 
 func _on_leaderboard_pressed():
 	"""View leaderboard"""
@@ -1217,7 +1552,7 @@ func _dump_debug():
 	"""Dump debug info (F9)"""
 	print("")
 	print("========================================")
-	print("       MainMenu Debug v1.5.0           ")
+	print("       MainMenu Debug v1.7.0           ")
 	print("========================================")
 	print(" State")
 	print("  - Is Logging In:   %s" % str(is_logging_in))
@@ -1227,6 +1562,11 @@ func _dump_debug():
 	print("  - Nickname:        %s" % anonymous_nickname)
 	print("  - Player ID:       %s" % anonymous_player_id)
 	print("  - Has Played:      %s" % str(anonymous_has_played))
+	print("----------------------------------------")
+	print(" MobileUI")
+	print("  - Is Mobile:       %s" % str(MobileUI.is_mobile))
+	print("  - UI Scale:        %.2f" % MobileUI.ui_scale)
+	print("  - Font Scale:      %.2f" % MobileUI.font_scale)
 	print("----------------------------------------")
 	print(" CheddaBoards")
 	print("  - SDK Ready:       %s" % str(CheddaBoards.is_ready()))
