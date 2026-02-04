@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3 uid="uid://chvqlsbp0m0km"]
+[gd_scene load_steps=3 format=3 uid="uid://chvqlsbp0m0km"]
 
-[ext_resource type="Script" uid="uid://bl2ia5phx1g4t" path="res://MainMenu.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://dvsxeqsg5637o" path="res://scripts/MainMenu.gd" id="1_script"]
+[ext_resource type="FontFile" uid="uid://b63sml2le7gmn" path="res://assets/fonts/ZeroCool.ttf" id="3_h7a2f"]
 
 [node name="MainMenu" type="Control"]
 layout_mode = 3
@@ -18,7 +19,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0.12, 0.06, 0.18, 1)
+color = Color(0, 0, 0, 1)
 
 [node name="LoginPanel" type="Panel" parent="."]
 layout_mode = 1
@@ -47,13 +48,16 @@ alignment = 1
 
 [node name="TitleLabel" type="Label" parent="LoginPanel/MarginContainer/VBoxContainer"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 48
-text = "Your Game Title"
+theme_override_colors/font_color = Color(1, 1, 0, 1)
+theme_override_fonts/font = ExtResource("3_h7a2f")
+theme_override_font_sizes/font_size = 64
+text = "My Game"
 horizontal_alignment = 1
 
 [node name="SubtitleLabel" type="Label" parent="LoginPanel/MarginContainer/VBoxContainer"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
+theme_override_fonts/font = ExtResource("3_h7a2f")
 theme_override_font_sizes/font_size = 18
 text = "Welcome!"
 horizontal_alignment = 1
@@ -67,6 +71,7 @@ custom_minimum_size = Vector2(300, 80)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_colors/font_color = Color(0.3, 1, 0.4, 1)
+theme_override_fonts/font = ExtResource("3_h7a2f")
 theme_override_font_sizes/font_size = 28
 text = "PLAY NOW"
 
@@ -75,6 +80,7 @@ custom_minimum_size = Vector2(300, 60)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
+theme_override_fonts/font = ExtResource("3_h7a2f")
 theme_override_font_sizes/font_size = 20
 text = "Leaderboard"
 
@@ -233,8 +239,17 @@ layout_mode = 2
 theme_override_constants/separation = 15
 alignment = 1
 
+[node name="TitleLabel2" type="Label" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 0, 1)
+theme_override_fonts/font = ExtResource("3_h7a2f")
+theme_override_font_sizes/font_size = 48
+text = "My Game"
+horizontal_alignment = 1
+
 [node name="WelcomeLabel" type="Label" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
 layout_mode = 2
+theme_override_fonts/font = ExtResource("3_h7a2f")
 theme_override_font_sizes/font_size = 32
 text = "Welcome back, Player!"
 horizontal_alignment = 1
@@ -252,6 +267,7 @@ theme_override_constants/separation = 5
 [node name="WeeklyScoreLabel" type="Label" parent="AnonymousPanel/MarginContainer/VBoxContainer/StatsPanel/VBoxContainer"]
 custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
+theme_override_fonts/font = ExtResource("3_h7a2f")
 theme_override_font_sizes/font_size = 20
 text = "This Week: 0"
 horizontal_alignment = 1
@@ -268,6 +284,7 @@ horizontal_alignment = 1
 [node name="PlaysLabel" type="Label" parent="AnonymousPanel/MarginContainer/VBoxContainer/StatsPanel/VBoxContainer"]
 custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
+theme_override_fonts/font = ExtResource("3_h7a2f")
 theme_override_font_sizes/font_size = 20
 text = "Games Played: 0"
 horizontal_alignment = 1
@@ -280,6 +297,7 @@ custom_minimum_size = Vector2(300, 80)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_colors/font_color = Color(0.3, 1, 0.4, 1)
+theme_override_fonts/font = ExtResource("3_h7a2f")
 theme_override_font_sizes/font_size = 28
 text = "PLAY NOW"
 
@@ -288,6 +306,7 @@ custom_minimum_size = Vector2(300, 60)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
+theme_override_fonts/font = ExtResource("3_h7a2f")
 theme_override_font_sizes/font_size = 20
 text = "Leaderboard"
 
@@ -295,23 +314,65 @@ text = "Leaderboard"
 custom_minimum_size = Vector2(300, 60)
 layout_mode = 2
 size_flags_horizontal = 4
+theme_override_fonts/font = ExtResource("3_h7a2f")
 theme_override_font_sizes/font_size = 20
 text = "Achievements"
 
 [node name="ChangeNameButton" type="Button" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
-visible = true
 custom_minimum_size = Vector2(300, 50)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
+theme_override_fonts/font = ExtResource("3_h7a2f")
 theme_override_font_sizes/font_size = 16
 text = "Change Name"
+
+[node name="UpgradeSeparator" type="HSeparator" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="UpgradeLabel" type="Label" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.5, 0.5, 0.5, 1)
+theme_override_fonts/font = ExtResource("3_h7a2f")
+theme_override_font_sizes/font_size = 14
+text = "— save your progress —"
+horizontal_alignment = 1
+
+[node name="UpgradeGoogleButton" type="Button" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(300, 50)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_fonts/font = ExtResource("3_h7a2f")
+theme_override_font_sizes/font_size = 16
+text = "Link Google Account"
+
+[node name="UpgradeAppleButton" type="Button" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(300, 50)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_fonts/font = ExtResource("3_h7a2f")
+theme_override_font_sizes/font_size = 16
+text = "Link Apple Account"
+
+[node name="UpgradeIIButton" type="Button" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(300, 50)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_fonts/font = ExtResource("3_h7a2f")
+theme_override_font_sizes/font_size = 16
+text = "Link Chedda ID"
+
+[node name="UpgradeStatusLabel" type="Label" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+horizontal_alignment = 1
 
 [node name="ExitButton" type="Button" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
 custom_minimum_size = Vector2(300, 50)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_colors/font_color = Color(0.6, 0.6, 0.6, 1)
+theme_override_fonts/font = ExtResource("3_h7a2f")
 theme_override_font_sizes/font_size = 16
 text = "Exit"
 
