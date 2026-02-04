@@ -1,4 +1,4 @@
-# CheddaBoards.gd v1.5.9
+# CheddaBoards.gd v1.8.2
 # CheddaBoards integration for Godot 4.x
 # https://github.com/cheddatech/CheddaBoards-Godot
 # https://cheddaboards.com
@@ -9,6 +9,20 @@
 # - Anonymous/Native score submissions use HTTP API
 # - Play sessions use HTTP API for ALL users
 #
+# v1.8.2: Achievement sync is now non-blocking (async/fire-and-forget).
+#          Fixes leaderboard timeout from achievement queue blocking.
+#          Added unlock_achievements_batch() for efficient batch sync.
+# v1.8.1: Fixed achievements not syncing - score submitted FIRST (creates player),
+#          then achievements sent one-at-a-time (batch endpoint doesn't exist).
+#          Fixed anonymous nickname PUT 400 on first play (player doesn't exist yet).
+# v1.7.0: Fixed post-upgrade scores creating ghost anonymous accounts
+#          Session token captured from login/upgrade/profile responses
+#          HTTP requests use session token OR API key (not both) so proxy routes correctly
+#          Play sessions always use API key (game-level op, skip_validation)
+#          Nickname changes route through HTTP API for all auth types
+#          Session token cleared on logout (prevents stale auth on anonymous play)
+# v1.6.0: Fixed end_play_session body field (token → playSessionToken)
+#          Fixed 404 on profile lookup for new anonymous players (graceful handling)
 # v1.5.9: Persistent device IDs - anonymous players keep same identity across sessions
 #          Device ID saved to user://cheddaboards_device.cfg
 #          Fixes nickname conflicts when same player gets new random ID on restart
@@ -93,6 +107,10 @@ signal request_failed(endpoint: String, error: String)
 signal play_session_started(token: String)
 signal play_session_error(reason: String)
 
+# --- Account Upgrade (Anonymous → Verified) ---
+signal account_upgraded(profile: Dictionary, migration: Dictionary)
+signal account_upgrade_failed(reason: String)
+
 # ============================================================
 # CONFIGURATION
 # ============================================================
@@ -102,8 +120,8 @@ var debug_logging: bool = true
 
 ## HTTP API Configuration (for native builds)
 const API_BASE_URL = "https://api.cheddaboards.com"
-var api_key: String = "cb_chedda-match_3128807400"  ## Your API key
-var game_id: String = "chedda-match"  ## Your game ID for scoreboard operations
+var api_key: String = "cb_test-game_350355445"  ## Your API key
+var game_id: String = "test-game"  ## Your game ID for scoreboard operations
 var _player_id: String = ""
 var _session_token: String = ""  ## For OAuth session-based auth
 var _play_session_token: String = ""  ## For time validation
@@ -123,6 +141,7 @@ var _init_attempts: int = 0
 
 var _auth_type: String = ""
 var _cached_profile: Dictionary = {}
+var _nickname_just_changed: bool = false
 var _nickname: String = ""
 
 # ============================================================
@@ -169,6 +188,11 @@ var _current_meta: Dictionary = {}  # Extra metadata for response handling
 var _http_busy: bool = false
 var _request_queue: Array = []
 
+# Deferred achievement tracking (sent one-at-a-time after score succeeds)
+var _deferred_achievement_ids: Array = []
+var _deferred_achievements_remaining: int = 0
+var _deferred_achievements_synced: Array = []
+
 # ============================================================
 # PERSISTENT DEVICE ID
 # ============================================================
@@ -186,11 +210,11 @@ func _ready() -> void:
 	_setup_http_client()
 	
 	if _is_web:
-		_log("Initializing CheddaBoards v1.5.8 (Web Mode)...")
+		_log("Initializing CheddaBoards v1.8.1 (Web Mode)...")
 		_start_polling()
 		_check_chedda_ready()
 	else:
-		_log("Initializing CheddaBoards v1.5.8 (Native/HTTP API Mode)...")
+		_log("Initializing CheddaBoards v1.8.1 (Native/HTTP API Mode)...")
 		_init_complete = true
 		call_deferred("_emit_sdk_ready")
 
@@ -201,6 +225,48 @@ func _setup_http_client() -> void:
 	_http_request = HTTPRequest.new()
 	add_child(_http_request)
 	_http_request.request_completed.connect(_on_http_request_completed)
+
+## Fire-and-forget HTTP request (non-blocking, doesn't use queue)
+## Used for achievements so they don't block leaderboard loading
+func _make_http_request_async(endpoint: String, method: int, body: Dictionary, request_type: String) -> void:
+	if api_key.is_empty() and _session_token.is_empty():
+		_log("No credentials - skipping async request to %s" % endpoint)
+		return
+	
+	# Create a temporary HTTPRequest node
+	var http = HTTPRequest.new()
+	add_child(http)
+	
+	var headers = ["Content-Type: application/json"]
+	
+	# Use session token if available, otherwise API key
+	var force_api_key = request_type in ["start_play_session", "end_play_session"]
+	if not _session_token.is_empty() and not force_api_key:
+		headers.append("X-Session-Token: " + _session_token)
+	elif not api_key.is_empty():
+		headers.append("X-API-Key: " + api_key)
+	
+	if not game_id.is_empty():
+		headers.append("X-Game-ID: " + game_id)
+	
+	var url = API_BASE_URL + endpoint
+	var json_body = JSON.stringify(body) if body.size() > 0 else ""
+	
+	_log("HTTP async %s: %s" % [request_type, endpoint])
+	
+	# Connect completion handler that cleans up the node
+	http.request_completed.connect(func(result, code, _headers, response_body):
+		if code >= 200 and code < 300:
+			_log("Async %s complete (HTTP %d)" % [request_type, code])
+		else:
+			_log("Async %s failed (HTTP %d)" % [request_type, code])
+		http.queue_free()  # Clean up
+	)
+	
+	var error = http.request(url, headers, method, json_body)
+	if error != OK:
+		_log("Async request failed to start: %s" % error)
+		http.queue_free()
 
 # ============================================================
 # SDK READY CHECK (Web Only)
@@ -308,6 +374,11 @@ func _handle_web_response(response: Dictionary) -> void:
 			_clear_login_timeout()
 			if success:
 				_auth_type = str(response.get("authType", ""))
+				# Capture session token if provided (for HTTP API session-based routing)
+				var token = str(response.get("sessionToken", ""))
+				if token != "":
+					_session_token = token
+					_log("Session token captured from login")
 				var profile: Dictionary = response.get("profile", {})
 				if profile and not profile.is_empty():
 					_update_cached_profile(profile)
@@ -337,6 +408,11 @@ func _handle_web_response(response: Dictionary) -> void:
 		"getProfile":
 			_is_refreshing_profile = false
 			if success:
+				# Capture session token if provided (bridge includes it)
+				var token = str(response.get("sessionToken", ""))
+				if token != "" and _session_token.is_empty():
+					_session_token = token
+					_log("Session token captured from profile refresh")
 				var profile: Dictionary = response.get("profile", {})
 				if profile and not profile.is_empty():
 					_update_cached_profile(profile)
@@ -370,6 +446,8 @@ func _handle_web_response(response: Dictionary) -> void:
 		"changeNickname":
 			if success:
 				var new_nickname: String = str(response.get("nickname", ""))
+				_nickname = new_nickname
+				_nickname_just_changed = true
 				if not _cached_profile.is_empty():
 					_cached_profile["nickname"] = new_nickname
 				nickname_changed.emit(new_nickname)
@@ -378,6 +456,25 @@ func _handle_web_response(response: Dictionary) -> void:
 			else:
 				var error: String = str(response.get("error", "Unknown error"))
 				nickname_error.emit(error)
+
+		"upgradeToGoogle", "upgradeToApple", "upgradeToII":
+			if success:
+				var profile: Dictionary = response.get("profile", {})
+				var migration: Dictionary = response.get("migration", {})
+				_log("Account upgrade success: %s" % action)
+				if profile and not profile.is_empty():
+					_update_cached_profile(profile)
+					_auth_type = str(response.get("authType", "google"))
+				# Capture session token (for HTTP API session-based routing post-upgrade)
+				var token = str(response.get("sessionToken", ""))
+				if token != "":
+					_session_token = token
+					_log("Session token captured from upgrade")
+				account_upgraded.emit(profile, migration)
+			else:
+				var error: String = str(response.get("error", "Upgrade failed"))
+				_log("Account upgrade failed: %s" % error)
+				account_upgrade_failed.emit(error)
 
 # ============================================================
 # HTTP RESPONSE HANDLER (Native Only)
@@ -403,6 +500,22 @@ func _on_http_request_completed(result: int, response_code: int, headers: Packed
 	
 	if response_code != 200:
 		var error_msg = response.get("error", "Unknown error")
+		# 404 on profile lookup is expected for new players who haven't submitted yet
+		if response_code == 404 and _current_endpoint == "player_profile":
+			_log("Player profile not found (new player) - this is normal for first-time anonymous users")
+			_is_refreshing_profile = false
+			no_profile.emit()
+			_current_meta = {}
+			_http_busy = false
+			_process_next_request()
+			return
+		# 404 on end play session is expected - session was already consumed by score submission or expired
+		if response_code == 404 and _current_endpoint == "end_play_session":
+			_log("Play session already ended or expired - this is normal")
+			_current_meta = {}
+			_http_busy = false
+			_process_next_request()
+			return
 		push_error("[CheddaBoards] API error (%d): %s" % [response_code, error_msg])
 		request_failed.emit(_current_endpoint, error_msg)
 		_emit_http_failure(error_msg)
@@ -424,6 +537,8 @@ func _emit_http_success(data) -> void:
 			# Use the pending values we stored before the request
 			_log("Score submission successful: %d points, %d streak" % [_pending_score, _pending_streak])
 			score_submitted.emit(_pending_score, _pending_streak)
+			# After score succeeds (player now exists on backend), flush deferred achievements
+			_flush_deferred_achievements()
 		
 		"leaderboard":
 			var entries = data.get("leaderboard", [])
@@ -447,6 +562,7 @@ func _emit_http_success(data) -> void:
 			var new_nick = str(data.get("nickname", ""))
 			if new_nick != "":
 				_nickname = new_nick
+				_nickname_just_changed = true
 				if not _cached_profile.is_empty():
 					_cached_profile["nickname"] = new_nick
 				nickname_changed.emit(new_nick)
@@ -456,6 +572,7 @@ func _emit_http_success(data) -> void:
 			var new_nick = str(data.get("nickname", ""))
 			if new_nick != "":
 				_nickname = new_nick
+				_nickname_just_changed = true
 				if not _cached_profile.is_empty():
 					_cached_profile["nickname"] = new_nick
 				nickname_changed.emit(new_nick)
@@ -466,6 +583,29 @@ func _emit_http_success(data) -> void:
 		"unlock_achievement":
 			var ach_id = str(data.get("achievementId", ""))
 			achievement_unlocked.emit(ach_id)
+			# Track deferred achievement completion
+			if _deferred_achievements_remaining > 0:
+				_deferred_achievements_synced.append(ach_id)
+				_deferred_achievements_remaining -= 1
+				_log("Achievement synced: %s (%d remaining)" % [ach_id, _deferred_achievements_remaining])
+				if _deferred_achievements_remaining <= 0:
+					_log("All deferred achievements done: %d synced" % _deferred_achievements_synced.size())
+					achievements_loaded.emit(_deferred_achievements_synced.duplicate())
+					_deferred_achievements_synced.clear()
+		
+		"unlock_achievement_batch":
+			# Batch response - all achievements synced in one request
+			var synced = data.get("synced", 0)
+			var results = data.get("results", [])
+			_log("Batch achievement sync complete: %d synced" % synced)
+			for result in results:
+				if result.get("success", false):
+					var ach_id = str(result.get("achievementId", ""))
+					_deferred_achievements_synced.append(ach_id)
+					achievement_unlocked.emit(ach_id)
+			achievements_loaded.emit(_deferred_achievements_synced.duplicate())
+			_deferred_achievements_synced.clear()
+			_deferred_achievements_remaining = 0
 		
 		"achievements":
 			var achievements = data.get("achievements", [])
@@ -555,7 +695,19 @@ func _emit_http_failure(error: String) -> void:
 		"change_nickname", "change_nickname_anonymous":
 			nickname_error.emit(error)
 		"unlock_achievement":
-			pass
+			# Track deferred achievement completion even on failure
+			if _deferred_achievements_remaining > 0:
+				_deferred_achievements_remaining -= 1
+				_log("Achievement unlock failed (%d remaining)" % _deferred_achievements_remaining)
+				if _deferred_achievements_remaining <= 0:
+					achievements_loaded.emit(_deferred_achievements_synced.duplicate())
+					_deferred_achievements_synced.clear()
+		"unlock_achievement_batch":
+			# Batch failed - emit empty result
+			_log("Batch achievement sync failed: %s" % error)
+			achievements_loaded.emit([])
+			_deferred_achievements_synced.clear()
+			_deferred_achievements_remaining = 0
 		"achievements":
 			achievements_loaded.emit([])
 		"list_scoreboards":
@@ -594,21 +746,21 @@ func _emit_http_failure(error: String) -> void:
 	_process_next_request()
 
 func _make_http_request(endpoint: String, method: int, body: Dictionary, request_type: String, meta: Dictionary = {}) -> void:
-	if api_key.is_empty():
-		_log("API key not set - skipping HTTP request to %s" % endpoint)
+	if api_key.is_empty() and _session_token.is_empty():
+		_log("No credentials set - skipping HTTP request to %s" % endpoint)
 		match request_type:
 			"submit_score":
-				score_error.emit("API key not set")
+				score_error.emit("No credentials set")
 			"player_profile":
 				no_profile.emit()
 			"leaderboard":
 				leaderboard_loaded.emit([])
 			"player_rank":
-				rank_error.emit("API key not set")
+				rank_error.emit("No credentials set")
 			"list_scoreboards", "get_scoreboard":
-				scoreboard_error.emit("API key not set")
+				scoreboard_error.emit("No credentials set")
 			"list_archives", "get_archive", "get_last_archive", "archive_stats":
-				archive_error.emit("API key not set")
+				archive_error.emit("No credentials set")
 		return
 	
 	var request_data = {
@@ -632,13 +784,19 @@ func _execute_http_request(request_data: Dictionary) -> void:
 	_current_meta = request_data.get("meta", {})
 	
 	var headers = [
-		"Content-Type: application/json",
-		"X-API-Key: " + api_key
+		"Content-Type: application/json"
 	]
 	
-	# Add session token if available (for OAuth users)
-	if not _session_token.is_empty():
+	# Session token takes priority over API key (mutually exclusive)
+	# EXCEPT: play sessions always use API key (game-level operation, skip_validation)
+	# Proxy routes: sessionToken && !apiKey → session handlers (authenticated user)
+	#               apiKey (no sessionToken) → external handlers (anonymous/API)
+	var force_api_key = _current_endpoint in ["start_play_session", "end_play_session"]
+	if not _session_token.is_empty() and not force_api_key:
 		headers.append("X-Session-Token: " + _session_token)
+		_log("Using session token for auth")
+	elif not api_key.is_empty():
+		headers.append("X-API-Key: " + api_key)
 	
 	# Add game ID header if set
 	if not game_id.is_empty():
@@ -647,7 +805,14 @@ func _execute_http_request(request_data: Dictionary) -> void:
 	var url = API_BASE_URL + request_data.endpoint
 	var json_body = JSON.stringify(request_data.body) if request_data.body.size() > 0 else ""
 	
-	_log("HTTP %s: %s" % ["POST" if request_data.method == HTTPClient.METHOD_POST else "GET", url])
+	var method_str = "GET"
+	if request_data.method == HTTPClient.METHOD_POST:
+		method_str = "POST"
+	elif request_data.method == HTTPClient.METHOD_PUT:
+		method_str = "PUT"
+	elif request_data.method == HTTPClient.METHOD_DELETE:
+		method_str = "DELETE"
+	_log("HTTP %s: %s" % [method_str, url])
 	
 	var error = _http_request.request(url, headers, request_data.method, json_body)
 	if error != OK:
@@ -671,6 +836,12 @@ func _process_next_request() -> void:
 func _update_cached_profile(profile: Dictionary) -> void:
 	if profile.is_empty():
 		return
+
+	# Preserve nickname from recent rename - backend/JS cache may return stale data
+	if _nickname_just_changed and not _nickname.is_empty():
+		profile["nickname"] = _nickname
+		_log("Preserving renamed nickname '%s' over stale backend data" % _nickname)
+		_nickname_just_changed = false
 
 	_cached_profile = profile
 
@@ -979,6 +1150,7 @@ func logout() -> void:
 		_cached_profile = {}
 		_auth_type = ""
 		_nickname = ""
+		_session_token = ""  # Clear session token so anonymous play uses API key path
 		# Also call JS logout for OAuth users
 		JavaScriptBridge.eval("chedda_logout()", true)
 		_log("Logout requested")
@@ -1047,14 +1219,9 @@ func refresh_profile() -> void:
 		_log("Profile refresh requested (API)")
 
 func change_nickname(new_nickname: String = "") -> void:
-	if _is_web and not is_anonymous():
-		# OAuth users on web - use JS bridge
-		if not _init_complete:
-			nickname_error.emit("CheddaBoards not ready")
-			return
-		
-		if new_nickname == "":
-			# No argument - show JS prompt
+	if new_nickname == "":
+		if _is_web:
+			# Show JS prompt for web users
 			var current = get_nickname().replace("'", "\\'").replace('"', '\\"')
 			var js_code = """
 				(function() {
@@ -1065,24 +1232,28 @@ func change_nickname(new_nickname: String = "") -> void:
 				})();
 			""" % current
 			JavaScriptBridge.eval(js_code, true)
+			_log("Nickname change requested (JS prompt)")
 		else:
-			# Argument provided - change directly
-			var safe_nickname: String = new_nickname.replace("'", "\\'").replace('"', '\\"')
-			JavaScriptBridge.eval("chedda_change_nickname('%s')" % safe_nickname, true)
-		_log("Nickname change requested (JS)")
-	elif not _session_token.is_empty():
-		# OAuth session users (native) - use session endpoint
-		if new_nickname == "":
 			nickname_error.emit("Nickname required - use change_nickname('name')")
-			return
+		return
+	
+	# All nickname changes go through HTTP API with proper auth routing
+	# EXCEPT: Anonymous players who haven't submitted a score yet don't exist
+	# on the backend - the PUT would return 400 "User not found".
+	# Just set locally; the nickname is included in the score submission body.
+	if is_anonymous() and _cached_profile.is_empty():
+		_nickname = new_nickname
+		_log("Nickname set locally (no backend profile yet): %s" % new_nickname)
+		nickname_changed.emit(new_nickname)
+		return
+	
+	if not _session_token.is_empty():
+		# OAuth users - session token path: PUT /profile/nickname
 		var body = {"nickname": new_nickname}
 		_make_http_request("/profile/nickname", HTTPClient.METHOD_PUT, body, "change_nickname")
-		_log("Nickname change requested (session)")
-	else:
-		# Anonymous/API-key users - use player endpoint
-		if new_nickname == "":
-			nickname_error.emit("Nickname required - use change_nickname('name')")
-			return
+		_log("Nickname change requested (session) -> %s" % new_nickname)
+	elif not api_key.is_empty():
+		# Anonymous/API-key users - API key path: PUT /players/{id}/nickname
 		var pid = get_player_id()
 		if pid.is_empty():
 			nickname_error.emit("No player ID set")
@@ -1091,6 +1262,8 @@ func change_nickname(new_nickname: String = "") -> void:
 		var url = "/players/%s/nickname" % pid.uri_encode()
 		_make_http_request(url, HTTPClient.METHOD_PUT, body, "change_nickname_anonymous")
 		_log("Nickname change requested (HTTP API) for: %s -> %s" % [pid, new_nickname])
+	else:
+		nickname_error.emit("Not authenticated")
 			
 # ============================================================
 # PUBLIC API - SCORES
@@ -1196,9 +1369,7 @@ func end_play_session() -> void:
 	
 	_log("Ending play session on server: %s" % _play_session_token.left(30))
 	var body = {
-		"gameId": game_id,
-		"playerId": get_player_id(),
-		"token": _play_session_token
+		"playSessionToken": _play_session_token
 	}
 	# Fire and forget - don't wait for response
 	_make_http_request("/play-sessions/end", HTTPClient.METHOD_POST, body, "end_play_session")
@@ -1433,8 +1604,25 @@ func unlock_achievement(achievement_id: String, achievement_name: String = "", a
 			"playerId": get_player_id(),
 			"achievementId": achievement_id
 		}
-		_make_http_request("/achievements", HTTPClient.METHOD_POST, body, "unlock_achievement")
-		_log("Achievement unlock (HTTP): %s" % achievement_id)
+		# Use async request so achievements don't block leaderboard loading
+		_make_http_request_async("/achievements", HTTPClient.METHOD_POST, body, "unlock_achievement")
+		_log("Achievement unlock (HTTP async): %s" % achievement_id)
+
+func unlock_achievements_batch(achievement_ids: Array) -> void:
+	"""Unlock multiple achievements in a single request (more efficient than individual calls)."""
+	if achievement_ids.is_empty():
+		return
+	
+	_log("Batch unlocking %d achievements..." % achievement_ids.size())
+	_deferred_achievements_remaining = 1  # Single batch request
+	_deferred_achievements_synced = []
+	
+	var body = {
+		"playerId": get_player_id(),
+		"achievementIds": achievement_ids
+	}
+	# Use async request so achievements don't block leaderboard loading
+	_make_http_request_async("/achievements", HTTPClient.METHOD_POST, body, "unlock_achievement_batch")
 
 func get_achievements(player_id: String = "") -> void:
 	var pid = player_id if player_id != "" else get_player_id()
@@ -1498,15 +1686,13 @@ func submit_score_with_achievements(score: int, streak: int, achievements: Array
 		# Anonymous or native: use HTTP API
 		_log("Submitting score with %d achievements (HTTP API)" % ach_ids.size())
 		
-		# Batch unlock achievements first (if has achievements)
-		if ach_ids.size() > 0:
-			var ach_body = {
-				"playerId": get_player_id(),
-				"achievementIds": ach_ids  # Send all at once!
-			}
-			_make_http_request("/achievements", HTTPClient.METHOD_POST, ach_body, "unlock_achievements_batch")
+		# Store achievement IDs - they'll be queued AFTER score succeeds
+		# (score submission creates the player profile on the backend)
+		_deferred_achievement_ids = ach_ids.duplicate()
+		_deferred_achievements_remaining = 0
+		_deferred_achievements_synced = []
 		
-		# Submit score
+		# Submit score FIRST (creates/updates player profile on backend)
 		var score_body = {
 			"playerId": get_player_id(),
 			"gameId": game_id,
@@ -1521,10 +1707,30 @@ func submit_score_with_achievements(score: int, streak: int, achievements: Array
 		else:
 			_log("Submitting: score=%d, streak=%d, nickname=%s, gameId=%s, playerId=%s (no session)" % [score, streak, score_body.nickname, game_id, score_body.playerId])
 		_make_http_request("/scores", HTTPClient.METHOD_POST, score_body, "submit_score")
+		# Achievement unlocks will be queued by _flush_deferred_achievements()
+		# called from the score success handler
 
 # ============================================================
 # PUBLIC API - ANALYTICS
 # ============================================================
+
+func _flush_deferred_achievements() -> void:
+	"""Send all deferred achievements in a single batch request."""
+	if _deferred_achievement_ids.is_empty():
+		return
+	var count = _deferred_achievement_ids.size()
+	_deferred_achievements_remaining = 1  # Just one batch request now
+	_deferred_achievements_synced = []
+	_log("Batch syncing %d achievements..." % count)
+	
+	# Send all achievements in one request using achievementIds array
+	var body = {
+		"playerId": get_player_id(),
+		"achievementIds": _deferred_achievement_ids.duplicate()  # Array of IDs
+	}
+	# Use async so it doesn't block leaderboard loading
+	_make_http_request_async("/achievements", HTTPClient.METHOD_POST, body, "unlock_achievement_batch")
+	_deferred_achievement_ids.clear()
 
 func track_event(event_type: String, metadata: Dictionary = {}) -> void:
 	if _is_web:
@@ -1604,7 +1810,7 @@ func _get_profile_from_js() -> Dictionary:
 func debug_status() -> void:
 	print("")
 	print("╔══════════════════════════════════════════════╗")
-	print("║        CheddaBoards Debug Status v1.5.8      ║")
+	print("║        CheddaBoards Debug Status v1.8.1      ║")
 	print("╠══════════════════════════════════════════════╣")
 	print("║ Environment                                  ║")
 	print("║  - Platform:         %s" % ("Web" if _is_web else "Native").rpad(24) + "║")
