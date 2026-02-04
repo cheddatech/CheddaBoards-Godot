@@ -1,0 +1,24 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" uid="uid://cgovh1rqvdp14" path="res://example_game/CheddaClickGame.gd" id="1_game"]
+
+[node name="CheddaClickGame" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_game")
+
+[node name="GameArea" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="SpawnTimer" type="Timer" parent="."]
+wait_time = 1.5
+autostart = true
