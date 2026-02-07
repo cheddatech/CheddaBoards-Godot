@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" uid="uid://dtd2d2nr5a5n2" path="res://scripts/Game.gd" id="1_wrapper"]
 [ext_resource type="Texture2D" uid="uid://cighw5yua3ygf" path="res://addons/cheddaboards/icon.png" id="2_logo"]
-[ext_resource type="Theme" uid="uid://cg1jdv7rfyi22" path="res://addons/cheddaboards/themes/Buttons.tres" id="3_theme"]
+[ext_resource type="Theme" uid="uid://cg1jdv7rfyi22" path="res://themes/Buttons.tres" id="3_theme"]
 
 [node name="Game" type="Control"]
 layout_mode = 3
