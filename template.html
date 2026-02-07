@@ -3,11 +3,22 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>CheddaClick</title>
+  <title>CheddaMatch</title>
 
   <!-- Godot engine bootstrap -->
   <script src="index.js"></script>
   
+  <script>
+    (function() {
+      const _realPrompt = window.prompt.bind(window);
+      window.prompt = function(msg, defaultVal) {
+        console.log('[PromptGuard] Suppressed SDK prompt:', msg);
+        return null;
+      };
+      window._realPrompt = _realPrompt;
+    })();
+  </script>
+
   <!-- CheddaBoards SDK (CDN) -->
   <script src="https://cdn.jsdelivr.net/npm/cheddaboards_v1@latest/cheddaboards.min.js"></script>
 
@@ -87,7 +98,7 @@
 
   <script type="module">
     // ============================================================
-    // CheddaBoards Godot 4 Template v1.5.3
+    // CheddaBoards Godot 4 Template v1.5.15
     // WITH DEVICE ID / ANONYMOUS PLAY SUPPORT
     // WITH PLAY SESSION TIME VALIDATION SUPPORT (HTTP API for all users)
     // https://github.com/cheddatech/CheddaBoards-Godot
@@ -137,6 +148,220 @@
     };
 
     // ============================================================
+    // HTTP API WRAPPER (replaces SDK for all operations)
+    // ============================================================
+    const CheddaAPI = {
+      sessionId: null,
+      gameId: CONFIG.GAME_ID,
+      baseUrl: CONFIG.API_BASE_URL,
+      _authenticated: false,
+      _authType: null,
+      _profile: null,
+      
+      // Helper for HTTP requests
+      async _fetch(endpoint, options = {}) {
+        const headers = {
+          'Content-Type': 'application/json',
+          'X-Game-Id': this.gameId,
+          ...(this.sessionId && { 'X-Session-Token': this.sessionId }),
+          ...options.headers
+        };
+        
+        const response = await fetch(`${this.baseUrl}${endpoint}`, {
+          ...options,
+          headers
+        });
+        
+        return response.json();
+      },
+      
+      // ─────────────────────────────────────────────────────────
+      // AUTH METHODS
+      // ─────────────────────────────────────────────────────────
+      login: {
+        async google(idToken, nickname) {
+          const data = await CheddaAPI._fetch('/auth/google', {
+            method: 'POST',
+            body: JSON.stringify({ idToken, nickname })
+          });
+          
+          if (data.success && data.sessionId) {
+            CheddaAPI.sessionId = data.sessionId;
+            CheddaAPI._authenticated = true;
+            CheddaAPI._authType = 'google';
+            CheddaAPI._profile = {
+              nickname: data.nickname,
+              score: data.gameProfile?.score || 0,
+              streak: data.gameProfile?.streak || 0,
+              achievements: data.gameProfile?.achievements || [],
+              playCount: data.gameProfile?.playCount || 0,
+              isNewUser: data.isNewUser
+            };
+            return CheddaAPI._profile;
+          }
+          
+          throw new Error(data.error || 'Google login failed');
+        },
+        
+        async apple(auth, nickname) {
+          const data = await CheddaAPI._fetch('/auth/apple', {
+            method: 'POST',
+            body: JSON.stringify({
+              identityToken: auth.identityToken || auth.authorization?.id_token,
+              authorizationCode: auth.authorizationCode || auth.authorization?.code,
+              user: auth.user,
+              nickname
+            })
+          });
+          
+          if (data.success && data.sessionId) {
+            CheddaAPI.sessionId = data.sessionId;
+            CheddaAPI._authenticated = true;
+            CheddaAPI._authType = 'apple';
+            CheddaAPI._profile = {
+              nickname: data.nickname,
+              score: data.gameProfile?.score || 0,
+              streak: data.gameProfile?.streak || 0,
+              achievements: data.gameProfile?.achievements || [],
+              playCount: data.gameProfile?.playCount || 0,
+              isNewUser: data.isNewUser
+            };
+            return CheddaAPI._profile;
+          }
+          
+          throw new Error(data.error || 'Apple login failed');
+        },
+        
+        async anonymous(deviceId, nickname) {
+          const data = await CheddaAPI._fetch('/auth/anonymous', {
+            method: 'POST',
+            body: JSON.stringify({ deviceId, nickname })
+          });
+          
+          if (data.success && data.sessionId) {
+            CheddaAPI.sessionId = data.sessionId;
+            CheddaAPI._authenticated = true;
+            CheddaAPI._authType = 'anonymous';
+            CheddaAPI._profile = {
+              nickname: data.nickname,
+              score: data.gameProfile?.score || 0,
+              streak: data.gameProfile?.streak || 0,
+              achievements: data.gameProfile?.achievements || [],
+              playCount: data.gameProfile?.playCount || 0
+            };
+            return CheddaAPI._profile;
+          }
+          
+          throw new Error(data.error || 'Anonymous login failed');
+        }
+      },
+      
+      // ─────────────────────────────────────────────────────────
+      // PROFILE & SCORES
+      // ─────────────────────────────────────────────────────────
+      async refreshProfile() {
+        const data = await this._fetch('/auth/profile');
+        
+        if (data.success) {
+          this._profile = {
+            nickname: data.nickname,
+            score: data.gameProfile?.score || 0,
+            streak: data.gameProfile?.streak || 0,
+            achievements: data.gameProfile?.achievements || [],
+            playCount: data.gameProfile?.playCount || 0,
+            lastPlayed: data.gameProfile?.lastPlayed
+          };
+          return this._profile;
+        }
+        
+        return null;
+      },
+      
+      async submitScore(score, streak) {
+        const data = await this._fetch('/scores', {
+          method: 'POST',
+          body: JSON.stringify({ score, streak })
+        });
+        
+        return data.success 
+          ? { success: true, message: data.message }
+          : { success: false, error: data.error };
+      },
+      
+      async unlockAchievement(achievementId) {
+        const data = await this._fetch('/achievements', {
+          method: 'POST',
+          body: JSON.stringify({ achievementId })
+        });
+        
+        return data.success
+          ? { success: true, message: data.message }
+          : { success: false, error: data.error };
+      },
+      
+      async changeNickname(nickname) {
+        const data = await this._fetch('/profile/nickname', {
+          method: 'PUT',
+          body: JSON.stringify({ nickname })
+        });
+        
+        if (data.success) {
+          if (this._profile) this._profile.nickname = nickname;
+          return { success: true };
+        }
+        
+        return { success: false, error: data.error };
+      },
+      
+      // ─────────────────────────────────────────────────────────
+      // LEADERBOARDS
+      // ─────────────────────────────────────────────────────────
+      async getScoreboard(scoreboardName, limit = 100) {
+        const data = await this._fetch(`/games/${this.gameId}/scoreboards/${scoreboardName}?limit=${limit}`);
+        return data.success ? data.entries : [];
+      },
+      
+      async getScoreboardRank(scoreboardName) {
+        const data = await this._fetch(`/games/${this.gameId}/scoreboards/${scoreboardName}/rank`);
+        return data.success ? { rank: data.rank, total: data.total } : { rank: 0, total: 0 };
+      },
+      
+      // ─────────────────────────────────────────────────────────
+      // SESSION MANAGEMENT
+      // ─────────────────────────────────────────────────────────
+      isAuthenticated() {
+        return this._authenticated && !!this.sessionId;
+      },
+      
+      getAuthType() {
+        return this._authType;
+      },
+      
+      getProfile() {
+        return this._profile;
+      },
+      
+      async logout() {
+        if (this.sessionId) {
+          await this._fetch('/auth/logout', { method: 'POST' }).catch(() => {});
+        }
+        this.sessionId = null;
+        this._authenticated = false;
+        this._authType = null;
+        this._profile = null;
+        return { success: true };
+      },
+      
+      // Instance accessor for compatibility
+      get instance() {
+        return {
+          sessionId: this.sessionId,
+          gameId: this.gameId
+        };
+      }
+    };
+
+    // ============================================================
     // INTERNAL STATE (don't modify)
     // ============================================================
     let chedda = null;
@@ -152,6 +377,7 @@
     
     // Anonymous nickname (set by Godot before login)
     let pendingNickname = null;
+    let renamedNickname = null;
     
     // Rate limiting
     let loginAttempts = 0;
@@ -174,6 +400,9 @@
     
     // Play session for time validation anti-cheat
     let playSessionToken = null;
+    
+    // SDK session token (for authenticated API calls after Google/Apple login)
+    let sdkSessionToken = null;
 
     // ============================================================
     // DEVICE ID MANAGEMENT
@@ -288,6 +517,33 @@
       isAuthenticated = true;
       authType = type;
       
+      // Capture SDK session token for authenticated API calls
+      sdkSessionToken = null;
+      if (chedda) {
+        // Check chedda.instance first (this is where the real SDK state lives)
+        if (chedda.instance) {
+          if (chedda.instance.sessionId) {
+            sdkSessionToken = chedda.instance.sessionId;
+            console.log('[Helper] Session token via .instance.sessionId:', sdkSessionToken.substring(0, 20) + '...');
+          } else if (chedda.instance.userId) {
+            sdkSessionToken = chedda.instance.userId;
+            console.log('[Helper] Session token via .instance.userId:', sdkSessionToken.substring(0, 20) + '...');
+          }
+        }
+        // Fallback to direct properties (older SDK versions)
+        if (!sdkSessionToken && typeof chedda.getSessionId === 'function') {
+          sdkSessionToken = chedda.getSessionId();
+          if (sdkSessionToken) console.log('[Helper] Session token via getSessionId():', sdkSessionToken.substring(0, 20) + '...');
+        }
+        if (!sdkSessionToken && chedda.sessionId) {
+          sdkSessionToken = chedda.sessionId;
+          console.log('[Helper] Session token via .sessionId:', sdkSessionToken.substring(0, 20) + '...');
+        }
+        if (!sdkSessionToken) {
+          console.warn('[Helper] Could not capture session token');
+        }
+      }
+      
       cachedProfileData = null;
       lastProfileFetch = 0;
       currentProfile = sanitizeProfileData(profile, true);
@@ -314,7 +570,8 @@
         action: actionName,
         success: true,
         profile: currentProfile,
-        authType: type
+        authType: type,
+        sessionToken: sdkSessionToken || null
       });
       
       saveProfileToLocalStorage(currentProfile);
@@ -376,6 +633,76 @@
         return JSON.stringify(currentProfile);
       }
       return null;
+    };
+
+    /**
+     * Get the SDK's session token for authenticated API calls
+     * This is needed for rank lookups and profile fetches after Google/Apple login
+     */
+    window.chedda_get_session_token = function() {
+      // First try our cached token
+      if (sdkSessionToken) {
+        console.log('[Bridge] Session token (cached):', sdkSessionToken.substring(0, 20) + '...');
+        return sdkSessionToken;
+      }
+      
+      // Try to get from SDK - check chedda.instance first (wrapper pattern)
+      if (chedda) {
+        if (chedda.instance?.sessionId) {
+          sdkSessionToken = chedda.instance.sessionId;
+          console.log('[Bridge] Session token (.instance.sessionId):', sdkSessionToken.substring(0, 20) + '...');
+          return sdkSessionToken;
+        }
+        if (chedda.instance?.userId) {
+          sdkSessionToken = chedda.instance.userId;
+          console.log('[Bridge] Session token (.instance.userId):', sdkSessionToken.substring(0, 20) + '...');
+          return sdkSessionToken;
+        }
+        // Fallback to direct properties
+        if (typeof chedda.getSessionId === 'function') {
+          const token = chedda.getSessionId();
+          if (token) {
+            sdkSessionToken = token;
+            console.log('[Bridge] Session token (getSessionId):', token.substring(0, 20) + '...');
+            return token;
+          }
+        }
+        if (chedda.sessionId) {
+          sdkSessionToken = chedda.sessionId;
+          console.log('[Bridge] Session token (.sessionId):', chedda.sessionId.substring(0, 20) + '...');
+          return chedda.sessionId;
+        }
+      }
+      
+      console.log('[Bridge] No session token available');
+      return null;
+    };
+
+    /**
+     * Get user ID appropriate for API calls
+     * Returns session ID for Google/Apple users, device ID for anonymous
+     */
+    window.chedda_get_user_id = function() {
+      // For authenticated users, use session ID
+      if (chedda && chedda.isAuthenticated()) {
+        const sessionId = window.chedda_get_session_token();
+        if (sessionId) {
+          console.log('[Bridge] User ID (session):', sessionId.substring(0, 12) + '...');
+          return sessionId;
+        }
+      }
+      
+      // Fallback to device ID
+      const devId = deviceId || getOrCreateDeviceId();
+      console.log('[Bridge] User ID (device):', devId.substring(0, 12) + '...');
+      return devId;
+    };
+
+    /**
+     * Check if we have a valid session token for authenticated API calls
+     */
+    window.chedda_has_session_token = function() {
+      return !!(sdkSessionToken || (chedda && chedda.getSessionId && chedda.getSessionId()));
     };
 
     /**
@@ -590,6 +917,8 @@
         currentProfile = null;
         cachedProfileData = null;
         pendingNickname = null;
+        renamedNickname = null; // Clear renamed tracking on logout
+        sdkSessionToken = null;  // Clear session token on logout
         
         localStorage.removeItem(PROFILE_STORAGE_KEY);
         
@@ -605,6 +934,267 @@
         });
       }
     };
+
+    // ============================================================
+    // ACCOUNT UPGRADE: Anonymous → Verified
+    // ============================================================
+    // These functions upgrade an anonymous device-based account to
+    // a verified Google/Apple/II account, merging all scores,
+    // achievements, and leaderboard positions.
+    // ============================================================
+
+    /**
+     * Upgrade anonymous account to Google
+     * Captures device ID, performs Google login, then migrates data
+     */
+    window.chedda_upgrade_to_google = function() {
+      try {
+        checkRateLimit();
+        console.log('[Bridge] Upgrade to Google requested');
+
+        const capturedDeviceId = deviceId || getOrCreateDeviceId();
+        if (!capturedDeviceId) {
+          responseQueue.push({
+            action: 'upgradeToGoogle',
+            success: false,
+            error: 'No device ID found. Must be playing anonymously first.'
+          });
+          return;
+        }
+
+        console.log('[Upgrade] Captured device ID:', capturedDeviceId.substring(0, 12) + '...');
+
+        if (!window.google?.accounts) {
+          responseQueue.push({
+            action: 'upgradeToGoogle',
+            success: false,
+            error: 'Google Sign-In not available'
+          });
+          return;
+        }
+
+        const timeoutId = setTimeout(() => {
+          responseQueue.push({
+            action: 'upgradeToGoogle',
+            success: false,
+            error: 'Google login timeout'
+          });
+        }, LOGIN_TIMEOUT);
+
+        window._googleUpgradeTimeout = timeoutId;
+        window._upgradeDeviceId = capturedDeviceId;
+
+        // Trigger Google sign-in — the callback in google.accounts.id.initialize
+        // will handle the credential. We intercept via a flag.
+        window._isUpgradeFlow = 'google';
+
+        google.accounts.id.prompt((notification) => {
+          clearTimeout(window._googleUpgradeTimeout);
+
+          if (notification.isNotDisplayed()) {
+            window._isUpgradeFlow = null;
+            responseQueue.push({
+              action: 'upgradeToGoogle',
+              success: false,
+              error: 'Google popup blocked'
+            });
+          } else if (notification.isSkippedMoment()) {
+            window._isUpgradeFlow = null;
+            responseQueue.push({
+              action: 'upgradeToGoogle',
+              success: false,
+              error: 'Google Sign-In cancelled'
+            });
+          }
+        });
+
+      } catch (error) {
+        window._isUpgradeFlow = null;
+        responseQueue.push({
+          action: 'upgradeToGoogle',
+          success: false,
+          error: error.message
+        });
+      }
+    };
+
+    /**
+     * Upgrade anonymous account to Apple
+     */
+    window.chedda_upgrade_to_apple = async function() {
+      let timeoutId = null;
+      try {
+        checkRateLimit();
+        console.log('[Bridge] Upgrade to Apple requested');
+
+        const capturedDeviceId = deviceId || getOrCreateDeviceId();
+        if (!capturedDeviceId) {
+          responseQueue.push({
+            action: 'upgradeToApple',
+            success: false,
+            error: 'No device ID found. Must be playing anonymously first.'
+          });
+          return;
+        }
+
+        console.log('[Upgrade] Captured device ID:', capturedDeviceId.substring(0, 12) + '...');
+
+        if (!window.AppleID?.auth) {
+          responseQueue.push({
+            action: 'upgradeToApple',
+            success: false,
+            error: 'Apple Sign-In not available'
+          });
+          return;
+        }
+
+        timeoutId = setTimeout(() => {
+          responseQueue.push({
+            action: 'upgradeToApple',
+            success: false,
+            error: 'Apple login timeout'
+          });
+        }, LOGIN_TIMEOUT);
+
+        window._appleUpgradeTimeout = timeoutId;
+        window._upgradeDeviceId = capturedDeviceId;
+        window._isUpgradeFlow = 'apple';
+
+        await AppleID.auth.signIn();
+        // The AppleIDSignInOnSuccess event handler will pick up _isUpgradeFlow
+
+      } catch (error) {
+        if (timeoutId) clearTimeout(timeoutId);
+        window._isUpgradeFlow = null;
+        console.error('[Upgrade] Apple upgrade error:', error);
+
+        if (error.error !== 'popup_closed_by_user') {
+          responseQueue.push({
+            action: 'upgradeToApple',
+            success: false,
+            error: error.message || 'Apple Sign-In failed'
+          });
+        } else {
+          responseQueue.push({
+            action: 'upgradeToApple',
+            success: false,
+            error: 'Apple Sign-In cancelled'
+          });
+        }
+      }
+    };
+
+    /**
+     * Upgrade anonymous account to Internet Identity
+     */
+    window.chedda_upgrade_to_ii = async function(nickname) {
+      let timeoutId = null;
+      try {
+        checkRateLimit();
+        console.log('[Bridge] Upgrade to Internet Identity requested');
+
+        const capturedDeviceId = deviceId || getOrCreateDeviceId();
+        if (!capturedDeviceId) {
+          responseQueue.push({
+            action: 'upgradeToII',
+            success: false,
+            error: 'No device ID found. Must be playing anonymously first.'
+          });
+          return;
+        }
+
+        console.log('[Upgrade] Captured device ID:', capturedDeviceId.substring(0, 12) + '...');
+
+        timeoutId = setTimeout(() => {
+          responseQueue.push({
+            action: 'upgradeToII',
+            success: false,
+            error: 'Login timeout'
+          });
+        }, LOGIN_TIMEOUT);
+
+        // Use SDK upgrade method if available
+        if (chedda && chedda.upgradeAnonymousToII) {
+          const result = await chedda.upgradeAnonymousToII(nickname);
+          clearTimeout(timeoutId);
+
+          handleLoginSuccess('cheddaId', result.profile);
+
+          responseQueue.push({
+            action: 'upgradeToII',
+            success: true,
+            profile: sanitizeProfileData(result.profile, true),
+            migration: result.migration
+          });
+        } else {
+          // Fallback: login then migrate via HTTP
+          const profile = await chedda.login.chedda(nickname);
+          clearTimeout(timeoutId);
+          handleLoginSuccess('cheddaId', profile);
+
+          // Attempt migration via HTTP API
+          const migration = await _migrateViaHttp(capturedDeviceId);
+
+          responseQueue.push({
+            action: 'upgradeToII',
+            success: true,
+            profile: sanitizeProfileData(profile, true),
+            migration: migration
+          });
+        }
+
+      } catch (error) {
+        if (timeoutId) clearTimeout(timeoutId);
+        console.error('[Upgrade] II upgrade error:', error);
+        responseQueue.push({
+          action: 'upgradeToII',
+          success: false,
+          error: error.message || 'Upgrade failed'
+        });
+      }
+    };
+
+    /**
+     * Internal: Migrate anonymous account via HTTP API after social login
+     */
+    async function _migrateViaHttp(capturedDeviceId) {
+      const sessionToken = sdkSessionToken || window.chedda_get_session_token();
+
+      if (!sessionToken) {
+        console.warn('[Upgrade] No session token for migration');
+        return { success: false, error: 'No session token' };
+      }
+
+      try {
+        console.log('[Upgrade] Calling /migrate-account...');
+        const response = await fetch(`${CONFIG.API_BASE_URL}/migrate-account`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Session-Token': sessionToken
+          },
+          body: JSON.stringify({ deviceId: capturedDeviceId })
+        });
+
+        const data = await response.json();
+
+        if (data.ok && data.data) {
+          console.log('[Upgrade] Migration success:', data.data);
+          return {
+            success: true,
+            migratedGames: data.data.migratedGames || 0,
+            migratedScoreboards: data.data.migratedScoreboards || 0,
+            message: data.data.message
+          };
+        } else {
+          console.warn('[Upgrade] Migration failed:', data.error);
+          return { success: false, error: data.error || 'Migration failed' };
+        }
+      } catch (e) {
+        console.error('[Upgrade] Migration HTTP error:', e);
+        return { success: false, error: e.message };
+      }
+    }
 
     window.chedda_refresh_profile = async function() {
       if (isRefreshingProfile) {
@@ -638,22 +1228,57 @@
         lastProfileFetch = 0;
         console.log('[Bridge] Profile refresh requested');
         
+        // Make sure we have the session token - check chedda.instance first
+        if (!sdkSessionToken) {
+          if (chedda.instance?.sessionId) {
+            sdkSessionToken = chedda.instance.sessionId;
+          } else if (chedda.instance?.userId) {
+            sdkSessionToken = chedda.instance.userId;
+          } else if (typeof chedda.getSessionId === 'function') {
+            sdkSessionToken = chedda.getSessionId();
+          } else if (chedda.sessionId) {
+            sdkSessionToken = chedda.sessionId;
+          }
+          console.log('[Bridge] Captured session token during refresh:', sdkSessionToken ? sdkSessionToken.substring(0, 20) + '...' : 'none');
+        }
+        
         const profile = await chedda.getProfile(true);
         console.log('[Bridge] Profile received from backend:', profile);
         
         if (profile) {
           currentProfile = sanitizeProfileData(profile, true);
+          // Preserve renamed nickname if backend returns stale data
+          if (renamedNickname && currentProfile.nickname !== renamedNickname) {
+            console.log("[Bridge] Preserving renamed nickname:", renamedNickname, "over backend:", currentProfile.nickname);
+            currentProfile.nickname = renamedNickname;
+          } else if (renamedNickname && currentProfile.nickname === renamedNickname) {
+            console.log("[Bridge] Backend caught up with renamed nickname:", renamedNickname);
+            renamedNickname = null;
+          }
           saveProfileToLocalStorage(currentProfile);
           responseQueue.push({
             action: 'getProfile',
             success: true,
-            profile: currentProfile
+            profile: currentProfile,
+            sessionToken: sdkSessionToken || null
+          });
+        } else if (currentProfile) {
+          // User is authenticated but no game profile yet (hasn't played this game)
+          // Return the cached profile from login instead of failing
+          console.log('[Bridge] No game profile yet, returning login profile');
+          responseQueue.push({
+            action: 'getProfile',
+            success: true,
+            profile: currentProfile,
+            sessionToken: sdkSessionToken || null,
+            isNewPlayer: true
           });
         } else {
           responseQueue.push({
             action: 'getProfile',
             success: false,
-            error: 'No profile data'
+            error: 'No profile data',
+            sessionToken: sdkSessionToken || null
           });
         }
       } catch (error) {
@@ -667,9 +1292,6 @@
       }
     };
 
-    /**
-     * Submit score - FIXED: Submit score FIRST, then achievements
-     */
     window.chedda_submit_score = async function(score, streak, achievements = []) {
       if (isSubmittingScore) {
         console.log('[Bridge] Score submission already in progress');
@@ -685,11 +1307,32 @@
         let result = null;
         
         if (chedda && chedda.isAuthenticated()) {
-          console.log('[Bridge] Submitting via authenticated session...');
+          console.log('[Bridge] Submitting via authenticated session (HTTP API)...');
           
-          // Submit score FIRST to create/update game profile
-          result = await chedda.submitScore(score, streak);
-          console.log('[Bridge] Score result:', result);
+          // Use HTTP API instead of SDK's broken direct canister call
+          const token = sdkSessionToken || chedda?.instance?.sessionId;
+          if (token) {
+            try {
+              const response = await fetch('https://api.cheddaboards.com/scores', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-Session-Token': token,
+                  'X-Game-Id': CONFIG.GAME_ID
+                },
+                body: JSON.stringify({ score, streak })
+              });
+              const data = await response.json();
+              console.log('[Bridge] HTTP API score result:', data);
+              result = data.success ? { success: true, message: data.message } : { success: false, error: data.error };
+            } catch (e) {
+              console.error('[Bridge] HTTP API score failed:', e);
+              result = { success: false, error: e.message };
+            }
+          } else {
+            console.error('[Bridge] No session token for authenticated user!');
+            result = { success: false, error: 'No session token' };
+          }
           
           // THEN unlock achievements (profile now exists)
           if (achievements && achievements.length > 0) {
@@ -904,6 +1547,86 @@
     };
 
     /**
+     * End/cancel play session on the server
+     * Call when player quits without submitting a score
+     */
+    window.chedda_end_play_session = async function() {
+      try {
+        const token = playSessionToken;
+        if (!token) {
+          console.log('[Bridge] No play session to end');
+          return JSON.stringify({ ok: true, message: 'No session active' });
+        }
+
+        console.log('[Bridge] Ending play session:', token.substring(0, 20) + '...');
+
+        // Skip server call for local/fallback tokens
+        if (token.startsWith('local_') || token.startsWith('error_')) {
+          playSessionToken = null;
+          console.log('[Bridge] Cleared local play session');
+          return JSON.stringify({ ok: true, message: 'Local session cleared' });
+        }
+
+        // Try HTTP API first (works for all auth types)
+        if (CONFIG.API_KEY) {
+          try {
+            const response = await fetch(`${CONFIG.API_BASE_URL}/play-sessions/end`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-API-Key': CONFIG.API_KEY
+              },
+              body: JSON.stringify({ playSessionToken: token })
+            });
+
+            if (response.ok) {
+              playSessionToken = null;
+              console.log('[Bridge] Play session ended via HTTP API');
+              return JSON.stringify({ ok: true, message: 'Session ended' });
+            } else {
+              const errorText = await response.text();
+              console.warn('[Bridge] End session HTTP failed:', response.status, errorText);
+            }
+          } catch (e) {
+            console.warn('[Bridge] End session HTTP error:', e.message);
+          }
+        }
+
+        // Fallback: try session token auth
+        if (sdkSessionToken) {
+          try {
+            const response = await fetch(`${CONFIG.API_BASE_URL}/play-sessions/end`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Session-Token': sdkSessionToken
+              },
+              body: JSON.stringify({ playSessionToken: token })
+            });
+
+            if (response.ok) {
+              playSessionToken = null;
+              console.log('[Bridge] Play session ended via session token');
+              return JSON.stringify({ ok: true, message: 'Session ended' });
+            }
+          } catch (e) {
+            console.warn('[Bridge] End session (session auth) error:', e.message);
+          }
+        }
+
+        // Last resort: just clear locally
+        playSessionToken = null;
+        console.log('[Bridge] Play session cleared locally (server end failed)');
+        return JSON.stringify({ ok: true, message: 'Session cleared locally' });
+
+      } catch (error) {
+        console.error('[Bridge] End play session error:', error);
+        playSessionToken = null;
+        return JSON.stringify({ ok: false, error: error.message });
+      }
+    };
+
+    /**
      * Submit score WITH play session token for time validation
      */
     window.chedda_submit_score_with_session = async function(score, streak, sessionToken) {
@@ -1093,6 +1816,7 @@
         }
         
         await chedda.changeNickname(nickname);
+        renamedNickname = nickname; // Track - backend may return stale name
         
         if (currentProfile) {
           currentProfile.nickname = nickname;
@@ -1122,7 +1846,7 @@
     window.chedda_change_nickname_prompt = async function() {
       try {
         const currentNick = currentProfile?.nickname || 'Player';
-        const newNickname = prompt('Enter your nickname:', currentNick);
+        const newNickname = (window._realPrompt || prompt)('Enter your nickname:', currentNick);
         
         if (newNickname && newNickname.trim()) {
           await window.chedda_change_nickname(newNickname.trim());
@@ -1143,10 +1867,221 @@
     };
     
     // ============================================================
+    // NICKNAME AVAILABILITY CHECK
+    // ============================================================
+    
+    let nicknameCheckTimeout = null;
+    
+    /**
+     * Check if a nickname is available
+     * Returns: { available: bool, reason: string|null, message: string }
+     */
+    window.chedda_check_nickname = async function(nickname) {
+      if (!nickname || nickname.length < 3) {
+        return { available: false, reason: 'length', message: 'Name must be at least 3 characters' };
+      }
+      if (nickname.length > 12) {
+        return { available: false, reason: 'length', message: 'Name must be at most 12 characters' };
+      }
+      if (!/^[a-zA-Z0-9_]+$/.test(nickname)) {
+        return { available: false, reason: 'characters', message: 'Only letters, numbers, and underscores' };
+      }
+      
+      try {
+        const response = await fetch(`${CONFIG.API_BASE_URL}/nickname/check?name=${encodeURIComponent(nickname)}`, {
+          headers: {
+            'X-Game-Id': CONFIG.GAME_ID,
+            ...(sdkSessionToken && { 'X-Session-Token': sdkSessionToken })
+          }
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+          return {
+            available: data.available,
+            reason: data.reason,
+            message: data.message
+          };
+        }
+        return { available: true, reason: 'unknown', message: 'Could not verify' };
+      } catch (e) {
+        console.warn('[Nickname] Check failed:', e);
+        return { available: true, reason: 'error', message: 'Could not verify' };
+      }
+    };
+    
+    /**
+     * Show mobile-friendly name input modal with availability check
+     * This replaces prompt() which freezes on mobile browsers
+     */
+    window.chedda_show_name_modal = function(defaultValue, mode) {
+      return new Promise((resolve) => {
+        // Remove existing modal if any
+        const existing = document.getElementById('chedda-name-modal');
+        if (existing) existing.remove();
+        
+        const isRename = mode === 'rename';
+        
+        // Create modal HTML
+        const modal = document.createElement('div');
+        modal.id = 'chedda-name-modal';
+        modal.innerHTML = `
+          <div class="cnm-backdrop"></div>
+          <div class="cnm-container">
+            <div class="cnm-title">${isRename ? 'Change Name' : 'Enter Your Name'}</div>
+            <input type="text" class="cnm-input" value="${defaultValue || ''}" maxlength="12" placeholder="Your name..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+            <div class="cnm-status"></div>
+            <div class="cnm-buttons">
+              <button class="cnm-btn cnm-cancel">Cancel</button>
+              <button class="cnm-btn cnm-confirm" disabled>${isRename ? 'Save' : "Let's Go!"}</button>
+            </div>
+          </div>
+        `;
+        
+        // Add styles
+        const style = document.createElement('style');
+        style.textContent = `
+          #chedda-name-modal { position: fixed; inset: 0; z-index: 999999; display: flex; align-items: center; justify-content: center; }
+          .cnm-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.8); }
+          .cnm-container { position: relative; background: #1a1a2e; border-radius: 16px; padding: 24px; width: 90%; max-width: 320px; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+          .cnm-title { color: #f5d742; font-size: 20px; font-weight: bold; text-align: center; margin-bottom: 16px; }
+          .cnm-input { width: 100%; padding: 14px; font-size: 18px; border: 2px solid #333; border-radius: 8px; background: #0f0f1a; color: #fff; text-align: center; box-sizing: border-box; }
+          .cnm-input:focus { outline: none; border-color: #f5d742; }
+          .cnm-input.valid { border-color: #4CAF50; }
+          .cnm-input.invalid { border-color: #f44336; }
+          .cnm-status { height: 24px; margin: 12px 0; text-align: center; font-size: 14px; }
+          .cnm-status.checking { color: #888; }
+          .cnm-status.available { color: #4CAF50; }
+          .cnm-status.taken { color: #f44336; }
+          .cnm-status.error { color: #ff9800; }
+          .cnm-buttons { display: flex; gap: 12px; }
+          .cnm-btn { flex: 1; padding: 14px; font-size: 16px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; }
+          .cnm-cancel { background: #333; color: #fff; }
+          .cnm-confirm { background: #f5d742; color: #1a1a2e; }
+          .cnm-confirm:disabled { background: #666; color: #999; cursor: not-allowed; }
+        `;
+        
+        document.head.appendChild(style);
+        document.body.appendChild(modal);
+        
+        const input = modal.querySelector('.cnm-input');
+        const status = modal.querySelector('.cnm-status');
+        const confirmBtn = modal.querySelector('.cnm-confirm');
+        const cancelBtn = modal.querySelector('.cnm-cancel');
+        const backdrop = modal.querySelector('.cnm-backdrop');
+        
+        // Focus input (triggers mobile keyboard)
+        setTimeout(() => input.focus(), 100);
+        
+        // Check availability on input
+        const checkAvailability = async () => {
+          const name = input.value.trim();
+          
+          if (name.length < 3) {
+            status.textContent = name.length > 0 ? 'Name too short (min 3)' : '';
+            status.className = 'cnm-status';
+            input.className = 'cnm-input' + (name.length > 0 ? ' invalid' : '');
+            confirmBtn.disabled = true;
+            return;
+          }
+          
+          if (name.length > 12) {
+            status.textContent = 'Name too long (max 12)';
+            status.className = 'cnm-status taken';
+            input.className = 'cnm-input invalid';
+            confirmBtn.disabled = true;
+            return;
+          }
+          
+          if (!/^[a-zA-Z0-9_]+$/.test(name)) {
+            status.textContent = 'Letters, numbers, _ only';
+            status.className = 'cnm-status taken';
+            input.className = 'cnm-input invalid';
+            confirmBtn.disabled = true;
+            return;
+          }
+          
+          // Same as current name? Always allow
+          const currentNick = currentProfile?.nickname || '';
+          if (name.toLowerCase() === currentNick.toLowerCase()) {
+            status.textContent = '✓ Current name';
+            status.className = 'cnm-status available';
+            input.className = 'cnm-input valid';
+            confirmBtn.disabled = false;
+            return;
+          }
+          
+          status.textContent = 'Checking...';
+          status.className = 'cnm-status checking';
+          
+          const result = await window.chedda_check_nickname(name);
+          
+          // Check if input changed while checking
+          if (input.value.trim() !== name) return;
+          
+          if (result.available) {
+            status.textContent = '✓ ' + (result.message || 'Available!');
+            status.className = 'cnm-status available';
+            input.className = 'cnm-input valid';
+            confirmBtn.disabled = false;
+          } else {
+            status.textContent = '✗ ' + (result.message || 'Not available');
+            status.className = 'cnm-status taken';
+            input.className = 'cnm-input invalid';
+            confirmBtn.disabled = true;
+          }
+        };
+        
+        // Debounced check on input
+        input.addEventListener('input', () => {
+          clearTimeout(nicknameCheckTimeout);
+          nicknameCheckTimeout = setTimeout(checkAvailability, 300);
+        });
+        
+        // Initial check if there's a default value
+        if (defaultValue) {
+          setTimeout(checkAvailability, 100);
+        }
+        
+        // Cleanup function
+        const cleanup = () => {
+          modal.remove();
+          style.remove();
+        };
+        
+        // Confirm
+        confirmBtn.addEventListener('click', () => {
+          const name = input.value.trim();
+          cleanup();
+          resolve(name || null);
+        });
+        
+        // Cancel
+        cancelBtn.addEventListener('click', () => {
+          cleanup();
+          resolve(null);
+        });
+        
+        // Backdrop click = cancel
+        backdrop.addEventListener('click', () => {
+          cleanup();
+          resolve(null);
+        });
+        
+        // Enter key = confirm (if enabled)
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && !confirmBtn.disabled) {
+            confirmBtn.click();
+          }
+        });
+      });
+    };
+    
+    // ============================================================
     // INITIALIZATION
     // ============================================================
     window.addEventListener('load', async () => {
-      console.log('[Init] CheddaBoards Template v1.5.3 (HTTP API play sessions)');
+      console.log('[Init] CheddaBoards Template v1.5.15 (Fixed _realPrompt for mobile)');
       console.log('[Init] Game ID:', CONFIG.GAME_ID);
       console.log('[Init] Anonymous Play:', CONFIG.ALLOW_ANONYMOUS_PLAY ? 'Enabled' : 'Disabled');
 
@@ -1182,6 +2117,19 @@
           console.log('[Init] User is authenticated');
           isAuthenticated = true;
           authType = chedda.getAuthType ? chedda.getAuthType() : 'unknown';
+          
+          // Capture session token - check chedda.instance first (wrapper pattern)
+          sdkSessionToken = null;
+          if (chedda.instance?.sessionId) {
+            sdkSessionToken = chedda.instance.sessionId;
+          } else if (chedda.instance?.userId) {
+            sdkSessionToken = chedda.instance.userId;
+          } else if (typeof chedda.getSessionId === 'function') {
+            sdkSessionToken = chedda.getSessionId();
+          } else if (chedda.sessionId) {
+            sdkSessionToken = chedda.sessionId;
+          }
+          console.log('[Init] Session token restored:', sdkSessionToken ? sdkSessionToken.substring(0, 20) + '...' : 'none');
 
           const cachedProfile = loadProfileFromLocalStorage();
           if (cachedProfile) {
@@ -1191,7 +2139,8 @@
               success: true,
               authenticated: true,
               authType,
-              profile: currentProfile
+              profile: currentProfile,
+              sessionToken: sdkSessionToken || null
             });
           } else {
             responseQueue.push({
@@ -1199,7 +2148,8 @@
               success: true,
               authenticated: true,
               authType,
-              profile: null
+              profile: null,
+              sessionToken: sdkSessionToken || null
             });
           }
 
@@ -1210,7 +2160,8 @@
               responseQueue.push({
                 action: 'getProfile',
                 success: true,
-                profile: currentProfile
+                profile: currentProfile,
+                sessionToken: sdkSessionToken || null
               });
             }
           }).catch(console.error);
@@ -1247,11 +2198,83 @@
               if (window._googleLoginTimeout) {
                 clearTimeout(window._googleLoginTimeout);
               }
+              if (window._googleUpgradeTimeout) {
+                clearTimeout(window._googleUpgradeTimeout);
+              }
               
               try {
-                const profile = await chedda.login.google(response.credential);
-                handleLoginSuccess('google', profile);
+                // Check if this is an upgrade flow
+                if (window._isUpgradeFlow === 'google' && window._upgradeDeviceId) {
+                  const capturedDeviceId = window._upgradeDeviceId;
+                  window._isUpgradeFlow = null;
+                  window._upgradeDeviceId = null;
+
+                  console.log('[Upgrade] Google credential received, upgrading...');
+
+                  // Capture anonymous nickname BEFORE login overwrites currentProfile
+                  const previousNickname = (currentProfile && currentProfile.nickname) 
+                    ? currentProfile.nickname 
+                    : pendingNickname;
+                  console.log('[Upgrade] Preserving anonymous nickname:', previousNickname);
+
+                  // Login first (pass nickname to suppress SDK's new-user prompt)
+                  const profile = await chedda.login.google(response.credential, previousNickname || 'Player');
+                  handleLoginSuccess('google', profile);
+                  const migration = await _migrateViaHttp(capturedDeviceId);
+
+                  // Refresh profile to get the REAL account data after migration
+                  let refreshedProfile = null;
+                  if (migration.success && chedda.refreshProfile) {
+                    try {
+                      const fresh = await chedda.refreshProfile();
+                      if (fresh) {
+                        refreshedProfile = sanitizeProfileData(fresh, true);
+                        currentProfile = refreshedProfile;
+                        saveProfileToLocalStorage(currentProfile);
+                      }
+                    } catch (e) {
+                      console.warn('[Upgrade] Profile refresh failed:', e);
+                    }
+                  }
+
+                  // Only carry the anonymous nickname over if the target account
+                  // was genuinely new (all plays came from migration, no pre-existing data).
+                  // If the account already existed with its own nickname/scores, keep it.
+                  const migratedGames = (migration && migration.migratedGames) || 0;
+                  const accountPlayCount = refreshedProfile ? (refreshedProfile.playCount || 0) : 0;
+                  const accountIsNew = accountPlayCount <= migratedGames;
+
+                  if (accountIsNew && previousNickname && chedda.changeNickname) {
+                    try {
+                      console.log('[Upgrade] New account - restoring anonymous nickname:', previousNickname);
+                      await chedda.changeNickname(previousNickname);
+                      if (currentProfile) {
+                        currentProfile.nickname = previousNickname;
+                        saveProfileToLocalStorage(currentProfile);
+                      }
+                      console.log('[Upgrade] Nickname restored successfully');
+                    } catch (e) {
+                      console.warn('[Upgrade] Nickname restore failed:', e);
+                    }
+                  } else {
+                    console.log('[Upgrade] Existing account (plays: ' + accountPlayCount + ', migrated: ' + migratedGames + ') - keeping nickname: ' + (currentProfile ? currentProfile.nickname : 'unknown'));
+                  }
+
+                  responseQueue.push({
+                    action: 'upgradeToGoogle',
+                    success: true,
+                    profile: currentProfile,
+                    migration: migration
+                  });
+                } else {
+                  // Normal login flow (pass nickname to suppress SDK's new-user prompt)
+                  const existingNick = currentProfile?.nickname || localStorage.getItem('chedda_nickname') || 'Player';
+                  const profile = await chedda.login.google(response.credential, existingNick);
+                  handleLoginSuccess('google', profile);
+                }
               } catch (error) {
+                window._isUpgradeFlow = null;
+                window._upgradeDeviceId = null;
                 handleLoginError(error);
               }
             },
@@ -1276,13 +2299,85 @@
             if (window._appleLoginTimeout) {
               clearTimeout(window._appleLoginTimeout);
             }
+            if (window._appleUpgradeTimeout) {
+              clearTimeout(window._appleUpgradeTimeout);
+            }
 
             try {
               const auth = event.detail?.authorization;
               if (!auth?.id_token) throw new Error("Missing id_token");
-              const profile = await chedda.login.apple(auth);
-              handleLoginSuccess('apple', profile);
+
+              // Check if this is an upgrade flow
+              if (window._isUpgradeFlow === 'apple' && window._upgradeDeviceId) {
+                const capturedDeviceId = window._upgradeDeviceId;
+                window._isUpgradeFlow = null;
+                window._upgradeDeviceId = null;
+
+                console.log('[Upgrade] Apple credential received, upgrading...');
+
+                // Capture anonymous nickname BEFORE login overwrites currentProfile
+                const previousAppleNickname = (currentProfile && currentProfile.nickname) 
+                  ? currentProfile.nickname 
+                  : pendingNickname;
+                console.log('[Upgrade] Preserving anonymous nickname:', previousAppleNickname);
+
+                // Login first (pass nickname to suppress SDK's new-user prompt)
+                const profile = await chedda.login.apple(auth, previousAppleNickname || 'Player');
+                handleLoginSuccess('apple', profile);
+
+                // Then migrate
+                const migration = await _migrateViaHttp(capturedDeviceId);
+
+                // Refresh profile to get the REAL account data after migration
+                let refreshedAppleProfile = null;
+                if (migration.success && chedda.refreshProfile) {
+                  try {
+                    const fresh = await chedda.refreshProfile();
+                    if (fresh) {
+                      refreshedAppleProfile = sanitizeProfileData(fresh, true);
+                      currentProfile = refreshedAppleProfile;
+                      saveProfileToLocalStorage(currentProfile);
+                    }
+                  } catch (e) {
+                    console.warn('[Upgrade] Profile refresh failed:', e);
+                  }
+                }
+
+                // Only carry anonymous nickname if target account was genuinely new
+                const appleMigratedGames = (migration && migration.migratedGames) || 0;
+                const applePlayCount = refreshedAppleProfile ? (refreshedAppleProfile.playCount || 0) : 0;
+                const appleAccountIsNew = applePlayCount <= appleMigratedGames;
+
+                if (appleAccountIsNew && previousAppleNickname && chedda.changeNickname) {
+                  try {
+                    console.log('[Upgrade] New account - restoring anonymous nickname:', previousAppleNickname);
+                    await chedda.changeNickname(previousAppleNickname);
+                    if (currentProfile) {
+                      currentProfile.nickname = previousAppleNickname;
+                      saveProfileToLocalStorage(currentProfile);
+                    }
+                  } catch (e) {
+                    console.warn('[Upgrade] Nickname restore failed:', e);
+                  }
+                } else {
+                  console.log('[Upgrade] Existing account (plays: ' + applePlayCount + ', migrated: ' + appleMigratedGames + ') - keeping nickname');
+                }
+
+                responseQueue.push({
+                  action: 'upgradeToApple',
+                  success: true,
+                  profile: currentProfile,
+                  migration: migration
+                });
+              } else {
+                // Normal login flow (pass nickname to suppress SDK's new-user prompt)
+                const existingAppleNick = currentProfile?.nickname || localStorage.getItem('chedda_nickname') || 'Player';
+                const profile = await chedda.login.apple(auth, existingAppleNick);
+                handleLoginSuccess('apple', profile);
+              }
             } catch (error) {
+              window._isUpgradeFlow = null;
+              window._upgradeDeviceId = null;
               handleLoginError(error);
             }
           });
@@ -1291,6 +2386,11 @@
             if (window._appleLoginTimeout) {
               clearTimeout(window._appleLoginTimeout);
             }
+            if (window._appleUpgradeTimeout) {
+              clearTimeout(window._appleUpgradeTimeout);
+            }
+            window._isUpgradeFlow = null;
+            window._upgradeDeviceId = null;
             handleLoginError({ message: 'Apple Sign-In failed or cancelled' });
           });
 
@@ -1330,7 +2430,7 @@
     // ============================================================
     window.debugChedda = () => {
       console.log('═══════════════════════════════════════');
-      console.log('CheddaBoards Debug Info v1.5.0');
+      console.log('CheddaBoards Debug Info v1.6.0');
       console.log('═══════════════════════════════════════');
       console.log('Game ID:', CONFIG.GAME_ID);
       console.log('Anonymous Play:', CONFIG.ALLOW_ANONYMOUS_PLAY);
@@ -1340,9 +2440,16 @@
       console.log('Local Authenticated:', isAuthenticated);
       console.log('Auth Type:', authType || 'None');
       console.log('Device ID:', deviceId ? deviceId.substring(0, 12) + '...' : 'Not set');
+      console.log('───────────────────────────────────────');
+      console.log('Session Token (cached):', sdkSessionToken ? sdkSessionToken.substring(0, 20) + '...' : 'Not set');
+      console.log('SDK .instance.sessionId:', chedda?.instance?.sessionId ? chedda.instance.sessionId.substring(0, 20) + '...' : 'None');
+      console.log('SDK .instance.userId:', chedda?.instance?.userId ? chedda.instance.userId.substring(0, 20) + '...' : 'None');
+      console.log('SDK .instance.authType:', chedda?.instance?.authType || 'None');
       console.log('Pending Nickname:', pendingNickname || 'None');
+      console.log('Renamed Nickname Override:', renamedNickname || 'None');
       console.log('───────────────────────────────────────');
       console.log('Play Session:', playSessionToken ? playSessionToken.substring(0, 20) + '...' : 'None');
+      console.log('Upgrade Flow Active:', window._isUpgradeFlow || 'None');
       console.log('───────────────────────────────────────');
       console.log('Profile:', currentProfile);
       console.log('Response Queue:', responseQueue.length, 'items');
@@ -1351,7 +2458,8 @@
       console.log('Google:', CONFIG.GOOGLE_CLIENT_ID ? 'Configured' : 'Disabled');
       console.log('Apple:', CONFIG.APPLE_SERVICE_ID ? 'Configured' : 'Disabled');
       console.log('═══════════════════════════════════════');
-      return { chedda, currentProfile, responseQueue, deviceId, pendingNickname, playSessionToken, CONFIG };
+      
+      return { chedda, currentProfile, responseQueue, deviceId, pendingNickname, renamedNickname, playSessionToken, sdkSessionToken, CONFIG };
     };
   </script>
 </body>
