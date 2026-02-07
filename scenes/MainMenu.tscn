@@ -1,7 +1,7 @@
 [gd_scene load_steps=3 format=3 uid="uid://chvqlsbp0m0km"]
 
-[ext_resource type="Script" uid="uid://dvsxeqsg5637o" path="res://scripts/MainMenu.gd" id="1_script"]
-[ext_resource type="FontFile" uid="uid://b63sml2le7gmn" path="res://assets/fonts/ZeroCool.ttf" id="3_h7a2f"]
+[ext_resource type="Script" uid="uid://cr3gasb02kgv4" path="res://scripts/MainMenu.gd" id="1_script"]
+[ext_resource type="FontFile" uid="uid://b5c8vdfry2s83" path="res://assets/fonts/ZeroCool.ttf" id="3_h7a2f"]
 
 [node name="MainMenu" type="Control"]
 layout_mode = 3
