@@ -11,15 +11,17 @@ config_version=5
 [application]
 
 config/name="CheddaBoards Template"
-run/main_scene="res://MainMenu.tscn"
+run/main_scene="res://scenes/MainMenu.tscn"
 config/features=PackedStringArray("4.5", "Forward Plus")
 boot_splash/fullsize=false
 boot_splash/image="uid://c4ifusj1tgphd"
+config/icon="uid://cighw5yua3ygf"
 
 [autoload]
 
 CheddaBoards="*res://addons/cheddaboards/CheddaBoards.gd"
-Achievements="*res://addons/cheddaboards/Achievements.gd"
+Achievements="*res://autoloads/Achievements.gd"
+MobileUI="*res://autoloads/MobileUI.gd"
 
 [display]
 
