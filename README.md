@@ -116,10 +116,16 @@ The MainMenu supports a four-panel authentication system:
 
 ### Anti-Cheat
 
-- **Play sessions** - Server-side time tracking
-- **Score validation** - Rejects impossible scores based on play time
-- **Rate limiting** - Prevents spam submissions
-- **Score caps** - Block obviously fake values
+Built-in server-side protection — no code required. Configure limits from your dashboard and CheddaBoards enforces them automatically.
+
+| Protection | How It Works |
+|------------|-------------|
+| **Play Sessions** | Server tracks real play time — scores without a valid session are rejected |
+| **Score Validation** | Backend calculates max possible score based on elapsed time |
+| **Rate Limiting** | Blocks rapid-fire score submissions from bots or scripts |
+| **Score Caps** | Set max score/streak per submission and absolute lifetime caps |
+
+Set your limits based on your game's mechanics (e.g. max 200,000 points per round, max streak of 10), then tighten based on real player data. See your game's Security tab on the dashboard.
 
 ### Authentication
 
@@ -136,12 +142,28 @@ The MainMenu supports a four-panel authentication system:
 ### Leaderboards
 
 - Global leaderboard with rankings
-- **Multiple scoreboards** - All Time, Weekly, Daily, Monthly
-- **Timed competitions** - Auto-reset with archives
-- **View past winners** - Last week's champion, hall of fame
 - Sort by score or streak
 - Custom nicknames for anonymous players
 - Your entry highlighted
+
+### Timed Scoreboards
+
+Run weekly, daily, or monthly competitions that reset and archive automatically — zero maintenance.
+
+| Type | Resets | Archives Kept | Use Case |
+|------|--------|---------------|----------|
+| **All-Time** | Never | — | Career high scores |
+| **Weekly** | Every Monday | 52 (1 year) | Weekly competitions |
+| **Daily** | Every midnight | 52 | Daily challenges |
+| **Monthly** | 1st of month | 52 | Monthly tournaments |
+
+- Create scoreboards from the dashboard — no code changes needed
+- Previous periods archived automatically with full leaderboard data
+- Built-in UI shows "Current" vs "Last Week" toggle
+- Winner highlighted with crown in archive view
+- Hall of fame across multiple archived periods
+
+> 📖 **Full guide:** [TIMED_LEADERBOARDS.md](docs/TIMED_LEADERBOARDS.md)
 
 ### Achievements
 
