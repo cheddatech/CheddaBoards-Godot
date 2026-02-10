@@ -15,8 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Your game stays clean - no SDK code mixed with gameplay
   - Example game (CheddaClick) included in `example_game/` folder
 - **Google/Apple OAuth (Web)** - Full OAuth sign-in restored and stable
-  - Direct Google/Apple Sign-In for new players
-  - Built into CheddaBoards backend - no developer OAuth setup required
+  - Direct Google/Apple Sign-In for new players on web
+  - Requires your OAuth credentials in template.html (configure via Setup Wizard)
 - **Account Upgrade (Web)** - Anonymous players can link to Google or Apple
   - Preserves all scores and achievements
   - Enables cross-device sync
@@ -32,7 +32,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Game wrapper separates gameplay from SDK integration
-- OAuth no longer requires developer-provided credentials
 - Project structure reorganised for clarity
 
 ### Fixed
@@ -758,16 +757,18 @@ First public release of the CheddaBoards Godot 4 Template.
 ## Roadmap
 
 ### Planned Features
-- [ ] Achievements for anonymous/API-key users
-- [ ] Session tokens with device fingerprinting (security upgrade)
-- [ ] Unity SDK
-- [ ] Unreal Plugin
 - [ ] Full REST API documentation (OpenAPI/Swagger)
+- [ ] Unity SDK
 - [ ] Self-hosting option
-- [ ] Analytics dashboard
 - [ ] Tournament/competition mode
 - [ ] Friend leaderboards
+- [ ] Expanded analytics dashboard
 - [ ] Video tutorials
+
+### Completed
+- [x] Achievements for anonymous/API-key users
+- [x] Session tokens with device fingerprinting
+- [x] Analytics dashboard (basic)
 
 ---
 
