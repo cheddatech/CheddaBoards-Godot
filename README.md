@@ -461,8 +461,11 @@ signal game_over(final_score: int, stats: Dictionary)
 
 - [x] Complete OAuth migration to REST API
 - [x] Restore Google/Apple Sign-In
+- [x] Achievements for anonymous players
+- [x] Analytics dashboard (basic)
+- [ ] Full REST API documentation (OpenAPI/Swagger)
 - [ ] Unity SDK
-- [ ] Unreal SDK
+- [ ] Expanded analytics dashboard
 
 ---
 
