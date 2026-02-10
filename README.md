@@ -27,7 +27,7 @@ Zero servers. $0 for indie devs. Windows, Mac, Linux, Mobile, Web.
 | **Mobile** | ✅ Stable | HTTP API mode |
 | **Web** | ✅ Stable | HTTP API mode (anonymous) |
 
-> **Note:** OAuth (Google/Apple Sign-In) is temporarily disabled while we migrate to the REST API. Anonymous play works on all platforms.
+> **Note:** Web supports full OAuth (Google/Apple Sign-In) with anonymous account upgrade. Native platforms use anonymous API mode.
 
 ---
 
@@ -128,10 +128,10 @@ The MainMenu supports a four-panel authentication system:
 | Anonymous / Device ID | ✅ | ✅ | **Working** |
 | Account Upgrade (Anon → Google/Apple) | — | ✅ | **Working** |
 | Chedda ID / Internet Identity | — | ⚠️ | Unstable |
-| Google Sign-In (direct) | — | ❌ | Temporarily disabled |
-| Apple Sign-In (direct) | — | ❌ | Temporarily disabled |
+| Google Sign-In (direct) | — | ✅ | **Working** |
+| Apple Sign-In (direct) | — | ✅ | **Working** |
 
-> **Account Upgrade (Web only):** Anonymous players can link their progress to a Google or Apple account from the Anonymous Dashboard. This preserves their scores and achievements while enabling cross-device sync.
+> **Account Upgrade (Web only):** Anonymous players can link their progress to a Google or Apple account from the Anonymous Dashboard. This preserves their scores and achievements while enabling cross-device sync. Direct Google/Apple Sign-In is also available for new players on web.
 
 ### Leaderboards
 
@@ -412,8 +412,8 @@ signal game_over(final_score: int, stats: Dictionary)
 
 ## Roadmap
 
-- [ ] Complete OAuth migration to REST API
-- [ ] Restore Google/Apple Sign-In
+- [x] Complete OAuth migration to REST API
+- [x] Restore Google/Apple Sign-In
 - [ ] Unity SDK
 - [ ] Unreal SDK
 
