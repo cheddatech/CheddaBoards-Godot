@@ -2,7 +2,7 @@
 
 **Detailed setup instructions for all platforms.**
 
-> **SDK Version:** 1.4.0 | [Changelog](CHANGELOG.md)
+> **SDK Version:** 1.7.0 | [Changelog](CHANGELOG.md)
 
 > 💡 **Want the fast version?** See [QUICKSTART.md](QUICKSTART.md)
 
@@ -231,37 +231,15 @@ func _on_archive(archive_id, config, entries):
 |--------|-----|--------|-------|
 | **Anonymous** | ✅ | ✅ | Just API key |
 | **Chedda ID** | ✅ | ❌ | None |
-| **Google** | ✅ | ❌ | Your OAuth credentials |
-| **Apple** | ✅ | ❌ | Your OAuth credentials |
+| **Google** | ✅ | ❌ | None (built-in) |
+| **Apple** | ✅ | ❌ | None (built-in) |
+| **Account Upgrade** | ✅ | ❌ | None (anon → Google/Apple) |
 
-### Setting Up Google OAuth (Optional)
+### Google & Apple Sign-In
 
-> 💡 **Tip:** The Setup Wizard (v2.4+) can configure OAuth credentials directly - no need to edit template.html manually!
+Google and Apple Sign-In are now built into CheddaBoards and work out of the box on web builds. No OAuth credential setup required — the SDK handles authentication through the CheddaBoards backend.
 
-1. Go to [console.cloud.google.com](https://console.cloud.google.com)
-2. Create project → Enable Google Sign-In API
-3. Create OAuth 2.0 credentials
-4. Add your domain to authorized origins
-5. Run Setup Wizard and enter your Client ID, or manually add to `template.html`:
-
-```javascript
-GOOGLE_CLIENT_ID: 'xxxxx.apps.googleusercontent.com',
-```
-
-### Setting Up Apple Sign-In (Optional)
-
-> 💡 **Tip:** The Setup Wizard (v2.4+) can configure OAuth credentials directly - no need to edit template.html manually!
-
-1. Go to [developer.apple.com](https://developer.apple.com)
-2. Register App ID with Sign In with Apple
-3. Create Services ID
-4. Configure domain and redirect URI
-5. Run Setup Wizard and enter your credentials, or manually add to `template.html`:
-
-```javascript
-APPLE_SERVICE_ID: 'com.yourdomain.yourapp',
-APPLE_REDIRECT_URI: 'https://yourdomain.com/auth/apple'
-```
+Players can either sign in directly with Google/Apple, or start anonymous and upgrade their account later from the Anonymous Dashboard.
 
 ---
 
@@ -269,7 +247,7 @@ APPLE_REDIRECT_URI: 'https://yourdomain.com/auth/apple'
 
 The Achievements.gd autoload handles unlocking and syncing.
 
-> ⚠️ **Note:** Full achievement sync requires login (Google/Apple/Chedda ID). Anonymous users have achievements stored locally only.
+> ⚠️ **Note:** Full achievement sync requires login (Google/Apple/Chedda ID). Anonymous users have achievements stored locally.
 
 ### Define Your Achievements
 
