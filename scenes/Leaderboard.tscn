@@ -3,7 +3,7 @@
 [ext_resource type="Script" uid="uid://c8v04tdwh6gnl" path="res://scripts/Leaderboard.gd" id="1_script"]
 [ext_resource type="Texture2D" uid="uid://cighw5yua3ygf" path="res://addons/cheddaboards/icon.png" id="2_an2gi"]
 [ext_resource type="FontFile" uid="uid://b63sml2le7gmn" path="res://assets/fonts/ZeroCool.ttf" id="2_mruqn"]
-[ext_resource type="Theme" uid="uid://cg1jdv7rfyi22" path="res://themes/Buttons.tres" id="3_xtqbn"]
+[ext_resource type="Theme" path="res://themes/Buttons.tres" id="3_xtqbn"]
 
 [node name="Leaderboard" type="Control"]
 layout_mode = 3
