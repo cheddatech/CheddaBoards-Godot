@@ -95,10 +95,9 @@ CheddaBoards.request_failed.connect(func(endpoint, error):
 |--------|-----|--------|
 | Anonymous | ✅ | ✅ |
 | Chedda ID | ✅ | ❌ |
-| Google | ✅* | ❌ |
-| Apple | ✅* | ❌ |
-
-> \* Requires your own OAuth credentials
+| Google | ✅ | ❌ |
+| Apple | ✅ | ❌ |
+| Account Upgrade (Anon → Google/Apple) | ✅ | ❌ |
 
 ### "Not authenticated"
 
@@ -132,14 +131,11 @@ func _on_game_over(score, streak):
 
 ### Google/Apple login not working
 
-**Cause:** These require your own OAuth credentials.
-
-**Quick fix:** Use Chedda ID or Anonymous instead - they work out of box!
-
-**Or:** Set up OAuth in template.html:
-```javascript
-GOOGLE_CLIENT_ID: 'your-client-id.apps.googleusercontent.com',
-```
+**Checklist:**
+- [ ] Using http:// or https://, not file://
+- [ ] Popups allowed in browser
+- [ ] Game ID set in template.html
+- [ ] Using latest template.html with OAuth support
 
 ---
 
