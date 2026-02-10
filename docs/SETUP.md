@@ -231,15 +231,42 @@ func _on_archive(archive_id, config, entries):
 |--------|-----|--------|-------|
 | **Anonymous** | ✅ | ✅ | Just API key |
 | **Chedda ID** | ✅ | ❌ | None |
-| **Google** | ✅ | ❌ | None (built-in) |
-| **Apple** | ✅ | ❌ | None (built-in) |
+| **Google** | ✅ | ❌ | Your OAuth credentials |
+| **Apple** | ✅ | ❌ | Your OAuth credentials |
 | **Account Upgrade** | ✅ | ❌ | None (anon → Google/Apple) |
 
 ### Google & Apple Sign-In
 
-Google and Apple Sign-In are now built into CheddaBoards and work out of the box on web builds. No OAuth credential setup required — the SDK handles authentication through the CheddaBoards backend.
+Google and Apple Sign-In work on web exports and require your own OAuth credentials, configured via the Setup Wizard or manually in `template.html`.
 
-Players can either sign in directly with Google/Apple, or start anonymous and upgrade their account later from the Anonymous Dashboard.
+> 💡 **Tip:** The Setup Wizard (v2.6+) can configure OAuth credentials directly — no need to edit template.html manually!
+
+#### Setting Up Google OAuth
+
+1. Go to [console.cloud.google.com](https://console.cloud.google.com)
+2. Create project → Enable Google Sign-In API
+3. Create OAuth 2.0 credentials
+4. Add your domain to authorized origins
+5. Run Setup Wizard and enter your Client ID, or manually add to `template.html`:
+
+```javascript
+GOOGLE_CLIENT_ID: 'xxxxx.apps.googleusercontent.com',
+```
+
+#### Setting Up Apple Sign-In
+
+1. Go to [developer.apple.com](https://developer.apple.com)
+2. Register App ID with Sign In with Apple
+3. Create Services ID
+4. Configure domain and redirect URI
+5. Run Setup Wizard and enter your credentials, or manually add to `template.html`:
+
+```javascript
+APPLE_SERVICE_ID: 'com.yourdomain.yourapp',
+APPLE_REDIRECT_URI: 'https://yourdomain.com/auth/apple'
+```
+
+Players can also start anonymous and upgrade their account to Google or Apple later from the Anonymous Dashboard.
 
 ---
 
