@@ -84,6 +84,10 @@ Zero servers. $0 for indie devs. Windows, Mac, Linux, Mobile, Web.
 
 ### Game Wrapper System (v1.7.0)
 
+<p align="center">
+  <img src="screenshots/screenshot_gameover.png" alt="Game Over Panel" width="500">
+</p>
+
 The new modular architecture separates your game from CheddaBoards integration:
 
 | Component | What It Does |
@@ -116,6 +120,10 @@ The MainMenu supports a four-panel authentication system:
 
 ### Anti-Cheat
 
+<p align="center">
+  <img src="screenshots/screenshot_anticheat.png" alt="Anti-Cheat Dashboard" width="500">
+</p>
+
 Built-in server-side protection — no code required. Configure limits from your dashboard and CheddaBoards enforces them automatically.
 
 | Protection | How It Works |
@@ -141,12 +149,21 @@ Set your limits based on your game's mechanics (e.g. max 200,000 points per roun
 
 ### Leaderboards
 
+<p align="center">
+  <img src="screenshots/screenshot_leaderboard_alltime.png" alt="All Time Leaderboard" width="400">
+  <img src="screenshots/screenshot_leaderboard_weekly.png" alt="Weekly Leaderboard" width="400">
+</p>
+
 - Global leaderboard with rankings
 - Sort by score or streak
 - Custom nicknames for anonymous players
 - Your entry highlighted
 
 ### Timed Scoreboards
+
+<p align="center">
+  <img src="screenshots/screenshot_leaderboard_archive.png" alt="Leaderboard Archives" width="500">
+</p>
 
 Run weekly, daily, or monthly competitions that reset and archive automatically — zero maintenance.
 
@@ -166,6 +183,10 @@ Run weekly, daily, or monthly competitions that reset and archive automatically 
 > 📖 **Full guide:** [TIMED_LEADERBOARDS.md](docs/TIMED_LEADERBOARDS.md)
 
 ### Achievements
+
+<p align="center">
+  <img src="screenshots/screenshot_achievements.png" alt="Achievements View" width="500">
+</p>
 
 - Configurable achievement definitions
 - **Score-first submission** - Score submits immediately, achievements sync silently
@@ -191,6 +212,10 @@ Run weekly, daily, or monthly competitions that reset and archive automatically 
 ## Quick Start
 
 ### 1. Setup
+
+<p align="center">
+  <img src="screenshots/screenshot_setup_wizard.png" alt="Setup Wizard" width="500">
+</p>
 
 1. Download the template from Asset Library or GitHub
 2. Open in Godot 4.x
