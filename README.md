@@ -7,8 +7,8 @@
 > **SDK Version:** 1.7.0 | [Changelog](docs/CHANGELOG.md)
 
 <p align="center">
-  <img src="screenshots/cheddaboards1.png" alt="CheddaBoards Screenshot" width="400">
-  <img src="screenshots/cheddaboards2.png" alt="CheddaBoards Screenshot" width="400">
+  <img src="screenshots/screenshot1.png" alt="CheddaBoards Screenshot" width="400">
+  <img src="screenshots/screenshot2.png" alt="CheddaBoards Screenshot" width="400">
 </p>
 
 A complete game template with leaderboards, achievements, and authentication built in.
