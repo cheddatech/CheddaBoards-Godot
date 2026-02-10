@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.7.0] - 2025-02-05
+
+### Added
+- **Modular Game Wrapper Architecture** - Game.gd/Game.tscn now acts as a wrapper handling all CheddaBoards integration
+  - Drop in ANY game scene - just emit 4 signals and you're done
+  - Your game stays clean - no SDK code mixed with gameplay
+  - Example game (CheddaClick) included in `example_game/` folder
+- **Google/Apple OAuth (Web)** - Full OAuth sign-in restored and stable
+  - Direct Google/Apple Sign-In for new players
+  - Built into CheddaBoards backend - no developer OAuth setup required
+- **Account Upgrade (Web)** - Anonymous players can link to Google or Apple
+  - Preserves all scores and achievements
+  - Enables cross-device sync
+  - Available from the Anonymous Dashboard panel
+- **Clean Folder Structure** - Reorganised project layout
+  - `scenes/` - All .tscn files
+  - `scripts/` - All .gd files
+  - `autoloads/` - Achievements.gd, MobileUI.gd
+  - `example_game/` - CheddaClick example
+  - `addons/cheddaboards/` - SDK only
+- **MobileUI Autoload** - Mobile scaling handler
+- **Updated Setup Wizard** - Checks new folder structure, auto-configures all autoloads
+
+### Changed
+- Game wrapper separates gameplay from SDK integration
+- OAuth no longer requires developer-provided credentials
+- Project structure reorganised for clarity
+
+### Fixed
+- OAuth migration to REST API complete
+- Google/Apple Sign-In fully stable on web
+
+---
+
 ## [1.6.0] - 2026-01-16
 
 ### Added
@@ -35,9 +69,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Anonymous player achievements now work correctly with local caching
 - Silent login no longer triggers full login flow on anonymous dashboard
 - Duplicate SDK ready handling prevented with `_sdk_ready_handled` flag
-
-### Known Issues
-- **OAuth temporarily disabled** - Google/Apple Sign-In paused during REST API migration
 
 ---
 
@@ -583,6 +614,7 @@ First public release of the CheddaBoards Godot 4 Template.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| **v1.7.0** | 2025-02-05 | Modular GameWrapper, OAuth restored (web), account upgrade, clean folder structure |
 | **v1.5.0** | 2026-01-14 | Play session anti-cheat, time validation |
 | **v1.4.0** | 2026-01-04 | OAuth in wizard, nickname/score fixes, player ID fixes |
 | **v1.3.0** | 2025-12-30 | Time-based scoreboards, archives, level system |
