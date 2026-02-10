@@ -2,7 +2,7 @@
 
 **Add leaderboards to your game in minutes.**
 
-> **SDK Version:** 1.4.0 | [Changelog](CHANGELOG.md)
+> **SDK Version:** 1.7.0 | [Changelog](CHANGELOG.md)
 
 ---
 
@@ -11,7 +11,7 @@
 | Path | Time | Best For |
 |------|------|----------|
 | **[API Only](#-api-quick-start)** | 3 min | Native builds, simple integration |
-| **[Full Web SDK](#-web-sdk-quick-start)** | 5 min | Web builds with login UI, OAuth |
+| **[Full Web SDK](#-web-sdk-quick-start)** | 5 min | Web builds with login UI, OAuth (Google/Apple) |
 
 > 💡 **Not sure?** Start with API Only - it works everywhere and you can add web features later.
 
@@ -79,7 +79,7 @@ You now have global leaderboards, score submission, and player nicknames.
 
 # 🌐 Web SDK Quick Start
 
-**Full integration with login UI, Chedda ID, and optional Google/Apple OAuth.**
+**Full integration with login UI, Chedda ID, and Google/Apple OAuth.**
 
 ### Step 1: Register Game (2 min)
 
@@ -137,7 +137,8 @@ Under HTML section:
 You now have:
 - ✅ Chedda ID login (works out of box)
 - ✅ Anonymous play
-- ✅ Google/Apple login (requires your OAuth credentials)
+- ✅ Google/Apple login
+- ✅ Anonymous → Google/Apple account upgrade
 - ✅ Achievements system
 - ✅ Full leaderboard UI
 
@@ -152,8 +153,8 @@ await CheddaBoards.wait_until_ready()
 # === LOGIN OPTIONS ===
 CheddaBoards.login_anonymous("PlayerName")     # Works everywhere
 CheddaBoards.login_internet_identity()         # Web only, works out of box
-CheddaBoards.login_google()                    # Web only, needs your OAuth
-CheddaBoards.login_apple()                     # Web only, needs your OAuth
+CheddaBoards.login_google()                    # Web only
+CheddaBoards.login_apple()                     # Web only
 
 # === SCORES ===
 CheddaBoards.submit_score(1000, 5)  # score, streak
@@ -205,7 +206,7 @@ func _on_game_over(score, streak):
     Achievements.submit_with_score(score, streak)
 ```
 
-> ⚠️ **Note:** Full achievement sync requires login (Google/Apple/Chedda ID). Anonymous users have achievements stored locally only.
+> ⚠️ **Note:** Full achievement sync requires login (Google/Apple/Chedda ID). Anonymous users have achievements stored locally.
 
 ---
 
