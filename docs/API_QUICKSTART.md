@@ -188,9 +188,9 @@ Press these keys during development:
 
 ---
 
-## Web Export (Optional)
+## Web Export
 
-For web builds with full OAuth support:
+For web builds with full OAuth support (Google/Apple Sign-In + account upgrade):
 
 1. Copy `template.html` to project root
 2. Export → Web → Custom HTML Shell: `res://template.html`
