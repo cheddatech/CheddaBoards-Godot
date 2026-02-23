@@ -4,7 +4,7 @@
 
 # CheddaBoards Godot 4 Template
 
-> **SDK Version:** 1.7.0 | [Changelog](docs/CHANGELOG.md)
+> **SDK Version:** 1.9.0 | [Changelog](docs/CHANGELOG.md)
 
 <p align="center">
   <img src="screenshots/screenshot1.png" alt="CheddaBoards Screenshot" width="400">
@@ -23,11 +23,11 @@ Zero servers. $0 for indie devs. Windows, Mac, Linux, Mobile, Web.
 
 | Platform | Status | Notes |
 |----------|--------|-------|
-| **Native (Windows/Mac/Linux)** | ✅ Stable | HTTP API mode |
-| **Mobile** | ✅ Stable | HTTP API mode |
-| **Web** | ✅ Stable | HTTP API mode (anonymous) |
+| **Native (Windows/Mac/Linux)** | ✅ Stable | HTTP API + Device Code Auth |
+| **Mobile** | ✅ Stable | HTTP API + Device Code Auth |
+| **Web** | ✅ Stable | HTTP API + direct OAuth |
 
-> **Note:** Web supports full OAuth (Google/Apple Sign-In) with anonymous account upgrade. Native platforms use anonymous API mode.
+> **Note:** All platforms support Google/Apple Sign-In via Device Code Auth — no browser integration or OAuth SDKs needed in your game. Web also supports direct OAuth and anonymous account upgrade.
 
 ---
 
@@ -43,6 +43,55 @@ Zero servers. $0 for indie devs. Windows, Mac, Linux, Mobile, Web.
 | **AchievementNotification** | Popup system for unlocks |
 | **CheddaBoards SDK** | Core backend integration |
 | **Achievements System** | Backend-synced achievements |
+
+---
+
+## What's New in v1.9.0
+
+### Device Code Authentication (Cross-Platform)
+- **Google & Apple Sign-In on ANY platform** — no browser popups, no OAuth SDKs
+- Game shows a code and URL → player signs in on their phone → game picks up the session
+- Same flow works on Windows, Mac, Linux, Mobile, Web, consoles, anything
+- Uses OAuth 2.0 Device Authorization Grant (RFC 8628) — same pattern as Netflix, YouTube on TV, GitHub CLI
+- Developers need zero auth dependencies — just two HTTP calls and a text label
+
+### Cross-Platform Account Linking
+- Players can link anonymous accounts to Google or Apple via device code flow
+- Preserves all scores, achievements, and progress
+- Enables cross-device sync across any platform
+- Works from both the in-game menu and the Anonymous Dashboard
+
+### How Device Code Auth Works
+
+```
+┌─────────────┐                    ┌──────────────────────┐
+│  Your Game   │                    │  Player's Phone      │
+│              │                    │                      │
+│  "Go to      │                    │  cheddaboards.com/   │
+│   cheddaboards│                   │  link                │
+│   .com/link" │                    │                      │
+│              │                    │  Enter: CHEDDA-7K3M  │
+│  "Enter code:│                    │  [Google] [Apple]    │
+│   CHEDDA-7K3M"│                   │                      │
+│              │    polls every 5s  │  ✅ Signed in!       │
+│  ✅ Logged in!│◄──────────────────│                      │
+└─────────────┘                    └──────────────────────┘
+```
+
+```gdscript
+# In your game - that's it, no OAuth SDKs needed
+CheddaBoards.login_google_device_code("PlayerName")
+
+# Listen for the code to display
+CheddaBoards.device_code_received.connect(func(url, code, expires_in):
+    show_label("Go to %s and enter: %s" % [url, code])
+)
+
+# Login completes automatically via polling
+CheddaBoards.login_success.connect(func(nickname):
+    print("Welcome, %s!" % nickname)
+)
+```
 
 ---
 
@@ -78,9 +127,11 @@ Zero servers. $0 for indie devs. Windows, Mac, Linux, Mobile, Web.
 ### Platform Support
 
 - **Native exports** - HTTP API for Windows, Mac, Linux, Mobile
-- **Web exports** - HTTP API for anonymous play
+- **Web exports** - HTTP API with direct OAuth option
 - **Anonymous play** - No account required, instant play with device ID
+- **Device Code Auth** - Google/Apple Sign-In on any platform, no OAuth SDKs needed
 - **Cross-platform** - Same codebase works everywhere
+- **Account linking** - Upgrade anonymous accounts to Google/Apple from any platform
 
 ### Game Wrapper System (v1.7.0)
 
@@ -137,15 +188,18 @@ Set your limits based on your game's mechanics (e.g. max 200,000 points per roun
 
 ### Authentication
 
-| Method | Native | Web | Status |
-|--------|--------|-----|--------|
-| Anonymous / Device ID | ✅ | ✅ | **Working** |
-| Account Upgrade (Anon → Google/Apple) | — | ✅ | **Working** |
-| Chedda ID / Internet Identity | — | ⚠️ | Unstable |
-| Google Sign-In (direct) | — | ✅ | **Working** |
-| Apple Sign-In (direct) | — | ✅ | **Working** |
+| Method | Native | Mobile | Web | Status |
+|--------|--------|--------|-----|--------|
+| Anonymous / Device ID | ✅ | ✅ | ✅ | **Working** |
+| Google Sign-In (Device Code) | ✅ | ✅ | ✅ | **Working** |
+| Apple Sign-In (Device Code) | ✅ | ✅ | ✅ | **Working** |
+| Account Upgrade (Anon → Google/Apple) | ✅ | ✅ | ✅ | **Working** |
+| Google Sign-In (direct OAuth) | — | — | ✅ | **Working** |
+| Apple Sign-In (direct OAuth) | — | — | ✅ | **Working** |
 
-> **Account Upgrade (Web only):** Anonymous players can link their progress to a Google or Apple account from the Anonymous Dashboard. This preserves their scores and achievements while enabling cross-device sync. Direct Google/Apple Sign-In is also available for new players on web.
+> **Device Code Auth (v1.9.0):** Works on every platform. The game displays a code and URL, the player signs in on their phone browser, and the game picks up the session automatically. No OAuth SDKs, no browser popups, no platform-specific code. Anonymous players can also upgrade their account to Google/Apple from any platform, preserving all progress.
+>
+> **Direct OAuth (Web only):** Web builds can also use direct Google/Apple Sign-In buttons for a streamlined browser experience.
 
 ### Leaderboards
 
@@ -170,9 +224,9 @@ Run weekly, daily, or monthly competitions that reset and archive automatically 
 | Type | Resets | Archives Kept | Use Case |
 |------|--------|---------------|----------|
 | **All-Time** | Never | — | Career high scores |
-| **Weekly** | Every Monday | 52 (1 year) | Weekly competitions |
-| **Daily** | Every midnight | 52 | Daily challenges |
-| **Monthly** | 1st of month | 52 | Monthly tournaments |
+| **Weekly** | Every Monday | 52 | Weekly competitions |
+| **Daily** | Every midnight | 90 | Daily challenges |
+| **Monthly** | 1st of month | 12 | Monthly tournaments |
 
 - Create scoreboards from the dashboard — no code changes needed
 - Previous periods archived automatically with full leaderboard data
@@ -275,9 +329,8 @@ CheddaBoards-Godot/
 ├── addons/
 │   └── cheddaboards/
 │       ├── CheddaBoards.gd       # Core SDK (Autoload)
-│       ├── CheddaBoardsWeb.gd    # Web platform handler
-│       ├── CheddaBoardsNative.gd # Native platform handler
 │       ├── SetupWizard.gd        # Setup & validation tool
+│       ├── cheddaboards_logo.png
 │       └── icon.png
 ├── autoloads/
 │   ├── Achievements.gd           # Achievement system (Autoload)
@@ -287,13 +340,15 @@ CheddaBoards-Godot/
 │   ├── MainMenu.tscn             # Four-panel auth flow
 │   ├── Leaderboard.tscn          # Leaderboard with archives
 │   ├── AchievementsView.tscn     # Achievement list
-│   └── AchievementNotification.tscn
+│   ├── AchievementNotification.tscn
+│   └── DeviceCodeLogin.tscn      # Device code auth UI
 ├── scripts/
 │   ├── Game.gd                   # Game wrapper logic
 │   ├── MainMenu.gd               # Menu logic
 │   ├── Leaderboard.gd            # Leaderboard logic
 │   ├── AchievementsView.gd       # Achievement list logic
-│   └── AchievementNotification.gd
+│   ├── AchievementNotification.gd
+│   └── DeviceCodeLogin.gd        # Device code auth flow
 ├── example_game/
 │   ├── CheddaClickGame.tscn      # Example clicker game
 │   ├── CheddaClickGame.gd        # Example game logic
@@ -303,10 +358,27 @@ CheddaBoards-Godot/
 │       └── ZeroCool.ttf
 ├── themes/
 │   └── Buttons.tres
+├── screenshots/
+│   ├── screenshot1.png
+│   ├── screenshot2.png
+│   ├── screenshot_achievements.png
+│   ├── screenshot_anticheat.png
+│   ├── screenshot_gameover.png
+│   ├── screenshot_leaderboard_alltime.png
+│   ├── screenshot_leaderboard_archive.png
+│   ├── screenshot_leaderboard_weekly.png
+│   └── screenshot_setup_wizard.png
+├── docs/
+│   ├── API_QUICKSTART.md
+│   ├── CHANGELOG.md
+│   ├── QUICKSTART.md
+│   ├── SETUP.md
+│   ├── TIMED_LEADERBOARDS.md
+│   └── TROUBLESHOOTING.md
 ├── template.html                 # Web export template
 ├── project.godot                 # Pre-configured project
-├── docs/
-│   └── CHANGELOG.md
+├── favicon.ico
+├── LICENSE
 └── README.md
 ```
 
@@ -376,7 +448,11 @@ signal login_failed(reason: String)
 signal login_timeout()
 signal logout_success()
 
-# Account Upgrade (Web only)
+# Device Code Auth (v1.9.0)
+signal device_code_received(url: String, code: String, expires_in: int)
+signal device_code_expired()
+
+# Account Upgrade
 signal account_upgraded(provider: String)
 signal account_upgrade_failed(reason: String)
 
@@ -419,16 +495,6 @@ signal game_over(final_score: int, stats: Dictionary)
 
 ## Debugging
 
-### Debug Shortcuts
-
-| Key | Action |
-|-----|--------|
-| F6 | Submit 5 random test scores |
-| F7 | Submit 1 random test score |
-| F8 | Force profile refresh |
-| F9 | Debug status dump |
-| F10 | Achievement debug (in game) |
-
 ### Common Issues
 
 | Issue | Solution |
@@ -446,7 +512,8 @@ signal game_over(final_score: int, stats: Dictionary)
 
 | Version | Date | Changes |
 |---------|------|---------|
-| **v1.7.0** | **2025-02-05** | **Modular GameWrapper, account upgrade (web), clean folder structure** |
+| **v1.9.0** | **2025-02-23** | **Device Code Auth (cross-platform Google/Apple), account linking on all platforms** |
+| v1.7.0 | 2025-02-05 | Modular GameWrapper, account upgrade (web), clean folder structure |
 | v1.6.0 | 2025-01-16 | Anonymous dashboard, score-first achievements |
 | v1.5.0 | 2025-01-14 | Play session anti-cheat, time validation |
 | v1.4.0 | 2025-01-04 | OAuth in Setup Wizard, nickname fixes |
@@ -459,12 +526,7 @@ signal game_over(final_score: int, stats: Dictionary)
 
 ## Roadmap
 
-- [x] Complete OAuth migration to REST API
-- [x] Restore Google/Apple Sign-In
-- [x] Achievements for anonymous players
-- [x] Analytics dashboard (basic)
-- [ ] Full REST API documentation (OpenAPI/Swagger)
-- [ ] Unity SDK
+- [ ] Unity SDK (in progress)
 - [ ] Expanded analytics dashboard
 
 ---
@@ -475,4 +537,4 @@ MIT License - Use freely in your games!
 
 ---
 
-**Built with 🧀 by [CheddaTech](https://cheddatech.com)**
+[cheddatech.com](https://cheddatech.com)
