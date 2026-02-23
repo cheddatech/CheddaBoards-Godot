@@ -1,8 +1,8 @@
-# ⚡ CheddaBoards Quick Start
+# CheddaBoards Quick Start
 
 **Add leaderboards to your game in minutes.**
 
-> **SDK Version:** 1.7.0 | [Changelog](CHANGELOG.md)
+> **SDK Version:** 1.9.0 | [Changelog](CHANGELOG.md)
 
 ---
 
@@ -10,21 +10,21 @@
 
 | Path | Time | Best For |
 |------|------|----------|
-| **[API Only](#-api-quick-start)** | 3 min | Native builds, simple integration |
-| **[Full Web SDK](#-web-sdk-quick-start)** | 5 min | Web builds with login UI, OAuth (Google/Apple) |
+| **[API Only](#api-quick-start)** | 3 min | Native builds, simple integration |
+| **[Full Web SDK](#web-sdk-quick-start)** | 5 min | Web builds with login UI, OAuth (Google/Apple) |
 
-> 💡 **Not sure?** Start with API Only - it works everywhere and you can add web features later.
+> Not sure? Start with API Only — it works everywhere and you can add web features later.
 
 ---
 
-# 🚀 API Quick Start
+# API Quick Start
 
 **The simplest integration. Works on all platforms.**
 
 ### Step 1: Get API Key (2 min)
 
 1. Go to [cheddaboards.com/dashboard](https://cheddaboards.com/dashboard)
-2. Sign in (Internet Identity, Google, or Apple)
+2. Sign in with Google or Apple
 3. Register your game → Copy your **Game ID**
 4. Click **"Generate API Key"**
 5. Copy your key: `cb_your-game_xxxxxxxxx`
@@ -46,7 +46,7 @@ var game_id: String = "your-game-id"
 var api_key: String = "cb_your-game_xxxxxxxxx"
 ```
 
-> 💡 **Tip:** Run `File → Run → addons/cheddaboards/SetupWizard.gd` to configure automatically!
+> **Tip:** Run `File → Run → addons/cheddaboards/SetupWizard.gd` to configure automatically!
 
 ### Step 3: Use It (30 sec)
 
@@ -67,40 +67,30 @@ func _on_leaderboard(entries):
         print("#%d %s - %d" % [e.rank, e.nickname, e.score])
 ```
 
-### ✅ Done!
+### Done!
 
 **Total time: ~3 minutes**
 
 You now have global leaderboards, score submission, and player nicknames.
 
-> 📖 **Full API docs:** [API_QUICKSTART.md](API_QUICKSTART.md)
+> Full API docs: [API_QUICKSTART.md](API_QUICKSTART.md)
 
 ---
 
-# 🌐 Web SDK Quick Start
+# Web SDK Quick Start
 
-**Full integration with login UI, Chedda ID, and Google/Apple OAuth.**
+**Full integration with login UI, Google/Apple OAuth, and account upgrade.**
 
 ### Step 1: Register Game (2 min)
 
 1. Go to [cheddaboards.com/dashboard](https://cheddaboards.com/dashboard)
 2. Sign in and register your game
 3. Copy your **Game ID**
-4. (Optional) Generate API key for anonymous play
+4. Generate an API key for anonymous play
 
 ### Step 2: Download Files (1 min)
 
-From [GitHub](https://github.com/cheddatech/CheddaBoards-Godot), copy to your project:
-
-```
-YourGame/
-├── addons/
-│   └── cheddaboards/
-│       ├── CheddaBoards.gd
-│       ├── Achievements.gd
-│       └── SetupWizard.gd
-└── template.html          ← Required for web!
-```
+From [GitHub](https://github.com/cheddatech/CheddaBoards-Godot), copy the full template to your project.
 
 ### Step 3: Run Setup Wizard (30 sec)
 
@@ -108,12 +98,12 @@ YourGame/
 File → Run (Ctrl+Shift+X) → Select SetupWizard.gd
 ```
 
-The wizard (v2.4) will:
-- ✅ Auto-add Autoloads
-- ✅ Check required files
-- ✅ Prompt for your Game ID (syncs to both files)
-- ✅ Prompt for your API Key
-- ✅ Configure Google/Apple OAuth credentials (optional)
+The wizard will:
+- Auto-add Autoloads (CheddaBoards, Achievements, MobileUI)
+- Check required files
+- Prompt for your Game ID (syncs to both files)
+- Prompt for your API Key
+- Configure Google/Apple OAuth credentials (optional)
 
 ### Step 4: Configure Export (30 sec)
 
@@ -130,31 +120,34 @@ Under HTML section:
 3. Open `http://localhost:8000`
 4. Test login and leaderboards!
 
-### ✅ Done!
+### Done!
 
 **Total time: ~5 minutes**
 
-You now have:
-- ✅ Chedda ID login (works out of box)
-- ✅ Anonymous play
-- ✅ Google/Apple login
-- ✅ Anonymous → Google/Apple account upgrade
-- ✅ Achievements system
-- ✅ Full leaderboard UI
+You now have anonymous play, Google/Apple login, account upgrade, achievements, and full leaderboard UI.
+
+> Full web setup guide: [SETUP_WEB.md](SETUP_WEB.md)
 
 ---
 
-## 🎮 Basic Usage
+## Basic Usage
 
 ```gdscript
 # Wait for SDK
 await CheddaBoards.wait_until_ready()
 
 # === LOGIN OPTIONS ===
-CheddaBoards.login_anonymous("PlayerName")     # Works everywhere
-CheddaBoards.login_internet_identity()         # Web only, works out of box
-CheddaBoards.login_google()                    # Web only
-CheddaBoards.login_apple()                     # Web only
+CheddaBoards.login_anonymous("PlayerName")            # Works everywhere
+CheddaBoards.login_google_device_code("PlayerName")   # Any platform (v1.9.0)
+CheddaBoards.login_apple_device_code("PlayerName")    # Any platform (v1.9.0)
+CheddaBoards.login_google()                            # Web only (direct OAuth)
+CheddaBoards.login_apple()                             # Web only (direct OAuth)
+
+# === DEVICE CODE AUTH ===
+# Player sees a code and URL, signs in on their phone
+CheddaBoards.device_code_received.connect(func(url, code, expires_in):
+    $CodeLabel.text = "Go to %s and enter: %s" % [url, code]
+)
 
 # === SCORES ===
 CheddaBoards.submit_score(1000, 5)  # score, streak
@@ -174,7 +167,7 @@ if CheddaBoards.is_authenticated():
 
 ---
 
-## 📊 Multiple Scoreboards (v1.3.0+)
+## Multiple Scoreboards
 
 Run weekly competitions alongside all-time high scores:
 
@@ -190,14 +183,14 @@ CheddaBoards.archived_scoreboard_loaded.connect(_on_archive)
 
 func _on_archive(archive_id, config, entries):
     if entries.size() > 0:
-        print("Last week's winner: %s 👑" % entries[0].nickname)
+        print("Last week's winner: %s" % entries[0].nickname)
 ```
 
-> 📖 **Full guide:** [TIMED_SCOREBOARDS.md](TIMED_SCOREBOARDS.md)
+> Full guide: [TIMED_LEADERBOARDS.md](TIMED_LEADERBOARDS.md)
 
 ---
 
-## 🏆 Quick Achievements (Optional)
+## Quick Achievements (Optional)
 
 ```gdscript
 func _on_game_over(score, streak):
@@ -206,24 +199,11 @@ func _on_game_over(score, streak):
     Achievements.submit_with_score(score, streak)
 ```
 
-> ⚠️ **Note:** Full achievement sync requires login (Google/Apple/Chedda ID). Anonymous users have achievements stored locally.
+> **Note:** Full achievement sync requires login (Google/Apple). Anonymous users have achievements stored locally.
 
 ---
 
-## 🐛 Debug Shortcuts
-
-Press during development:
-
-| Key | Action |
-|-----|--------|
-| F6 | Submit 5 random test scores |
-| F7 | Submit 1 random test score |
-| F8 | Force profile refresh |
-| F9 | Debug status dump |
-
----
-
-## ❓ Common Issues
+## Common Issues
 
 | Issue | Solution |
 |-------|----------|
@@ -233,28 +213,23 @@ Press during development:
 | Blank screen (web) | Use `python3 -m http.server`, not file:// |
 | "Engine not defined" (web) | Export must be named `index.html` |
 | Clicks offset | Project Settings → Display → DPI → Allow Hidpi: On |
-| Nickname not updating | Update to v1.4.0 (fixed in this version) |
 
 ---
 
-## 📚 More Documentation
+## More Documentation
 
 | Doc | Description |
 |-----|-------------|
 | [API_QUICKSTART.md](API_QUICKSTART.md) | Full API reference |
-| [TIMED_SCOREBOARDS.md](TIMED_SCOREBOARDS.md) | Weekly/daily competitions & archives |
+| [TIMED_LEADERBOARDS.md](TIMED_LEADERBOARDS.md) | Weekly/daily competitions & archives |
 | [SETUP.md](SETUP.md) | Detailed setup guide |
+| [SETUP_WEB.md](SETUP_WEB.md) | Web SDK setup guide |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common problems & solutions |
 | [CHANGELOG.md](CHANGELOG.md) | Version history |
 
 ---
 
-## 🔗 Resources
+## Resources
 
 - **Dashboard:** [cheddaboards.com/dashboard](https://cheddaboards.com/dashboard)
 - **GitHub:** [github.com/cheddatech/CheddaBoards-Godot](https://github.com/cheddatech/CheddaBoards-Godot)
-- **Example:** [cheddagames.com/cheddaclick](https://cheddaclick.cheddagames.com)
-
----
-
-**Zero servers. Free tier forever. Any platform.** 🧀
