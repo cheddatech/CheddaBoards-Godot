@@ -55,7 +55,7 @@ const LEGACY_GAME_ID: String = ""                # Your OLD game ID
 const LEGACY_SCOREBOARD_ID: String = "all-time"              # Your OLD scoreboard ID
 
 ## Which scoreboard to show by default (change to match your preference)
-@export var scoreboard_id: String = "all-time"
+@export var scoreboard_id: String = "weekly"
 
 # ============================================================
 # NODE REFERENCES - HEADER
