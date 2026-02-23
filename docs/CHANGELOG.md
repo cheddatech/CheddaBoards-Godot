@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.0] - 2025-02-23
+
+### Device Code Authentication & Cross-Platform Account Linking
+
+Google and Apple Sign-In now works on every platform — no browser popups, no OAuth SDKs needed in your game.
+
+### Added
+
+#### Device Code Auth (RFC 8628)
+- `login_google_device_code(nickname)` — Start Google device code flow
+- `login_apple_device_code(nickname)` — Start Apple device code flow
+- `cancel_device_code()` — Cancel ongoing device code flow
+- Signal: `device_code_received(url: String, code: String, expires_in: int)`
+- Signal: `device_code_expired()`
+- Game displays code and URL, player signs in on their phone, game picks up session via polling
+- Works on Windows, Mac, Linux, Mobile, Web — any platform that can make HTTP requests
+
+#### DeviceCodeLogin Scene
+- `scenes/DeviceCodeLogin.tscn` — Ready-made UI for device code flow
+- `scripts/DeviceCodeLogin.gd` — Handles code display, countdown, and polling
+
+#### Cross-Platform Account Linking
+- Anonymous players can upgrade to Google/Apple via device code on any platform
+- Preserves all scores, achievements, and progress
+- Enables cross-device sync
+
+### Changed
+- `CheddaBoardsWeb.gd` and `CheddaBoardsNative.gd` merged into `CheddaBoards.gd`
+- Account upgrade now works on all platforms (previously web-only)
+- Authentication table expanded with Native/Mobile/Web columns
+
+### Documentation
+- `SETUP_WEB.md` — New dedicated web setup guide
+- All docs updated to v1.9.0
+- Removed Chedda ID / Internet Identity references (unstable, removed for now)
+- Removed debug shortcut keys
+- Archive numbers corrected: daily (90), monthly (12), weekly (52)
+
+---
+
 ## [1.7.0] - 2025-02-05
 
 ### Added
@@ -613,6 +653,7 @@ First public release of the CheddaBoards Godot 4 Template.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| **v1.9.0** | 2025-02-23 | Device Code Auth (cross-platform Google/Apple), account linking on all platforms |
 | **v1.7.0** | 2025-02-05 | Modular GameWrapper, OAuth restored (web), account upgrade, clean folder structure |
 | **v1.5.0** | 2026-01-14 | Play session anti-cheat, time validation |
 | **v1.4.0** | 2026-01-04 | OAuth in wizard, nickname/score fixes, player ID fixes |
@@ -626,6 +667,17 @@ First public release of the CheddaBoards Godot 4 Template.
 ---
 
 ## Upgrade Guide
+
+### From v1.7.0 to v1.9.0
+
+1. **Update CheddaBoards.gd** — Replace with v1.9.0 (CheddaBoardsWeb.gd and CheddaBoardsNative.gd are now merged in)
+2. **Delete** `CheddaBoardsWeb.gd` and `CheddaBoardsNative.gd` from `addons/cheddaboards/` if present
+3. **Add new files:**
+   - `scenes/DeviceCodeLogin.tscn`
+   - `scripts/DeviceCodeLogin.gd`
+4. **Optional:** Add device code login to your MainMenu for cross-platform Google/Apple sign-in
+
+**Device Code Auth is additive** — existing anonymous and web OAuth flows continue to work unchanged.
 
 ### From v1.4.0 to v1.5.0
 
@@ -739,36 +791,27 @@ First public release of the CheddaBoards Godot 4 Template.
    - Change Custom HTML Shell to `res://template.html`
    - Always export as `index.html`
 
-### From Nothing to v1.5.0
+### From Nothing to v1.9.0
 
 1. Download/clone from GitHub
 2. Copy `addons/cheddaboards/` folder to your project
 3. Copy `template.html` to your project root (web only)
 4. Run `File > Run > addons/cheddaboards/SetupWizard.gd`
 5. Enter your Game ID in the popup
-6. **Optional**: Configure Google/Apple OAuth in wizard
-7. **For native**: Set API key in CheddaBoards.gd
-8. **For web**: Export as `index.html` and test!
-9. **Optional**: Add play session calls for anti-cheat
-10. Users can play immediately on any platform!
+6. Set API key in CheddaBoards.gd
+7. **For web**: Configure OAuth credentials (optional), export as `index.html`
+8. **For native**: Device Code Auth works out of the box
+9. Users can play immediately on any platform!
 
 ---
 
 ## Roadmap
 
-### Planned Features
-- [ ] Full REST API documentation (OpenAPI/Swagger)
+### In Progress
 - [ ] Unity SDK
-- [ ] Self-hosting option
-- [ ] Tournament/competition mode
-- [ ] Friend leaderboards
-- [ ] Expanded analytics dashboard
-- [ ] Video tutorials
 
-### Completed
-- [x] Achievements for anonymous/API-key users
-- [x] Session tokens with device fingerprinting
-- [x] Analytics dashboard (basic)
+### Planned
+- [ ] Expanded analytics dashboard
 
 ---
 
@@ -777,9 +820,6 @@ First public release of the CheddaBoards Godot 4 Template.
 - **Documentation**: See README.md
 - **GitHub**: https://github.com/cheddatech/CheddaBoards-Godot
 - **CheddaBoards**: https://cheddaboards.com
-- **Example Games**: 
-  - https://cheddagames.com/chedzvsthegraters (Web)
-  - https://cheddagames.com/cheddaclick (Web + Native)
 - **Contact**: info@cheddaboards.com
 
 ---
@@ -793,6 +833,4 @@ Found a bug? Have a feature request?
 
 ---
 
-**Thank you for using CheddaBoards!** 🧀
-
-*Zero servers. $0 for indie devs. Any platform.*
+**Need help?** info@cheddaboards.com
