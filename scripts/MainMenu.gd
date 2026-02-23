@@ -1166,7 +1166,7 @@ func _on_sign_in_button_pressed():
 	_log("Sign In pressed - showing device code popup")
 	is_logging_in = true
 	
-	var popup = preload("res://scenes/DeviceCodePopup.tscn").instantiate()
+	var popup = preload("res://scenes/DeviceCodeLogin.tscn").instantiate()
 	add_child(popup)
 	popup.signed_in.connect(func(nickname):
 		_log("Device code popup: signed in as %s" % nickname)
@@ -1243,7 +1243,7 @@ func _on_upgrade_google_pressed():
 	else:
 		# Native: use device code popup for upgrade
 		_log("Upgrade via device code pressed (native)")
-		var popup = preload("res://scenes/DeviceCodePopup.tscn").instantiate()
+		var popup = preload("res://scenes/DeviceCodeLogin.tscn").instantiate()
 		add_child(popup)
 		popup.signed_in.connect(func(nickname):
 			_log("Upgrade complete via device code: %s" % nickname)
