@@ -96,6 +96,34 @@ theme_override_font_sizes/font_size = 14
 text = "— or login to sync across devices —"
 horizontal_alignment = 1
 
+[node name="SignInButton" type="Button" parent="LoginPanel/MarginContainer/VBoxContainer"]
+visible = false
+custom_minimum_size = Vector2(300, 60)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
+theme_override_fonts/font = ExtResource("3_h7a2f")
+theme_override_font_sizes/font_size = 18
+text = "Sign In"
+
+[node name="DeviceCodeLabel" type="Label" parent="LoginPanel/MarginContainer/VBoxContainer"]
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
+theme_override_fonts/font = ExtResource("3_h7a2f")
+theme_override_font_sizes/font_size = 14
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="CancelSignInButton" type="Button" parent="LoginPanel/MarginContainer/VBoxContainer"]
+visible = false
+custom_minimum_size = Vector2(300, 40)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_colors/font_color = Color(0.6, 0.6, 0.6, 1)
+theme_override_font_sizes/font_size = 14
+text = "Cancel"
+
 [node name="GoogleButton" type="Button" parent="LoginPanel/MarginContainer/VBoxContainer"]
 visible = false
 custom_minimum_size = Vector2(300, 60)
@@ -125,7 +153,8 @@ custom_minimum_size = Vector2(300, 50)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_colors/font_color = Color(0.6, 0.6, 0.6, 1)
-theme_override_font_sizes/font_size = 16
+theme_override_fonts/font = ExtResource("3_h7a2f")
+theme_override_font_sizes/font_size = 18
 text = "Exit"
 
 [node name="StatusLabel" type="Label" parent="LoginPanel/MarginContainer/VBoxContainer"]
