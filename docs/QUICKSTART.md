@@ -10,8 +10,8 @@
 
 | Path | Time | Best For |
 |------|------|----------|
-| **[API Only](#api-quick-start)** | 3 min | Native builds, simple integration |
-| **[Full Web SDK](#web-sdk-quick-start)** | 5 min | Web builds with login UI, OAuth (Google/Apple) |
+| **[API Only](#api-quick-start)** | 3 min | All platforms, simple integration |
+| **[Web SDK](SETUP_WEB.md)** | 5 min | Web builds with login UI, OAuth (Google/Apple) |
 
 > Not sure? Start with API Only — it works everywhere and you can add web features later.
 
@@ -77,59 +77,6 @@ You now have global leaderboards, score submission, and player nicknames.
 
 ---
 
-# Web SDK Quick Start
-
-**Full integration with login UI, Google/Apple OAuth, and account upgrade.**
-
-### Step 1: Register Game (2 min)
-
-1. Go to [cheddaboards.com/dashboard](https://cheddaboards.com/dashboard)
-2. Sign in and register your game
-3. Copy your **Game ID**
-4. Generate an API key for anonymous play
-
-### Step 2: Download Files (1 min)
-
-From [GitHub](https://github.com/cheddatech/CheddaBoards-Godot), copy the full template to your project.
-
-### Step 3: Run Setup Wizard (30 sec)
-
-```
-File → Run (Ctrl+Shift+X) → Select SetupWizard.gd
-```
-
-The wizard will:
-- Auto-add Autoloads (CheddaBoards, Achievements, MobileUI)
-- Check required files
-- Prompt for your Game ID (syncs to both files)
-- Prompt for your API Key
-- Configure Google/Apple OAuth credentials (optional)
-
-### Step 4: Configure Export (30 sec)
-
-```
-Project → Export → Web
-Under HTML section:
-  Custom HTML Shell: res://template.html
-```
-
-### Step 5: Export & Test (1 min)
-
-1. Export as **`index.html`** (important!)
-2. Run local server: `python3 -m http.server 8000`
-3. Open `http://localhost:8000`
-4. Test login and leaderboards!
-
-### Done!
-
-**Total time: ~5 minutes**
-
-You now have anonymous play, Google/Apple login, account upgrade, achievements, and full leaderboard UI.
-
-> Full web setup guide: [SETUP_WEB.md](SETUP_WEB.md)
-
----
-
 ## Basic Usage
 
 ```gdscript
@@ -140,8 +87,6 @@ await CheddaBoards.wait_until_ready()
 CheddaBoards.login_anonymous("PlayerName")            # Works everywhere
 CheddaBoards.login_google_device_code("PlayerName")   # Any platform (v1.9.0)
 CheddaBoards.login_apple_device_code("PlayerName")    # Any platform (v1.9.0)
-CheddaBoards.login_google()                            # Web only (direct OAuth)
-CheddaBoards.login_apple()                             # Web only (direct OAuth)
 
 # === DEVICE CODE AUTH ===
 # Player sees a code and URL, signs in on their phone
