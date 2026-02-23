@@ -1,4 +1,4 @@
-# CheddaBoards.gd v1.8.2
+# CheddaBoards.gd v1.9.0
 # CheddaBoards integration for Godot 4.x
 # https://github.com/cheddatech/CheddaBoards-Godot
 # https://cheddaboards.com
@@ -9,6 +9,10 @@
 # - Anonymous/Native score submissions use HTTP API
 # - Play sessions use HTTP API for ALL users
 #
+# v1.9.0: Device Code Auth - cross-platform social login via REST API.
+#          login_with_device_code() works on ANY platform (desktop, console, etc).
+#          No browser popup, no Google/Apple SDK needed in the game.
+#          Player authenticates on their phone at cheddaboards.com/link
 # v1.8.2: Achievement sync is now non-blocking (async/fire-and-forget).
 #          Fixes leaderboard timeout from achievement queue blocking.
 #          Added unlock_achievements_batch() for efficient batch sync.
@@ -111,6 +115,12 @@ signal play_session_error(reason: String)
 signal account_upgraded(profile: Dictionary, migration: Dictionary)
 signal account_upgrade_failed(reason: String)
 
+# --- Device Code Auth (Cross-platform login) ---
+signal device_code_received(user_code: String, verification_url: String)
+signal device_code_approved(nickname: String)
+signal device_code_expired()
+signal device_code_error(reason: String)
+
 # ============================================================
 # CONFIGURATION
 # ============================================================
@@ -160,6 +170,17 @@ var _last_profile_refresh: float = 0.0
 
 var _pending_score: int = 0
 var _pending_streak: int = 0
+
+# ============================================================
+# DEVICE CODE AUTH STATE
+# ============================================================
+
+var _device_code: String = ""
+var _device_user_code: String = ""
+var _device_code_poll_timer: Timer = null
+var _device_code_poll_interval: float = 5.0
+var _device_code_expires_at: float = 0.0
+var _is_polling_device_code: bool = false
 
 # ============================================================
 # TIMEOUT MANAGEMENT
@@ -240,7 +261,7 @@ func _make_http_request_async(endpoint: String, method: int, body: Dictionary, r
 	var headers = ["Content-Type: application/json"]
 	
 	# Use session token if available, otherwise API key
-	var force_api_key = request_type in ["start_play_session", "end_play_session"]
+	var force_api_key = request_type in ["start_play_session", "end_play_session"] and _session_token.is_empty()
 	if not _session_token.is_empty() and not force_api_key:
 		headers.append("X-Session-Token: " + _session_token)
 	elif not api_key.is_empty():
@@ -428,10 +449,10 @@ func _handle_web_response(response: Dictionary) -> void:
 
 		"getPlayerRank":
 			if success:
-				var rank: int = int(response.get("rank", 0))
-				var score_val: int = int(response.get("score", 0))
-				var streak_val: int = int(response.get("streak", 0))
-				var total: int = int(response.get("totalPlayers", 0))
+				var rank: int = _safe_int(response.get("rank", 0))
+				var score_val: int = _safe_int(response.get("score", 0))
+				var streak_val: int = _safe_int(response.get("streak", 0))
+				var total: int = _safe_int(response.get("totalPlayers", 0))
 				player_rank_loaded.emit(rank, score_val, streak_val, total)
 			else:
 				var error: String = str(response.get("error", "Unknown error"))
@@ -516,6 +537,13 @@ func _on_http_request_completed(result: int, response_code: int, headers: Packed
 			_http_busy = false
 			_process_next_request()
 			return
+		# Migration errors are non-fatal - account may already be migrated or anonymous data gone
+		if _current_endpoint == "migrate_account":
+			_log("Migration note: %s (non-fatal, continuing)" % error_msg)
+			_current_meta = {}
+			_http_busy = false
+			_process_next_request()
+			return
 		push_error("[CheddaBoards] API error (%d): %s" % [response_code, error_msg])
 		request_failed.emit(_current_endpoint, error_msg)
 		_emit_http_failure(error_msg)
@@ -545,10 +573,10 @@ func _emit_http_success(data) -> void:
 			leaderboard_loaded.emit(entries)
 		
 		"player_rank":
-			var rank = int(data.get("rank", 0))
-			var score_val = int(data.get("score", 0))
-			var streak_val = int(data.get("streak", 0))
-			var total = int(data.get("totalPlayers", 0))
+			var rank = _safe_int(data.get("rank", 0))
+			var score_val = _safe_int(data.get("score", 0))
+			var streak_val = _safe_int(data.get("streak", 0))
+			var total = _safe_int(data.get("totalPlayers", 0))
 			player_rank_loaded.emit(rank, score_val, streak_val, total)
 		
 		"player_profile":
@@ -628,13 +656,13 @@ func _emit_http_success(data) -> void:
 			var sb_id = _current_meta.get("scoreboard_id", "")
 			var found = data.get("found", false)
 			if found:
-				var rank = int(data.get("rank", 0))
-				var score_val = int(data.get("score", 0))
-				var streak_val = int(data.get("streak", 0))
-				var total = int(data.get("totalPlayers", 0))
+				var rank = _safe_int(data.get("rank", 0))
+				var score_val = _safe_int(data.get("score", 0))
+				var streak_val = _safe_int(data.get("streak", 0))
+				var total = _safe_int(data.get("totalPlayers", 0))
 				scoreboard_rank_loaded.emit(sb_id, rank, score_val, streak_val, total)
 			else:
-				scoreboard_rank_loaded.emit(sb_id, 0, 0, 0, int(data.get("totalPlayers", 0)))
+				scoreboard_rank_loaded.emit(sb_id, 0, 0, 0, _safe_int(data.get("totalPlayers", 0)))
 		
 		# --- ARCHIVE RESPONSES (NEW v1.4.0) ---
 		"list_archives":
@@ -651,7 +679,7 @@ func _emit_http_success(data) -> void:
 			_log("Loaded archive '%s' with %d entries" % [archive_id, entries.size()])
 		
 		"archive_stats":
-			var total = int(data.get("totalArchives", 0))
+			var total = _safe_int(data.get("totalArchives", 0))
 			var by_sb = data.get("byScoreboard", [])
 			archive_stats_loaded.emit(total, by_sb)
 			_log("Archive stats: %d total archives" % total)
@@ -675,6 +703,43 @@ func _emit_http_success(data) -> void:
 		
 		"end_play_session":
 			_log("Play session ended on server successfully")
+		
+		"migrate_account":
+			var migrated_games = _safe_int(data.get("migratedGames", 0))
+			var migrated_sb = _safe_int(data.get("migratedScoreboards", 0))
+			var message = str(data.get("message", "Migration complete"))
+			_log("Migration complete: %d games, %d scoreboards migrated" % [migrated_games, migrated_sb])
+			# Refresh profile to get merged data
+			refresh_profile()
+			# Emit upgrade signal for UI (MainMenu listens for this)
+			account_upgraded.emit(_cached_profile, {
+				"migratedGames": migrated_games,
+				"migratedScoreboards": migrated_sb,
+			})
+		
+		# --- DEVICE CODE RESPONSES (NEW v1.9.0) ---
+		"device_code_request":
+			var dc = str(data.get("device_code", ""))
+			var uc = str(data.get("user_code", ""))
+			var url = str(data.get("verification_url", ""))
+			var url_complete = str(data.get("verification_url_complete", ""))
+			var expires_in = _safe_int(data.get("expires_in", 300))
+			var interval = _safe_int(data.get("interval", 5))
+			
+			_device_code = dc
+			_device_user_code = uc
+			_device_code_poll_interval = float(interval)
+			_device_code_expires_at = Time.get_unix_time_from_system() + float(expires_in)
+			
+			_log("Device code received: %s (expires in %ds)" % [uc, expires_in])
+			device_code_received.emit(uc, url_complete if url_complete != "" else url)
+			
+			# Start polling for approval
+			_start_device_code_polling()
+		
+		"device_code_token":
+			# This is handled in the custom polling function, not here
+			pass
 	
 	_current_meta = {}
 	_http_busy = false
@@ -737,6 +802,9 @@ func _emit_http_failure(error: String) -> void:
 		"end_play_session":
 			_log("End play session HTTP error (ignored): %s" % error)
 			# Don't emit error - ending session is best-effort
+		"device_code_request":
+			_log("Device code request failed: %s" % error)
+			device_code_error.emit(error)
 		"archive_stats":
 			archive_stats_loaded.emit(0, [])
 			archive_error.emit(error)
@@ -791,7 +859,7 @@ func _execute_http_request(request_data: Dictionary) -> void:
 	# EXCEPT: play sessions always use API key (game-level operation, skip_validation)
 	# Proxy routes: sessionToken && !apiKey → session handlers (authenticated user)
 	#               apiKey (no sessionToken) → external handlers (anonymous/API)
-	var force_api_key = _current_endpoint in ["start_play_session", "end_play_session"]
+	var force_api_key = _current_endpoint in ["start_play_session", "end_play_session"] and _session_token.is_empty()
 	if not _session_token.is_empty() and not force_api_key:
 		headers.append("X-Session-Token: " + _session_token)
 		_log("Using session token for auth")
@@ -855,10 +923,12 @@ func _update_cached_profile(profile: Dictionary) -> void:
 	var play_count: int = 0
 	
 	if game_profile and not game_profile.is_empty():
-		score = int(game_profile.get("score", 0))
-		streak = int(game_profile.get("streak", 0))
+		score = _safe_int(game_profile.get("score", 0))
+		streak = _safe_int(game_profile.get("streak", 0))
 		achievements = game_profile.get("achievements", [])
-		play_count = int(game_profile.get("playCount", 0))
+		if achievements == null:
+			achievements = []
+		play_count = _safe_int(game_profile.get("playCount", 0))
 		# Store flattened for easier access
 		_cached_profile["score"] = score
 		_cached_profile["streak"] = streak
@@ -866,10 +936,12 @@ func _update_cached_profile(profile: Dictionary) -> void:
 		_cached_profile["playCount"] = play_count
 	else:
 		# Fallback to direct fields (JS bridge format)
-		score = int(profile.get("score", profile.get("highScore", 0)))
-		streak = int(profile.get("streak", profile.get("bestStreak", 0)))
+		score = _safe_int(profile.get("score", profile.get("highScore", 0)))
+		streak = _safe_int(profile.get("streak", profile.get("bestStreak", 0)))
 		achievements = profile.get("achievements", [])
-		play_count = int(profile.get("playCount", profile.get("plays", 0)))
+		if achievements == null:
+			achievements = []
+		play_count = _safe_int(profile.get("playCount", profile.get("plays", 0)))
 	
 	_nickname = nickname
 
@@ -930,6 +1002,22 @@ func wait_until_ready() -> void:
 		return
 	await sdk_ready
 
+func _safe_int(value) -> int:
+	"""Safely convert any value to int. Handles null, float, string, etc."""
+	if value == null:
+		return 0
+	if value is int:
+		return value
+	if value is float:
+		return int(value)
+	if value is String:
+		if value.is_valid_int():
+			return value.to_int()
+		if value.is_valid_float():
+			return int(value.to_float())
+		return 0
+	return 0
+
 func _get_default_nickname() -> String:
 	return "Player_" + get_player_id().left(6)
 
@@ -953,10 +1041,10 @@ func get_high_score() -> int:
 		return 0
 	# Check flattened field first, then nested gameProfile
 	if _cached_profile.has("score"):
-		return int(_cached_profile.get("score", 0))
+		return _safe_int(_cached_profile.get("score", 0))
 	var gp = _cached_profile.get("gameProfile", {})
 	if gp and not gp.is_empty():
-		return int(gp.get("score", 0))
+		return _safe_int(gp.get("score", 0))
 	return 0
 
 func get_best_streak() -> int:
@@ -964,10 +1052,10 @@ func get_best_streak() -> int:
 		return 0
 	# Check flattened field first, then nested gameProfile
 	if _cached_profile.has("streak"):
-		return int(_cached_profile.get("streak", 0))
+		return _safe_int(_cached_profile.get("streak", 0))
 	var gp = _cached_profile.get("gameProfile", {})
 	if gp and not gp.is_empty():
-		return int(gp.get("streak", 0))
+		return _safe_int(gp.get("streak", 0))
 	return 0
 
 func get_play_count() -> int:
@@ -975,10 +1063,10 @@ func get_play_count() -> int:
 		return 0
 	# Check flattened field first, then nested gameProfile
 	if _cached_profile.has("playCount"):
-		return int(_cached_profile.get("playCount", 0))
+		return _safe_int(_cached_profile.get("playCount", 0))
 	var gp = _cached_profile.get("gameProfile", {})
 	if gp and not gp.is_empty():
-		return int(gp.get("playCount", 0))
+		return _safe_int(gp.get("playCount", 0))
 	return 0
 
 func get_cached_profile() -> Dictionary:
@@ -1141,6 +1229,258 @@ func login_anonymous(nickname: String = "") -> void:
 	_auth_type = "anonymous"
 	login_success.emit(_nickname)
 	_log("Anonymous login (HTTP API mode)")
+
+# ============================================================
+# PUBLIC API - DEVICE CODE AUTH (Cross-platform social login)
+# ============================================================
+# Works on ANY platform. No browser popup, no Google/Apple SDK needed.
+#
+# Usage:
+#   CheddaBoards.device_code_received.connect(_on_device_code)
+#   CheddaBoards.device_code_approved.connect(_on_device_approved)
+#   CheddaBoards.device_code_expired.connect(_on_device_expired)
+#   CheddaBoards.device_code_error.connect(_on_device_error)
+#   CheddaBoards.login_with_device_code()
+#
+#   func _on_device_code(user_code: String, url: String):
+#       # Show on screen: "Go to cheddaboards.com/link"
+#       # "Enter code: CHEDDA-7K3M"
+#       $CodeLabel.text = "Enter code: %s" % user_code
+#       $URLLabel.text = url
+#
+#   func _on_device_approved(nickname: String):
+#       # Player is now logged in! Session is set automatically.
+#       print("Welcome %s!" % nickname)
+
+## Start device code login flow.
+## Emits device_code_received with the code to show the player.
+## Automatically polls for approval and emits device_code_approved on success.
+func login_with_device_code() -> void:
+	if not _init_complete:
+		device_code_error.emit("CheddaBoards not ready")
+		return
+	
+	if game_id.is_empty():
+		device_code_error.emit("Game ID not set. Call set_game_id() first.")
+		return
+	
+	# Cancel any existing device code flow
+	_stop_device_code_polling()
+	
+	_log("Requesting device code for game: %s" % game_id)
+	var body = {"gameId": game_id}
+	_make_http_request("/auth/device/code", HTTPClient.METHOD_POST, body, "device_code_request")
+
+## Cancel an in-progress device code login.
+func cancel_device_code() -> void:
+	_stop_device_code_polling()
+	_device_code = ""
+	_device_user_code = ""
+	_log("Device code login cancelled")
+
+## Get the current user code (for display purposes).
+func get_device_user_code() -> String:
+	return _device_user_code
+
+## Check if a device code login is in progress.
+func is_device_code_pending() -> bool:
+	return _is_polling_device_code and _device_code != ""
+
+# ============================================================
+# DEVICE CODE POLLING (Internal)
+# ============================================================
+
+var _device_code_poll_in_flight: bool = false
+var _device_code_approved: bool = false
+
+func _start_device_code_polling() -> void:
+	_stop_device_code_polling()
+	_is_polling_device_code = true
+	_device_code_poll_in_flight = false
+	_device_code_approved = false
+	
+	_device_code_poll_timer = Timer.new()
+	_device_code_poll_timer.wait_time = _device_code_poll_interval
+	_device_code_poll_timer.autostart = true
+	_device_code_poll_timer.timeout.connect(_poll_device_code_token)
+	add_child(_device_code_poll_timer)
+	_log("Device code polling started (every %ds)" % int(_device_code_poll_interval))
+
+func _stop_device_code_polling() -> void:
+	_is_polling_device_code = false
+	_device_code_poll_in_flight = false
+	if _device_code_poll_timer:
+		_device_code_poll_timer.stop()
+		_device_code_poll_timer.queue_free()
+		_device_code_poll_timer = null
+
+func _poll_device_code_token() -> void:
+	if not _is_polling_device_code or _device_code.is_empty():
+		_stop_device_code_polling()
+		return
+	
+	# Don't send another request if one is already in-flight
+	if _device_code_poll_in_flight:
+		return
+	
+	# Check expiry
+	if Time.get_unix_time_from_system() >= _device_code_expires_at:
+		_log("Device code expired: %s" % _device_user_code)
+		_stop_device_code_polling()
+		_device_code = ""
+		_device_user_code = ""
+		device_code_expired.emit()
+		return
+	
+	_device_code_poll_in_flight = true
+	
+	# Poll using async request so it doesn't block the main HTTP queue
+	var http = HTTPRequest.new()
+	add_child(http)
+	
+	var headers = ["Content-Type: application/json"]
+	if not game_id.is_empty():
+		headers.append("X-Game-ID: " + game_id)
+	
+	var body = JSON.stringify({"device_code": _device_code})
+	var url = API_BASE_URL + "/auth/device/token"
+	
+	http.request_completed.connect(func(result, code, _headers, response_body):
+		_device_code_poll_in_flight = false
+		_handle_device_code_poll_response(result, code, response_body)
+		http.queue_free()
+	)
+	
+	var error = http.request(url, headers, HTTPClient.METHOD_POST, body)
+	if error != OK:
+		_log("Device code poll request failed to start")
+		_device_code_poll_in_flight = false
+		http.queue_free()
+
+func _handle_device_code_poll_response(result: int, response_code: int, body: PackedByteArray) -> void:
+	if result != HTTPRequest.RESULT_SUCCESS:
+		_log("Device code poll: network error")
+		return
+	
+	# If we already handled approval, ignore ALL further responses
+	if _device_code_approved:
+		_log("Device code poll: ignoring response (already approved)")
+		return
+	
+	var json = JSON.new()
+	if json.parse(body.get_string_from_utf8()) != OK:
+		_log("Device code poll: invalid JSON")
+		return
+	
+	var response = json.data
+	
+	# 428 = authorization_pending (keep polling)
+	if response_code == 428:
+		return
+	
+	# 410 = expired
+	if response_code == 410:
+		_log("Device code expired (server confirmed)")
+		_stop_device_code_polling()
+		_device_code = ""
+		_device_user_code = ""
+		device_code_expired.emit()
+		return
+	
+	# 200 = approved!
+	if response_code == 200 and response.get("ok", false):
+		# Set approved flag FIRST — prevents any late responses from doing anything
+		_device_code_approved = true
+		_stop_device_code_polling()
+		
+		var data = response.get("data", {})
+		var session_id = str(data.get("sessionId", ""))
+		var nickname = str(data.get("nickname", "Player"))
+		var is_new = bool(data.get("isNewUser", false))
+		var email = str(data.get("email", ""))
+		
+		_log("Device code approved! User: %s (%s)" % [nickname, email])
+		
+		# Save anonymous player ID BEFORE switching auth — needed for migration
+		var previous_anonymous_id = _player_id
+		var was_anonymous = _auth_type == "anonymous" and not previous_anonymous_id.is_empty()
+		
+		# Set session state (same as social login)
+		_session_token = session_id
+		_nickname = nickname
+		_auth_type = "google"  # or apple - determined by what they chose on the page
+		
+		# Clear stale anonymous play session — it was started under a different
+		# player ID and the server will reject score submissions with it.
+		# The game should call start_play_session() again before next score submit.
+		if _play_session_token != "":
+			_log("Clearing stale anonymous play session after device code auth")
+			_play_session_token = ""
+		
+		# Cache profile data
+		var game_profile = data.get("gameProfile", null)
+		if game_profile and game_profile is Dictionary:
+			_update_cached_profile({
+				"nickname": nickname,
+				"gameProfile": game_profile,
+			})
+		else:
+			_cached_profile = {"nickname": nickname}
+			profile_loaded.emit(nickname, 0, 0, [])
+		
+		# Clear device code state (polling already stopped above)
+		_device_code = ""
+		_device_user_code = ""
+		
+		# Emit both device_code_approved AND login_success
+		# so existing login flows work without changes
+		device_code_approved.emit(nickname)
+		login_success.emit(nickname)
+		
+		# Auto-migrate anonymous data → new account (fire and forget)
+		if was_anonymous:
+			_migrate_anonymous_account(previous_anonymous_id)
+		
+		return
+	
+	# 404 = invalid code (or already consumed after successful approval)
+	if response_code == 404:
+		if _device_code_approved or _device_code.is_empty():
+			_log("Device code poll: 404 after approval (ignoring)")
+			return
+		_log("Device code invalid or expired")
+		_stop_device_code_polling()
+		_device_code = ""
+		_device_user_code = ""
+		device_code_error.emit("Invalid or expired code")
+		return
+	
+	# Other errors
+	var error_msg = str(response.get("error", "Unknown error"))
+	_log("Device code poll error (%d): %s" % [response_code, error_msg])
+	# Don't stop polling for transient errors - just log and continue
+
+# ============================================================
+# ACCOUNT MIGRATION (Anonymous → Verified)
+# ============================================================
+
+## Migrate anonymous player data (scores, achievements) to the newly
+## linked authenticated account. Called automatically after device code
+## login if the player was previously anonymous.
+## Uses POST /migrate-account with session token + anonymous device ID.
+func _migrate_anonymous_account(anonymous_device_id: String) -> void:
+	if anonymous_device_id.is_empty() or _session_token.is_empty():
+		_log("Migration skipped: missing device ID or session token")
+		return
+	
+	_log("Migrating anonymous data: %s → authenticated account" % anonymous_device_id)
+	
+	var body = {"deviceId": anonymous_device_id}
+	_make_http_request("/migrate-account", HTTPClient.METHOD_POST, body, "migrate_account")
+
+## Public method: manually trigger migration if needed (e.g. from MainMenu upgrade flow)
+func migrate_anonymous_to_current(anonymous_device_id: String) -> void:
+	_migrate_anonymous_account(anonymous_device_id)
 
 func logout() -> void:
 	if _is_web:
@@ -1307,14 +1647,22 @@ func submit_score(score: int, streak: int = 0) -> void:
 func start_play_session() -> void:
 	_play_session_token = ""
 	
-	# ALL users use HTTP API for play sessions (simpler, works everywhere)
-	# This includes web authenticated users, web anonymous, and native
+	# ALL users use HTTP API for play sessions
+	# Session-token users (OAuth/device code linked) use session auth
+	# Anonymous users use API key + player ID
 	var body = {
 		"gameId": game_id,
 		"playerId": get_player_id()
 	}
-	_make_http_request("/play-sessions/start", HTTPClient.METHOD_POST, body, "start_play_session")
-	_log("Play session requested (HTTP API) for game: %s, player: %s" % [game_id, get_player_id()])
+	
+	# If we have a session token (linked account), use session auth path
+	# Otherwise use API key path (anonymous)
+	if not _session_token.is_empty():
+		_make_http_request("/play-sessions/start", HTTPClient.METHOD_POST, body, "start_play_session")
+		_log("Play session requested (session auth) for game: %s" % game_id)
+	else:
+		_make_http_request("/play-sessions/start", HTTPClient.METHOD_POST, body, "start_play_session")
+		_log("Play session requested (API key) for game: %s, player: %s" % [game_id, get_player_id()])
 
 func _poll_play_session_result() -> void:
 	# Wait a moment for async JS to complete
@@ -1840,6 +2188,8 @@ func debug_status() -> void:
 	print("║  - Queue Size:       %s" % str(_request_queue.size()).rpad(24) + "║")
 	print("║  - Pending Score:    %s" % str(_pending_score).rpad(24) + "║")
 	print("║  - Pending Streak:   %s" % str(_pending_streak).rpad(24) + "║")
+	print("║  - Device Code:      %s" % (_device_user_code if _device_user_code != "" else "none").rpad(24) + "║")
+	print("║  - DC Polling:       %s" % str(_is_polling_device_code).rpad(24) + "║")
 	print("╚══════════════════════════════════════════════╝")
 
 	if _is_web:
@@ -1866,3 +2216,4 @@ func _exit_tree() -> void:
 		_poll_timer.stop()
 		_poll_timer.queue_free()
 	_clear_login_timeout()
+	_stop_device_code_polling()
