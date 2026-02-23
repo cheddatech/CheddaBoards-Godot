@@ -1,10 +1,10 @@
-# 🔧 CheddaBoards Troubleshooting
+# CheddaBoards Troubleshooting
 
 **Find your problem, get the fix.**
 
 ---
 
-## 🚨 Quick Fixes
+## Quick Fixes
 
 **90% of problems are solved by:**
 
@@ -16,7 +16,7 @@
 
 ---
 
-## 🧙 First: Run the Setup Wizard
+## First: Run the Setup Wizard
 
 Before debugging manually, run the wizard:
 
@@ -25,9 +25,9 @@ File → Run (Ctrl+Shift+X) → Select SetupWizard.gd
 ```
 
 It auto-fixes:
-- ✅ Missing Autoloads
-- ✅ Wrong Game ID
-- ✅ Export settings
+- Missing Autoloads
+- Wrong Game ID
+- Export settings
 
 ---
 
@@ -35,17 +35,17 @@ It auto-fixes:
 
 | What's broken? | Jump to |
 |----------------|---------|
-| API key errors | [API Key Issues](#-api-key-issues) |
-| Login not working | [Login Issues](#-login-issues) |
-| Scores not saving | [Score Issues](#-score-issues) |
-| Leaderboard empty | [Leaderboard Issues](#-leaderboard-issues) |
-| Web blank screen | [Web Issues](#-web-issues) |
-| Clicks offset | [Display Issues](#-display-issues) |
-| Achievements | [Achievement Issues](#-achievement-issues) |
+| API key errors | [API Key Issues](#api-key-issues) |
+| Login not working | [Login Issues](#login-issues) |
+| Scores not saving | [Score Issues](#score-issues) |
+| Leaderboard empty | [Leaderboard Issues](#leaderboard-issues) |
+| Web blank screen | [Web Issues](#web-issues) |
+| Clicks offset | [Display Issues](#display-issues) |
+| Achievements | [Achievement Issues](#achievement-issues) |
 
 ---
 
-# 🔑 API Key Issues
+## API Key Issues
 
 ### "API key not set"
 
@@ -87,17 +87,18 @@ CheddaBoards.request_failed.connect(func(endpoint, error):
 
 ---
 
-# 🔐 Login Issues
+## Login Issues
 
 ### Which login works where?
 
-| Method | Web | Native |
-|--------|-----|--------|
-| Anonymous | ✅ | ✅ |
-| Chedda ID | ✅ | ❌ |
-| Google | ✅ | ❌ |
-| Apple | ✅ | ❌ |
-| Account Upgrade (Anon → Google/Apple) | ✅ | ❌ |
+| Method | Native | Mobile | Web |
+|--------|--------|--------|-----|
+| Anonymous | ✅ | ✅ | ✅ |
+| Google (Device Code) | ✅ | ✅ | ✅ |
+| Apple (Device Code) | ✅ | ✅ | ✅ |
+| Google (Direct OAuth) | — | — | ✅ |
+| Apple (Direct OAuth) | — | — | ✅ |
+| Account Upgrade | ✅ | ✅ | ✅ |
 
 ### "Not authenticated"
 
@@ -116,6 +117,34 @@ func _on_game_over(score, streak):
         print("Not logged in!")
 ```
 
+### Device code not appearing
+
+**Checklist:**
+- [ ] Connected to `device_code_received` signal
+- [ ] Internet connection works
+- [ ] API key is set
+
+**Debug:**
+```gdscript
+CheddaBoards.device_code_received.connect(func(url, code, expires_in):
+    print("Code: %s at %s (expires in %ds)" % [code, url, expires_in])
+)
+
+CheddaBoards.device_code_expired.connect(func():
+    print("Device code expired")
+)
+
+CheddaBoards.login_failed.connect(func(reason):
+    print("Login failed: ", reason)
+)
+```
+
+### Device code expired before player could sign in
+
+**Cause:** Codes expire after 5 minutes.
+
+**Fix:** Call `login_google_device_code()` or `login_apple_device_code()` again to get a fresh code.
+
 ### Login button does nothing (Web)
 
 **Checklist:**
@@ -123,23 +152,17 @@ func _on_game_over(score, streak):
 - [ ] Popups allowed in browser
 - [ ] Game ID set in template.html
 
-### Popup blocked
-
-1. Look for blocked popup icon in address bar
-2. Click → Allow popups for this site
-3. Try again
-
-### Google/Apple login not working
+### Google/Apple direct OAuth not working (Web)
 
 **Checklist:**
 - [ ] Using http:// or https://, not file://
 - [ ] Popups allowed in browser
-- [ ] Game ID set in template.html
-- [ ] Using latest template.html with OAuth support
+- [ ] OAuth credentials configured in template.html
+- [ ] Using latest template.html
 
 ---
 
-# 💾 Score Issues
+## Score Issues
 
 ### Score not saving
 
@@ -163,7 +186,7 @@ CheddaBoards.score_submitted.connect(func(score, streak):
 
 **Causes:**
 1. Score isn't higher than previous best
-2. Network delay - wait 5 seconds
+2. Network delay — wait a few seconds
 3. Wrong Game ID
 
 **Fix:** Submit a higher score, refresh leaderboard.
@@ -172,14 +195,11 @@ CheddaBoards.score_submitted.connect(func(score, streak):
 
 **Cause:** Score exceeds game's anti-cheat limits.
 
-**Fix:** Check your game's rules on the dashboard. Default limits:
-- Max score per round: 5,000
-- Max streak delta: 200
-- Absolute score cap: 100,000
+**Fix:** Check your game's Security tab on the dashboard. Adjust limits based on your game's mechanics.
 
 ---
 
-# 📊 Leaderboard Issues
+## Leaderboard Issues
 
 ### Leaderboard is empty
 
@@ -195,13 +215,13 @@ CheddaBoards.score_submitted.connect(func(score, streak):
 
 ### Wrong data showing
 
-**Cause:** Wrong Game ID - each game has its own leaderboard.
+**Cause:** Wrong Game ID — each game has its own leaderboard.
 
 **Fix:** Verify Game ID in template.html or CheddaBoards.gd matches dashboard.
 
 ---
 
-# 🌐 Web Issues
+## Web Issues
 
 ### Blank screen / nothing loads
 
@@ -235,9 +255,11 @@ python3 -m http.server 8000
 
 **Fix:** Use local web server (see blank screen fix above)
 
+> Full web setup guide: [SETUP_WEB.md](SETUP_WEB.md)
+
 ---
 
-# 🖥️ Display Issues
+## Display Issues
 
 ### Clicks offset / wrong position
 
@@ -257,7 +279,7 @@ python3 -m http.server 8000
 
 ---
 
-# 🏆 Achievement Issues
+## Achievement Issues
 
 ### Achievements not unlocking
 
@@ -281,9 +303,11 @@ Achievements.increment_games_played()
 Achievements.submit_with_score(score, streak)
 ```
 
+> **Note:** Full achievement sync requires login (Google/Apple). Anonymous users have achievements stored locally.
+
 ---
 
-# 🐛 Debug Tools
+## Debug Tools
 
 ### Enable Logging
 
@@ -299,16 +323,6 @@ CheddaBoards.debug_status()
 Achievements.debug_status()
 ```
 
-### Add Debug Keys
-
-```gdscript
-func _input(event):
-    if event is InputEventKey and event.pressed:
-        match event.keycode:
-            KEY_F9: CheddaBoards.debug_status()
-            KEY_F10: Achievements.debug_status()
-```
-
 ### Browser Console (Web)
 
 1. Press F12
@@ -317,9 +331,9 @@ func _input(event):
 
 ---
 
-# ✅ Pre-Flight Checklist
+## Pre-Flight Checklist
 
-### API/Native Build
+### API / Native Build
 
 - [ ] API key set in CheddaBoards.gd
 - [ ] CheddaBoards in Autoloads
@@ -335,7 +349,7 @@ func _input(event):
 
 ---
 
-# 🆘 Still Stuck?
+## Still Stuck?
 
 ### Include This Info
 
@@ -348,7 +362,3 @@ func _input(event):
 
 - **Email:** info@cheddaboards.com
 - **GitHub:** [Issues](https://github.com/cheddatech/CheddaBoards-Godot/issues)
-
----
-
-**Most problems = API key (native) or web server (web). Check those first!** 🧀
