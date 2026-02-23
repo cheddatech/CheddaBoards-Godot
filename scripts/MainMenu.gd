@@ -1,14 +1,20 @@
-# MainMenu.gd v1.8.5
+# MainMenu.gd v1.9.0
 # Main menu with authentication flow and profile display
 # - Login panel: PLAY NOW (with name entry), Leaderboard, and login buttons
+# - Device Code auth: Native builds get Sign In button → shows code for phone auth
 # - Name entry panel: For new anonymous players to set their display name
 # - Anonymous panel: Dashboard for returning anonymous players (after first game)
 # - Main panel: Profile stats when logged in (Google/Apple/Chedda)
-# - Account upgrade: Anonymous players can link Google/Apple/Chedda accounts (web only)
+# - Account upgrade: Anonymous players can link Google/Apple/Chedda accounts
 # - Shows weekly score and games played
 # - MobileUI integration for responsive scaling
 # https://github.com/cheddatech/CheddaBoards-Godot
 #
+# v1.9.0: Device Code Auth for native builds. Sign In button triggers
+#          device code flow — shows code on screen, player authenticates
+#          on their phone at cheddaboards.com/link. Works on any platform.
+#          Web builds unchanged (still use JS bridge for Google/Apple).
+#          Anonymous panel upgrade buttons now use device code on native.
 # v1.8.5: Fixed mobile prompt using _realPrompt to bypass SDK prompt guard.
 # v1.8.4: Fixed anonymous nickname not updating after auto-suffix.
 #         When backend returns "Player_345" for entered "Player", local storage now syncs.
@@ -60,6 +66,11 @@ const MAX_NAME_LENGTH: int = 16
 @onready var or_label = $LoginPanel/MarginContainer/VBoxContainer/OrLabel
 @onready var exit_button = $LoginPanel/MarginContainer/VBoxContainer/ExitButton
 @onready var status_label = $LoginPanel/MarginContainer/VBoxContainer/StatusLabel
+
+# --- Device Code Auth (native builds) ---
+@onready var sign_in_button = $LoginPanel/MarginContainer/VBoxContainer/SignInButton
+@onready var device_code_label = $LoginPanel/MarginContainer/VBoxContainer/DeviceCodeLabel
+@onready var cancel_sign_in_button = $LoginPanel/MarginContainer/VBoxContainer/CancelSignInButton
 
 # ============================================================
 # NODE REFERENCES - NAME ENTRY PANEL
@@ -180,6 +191,16 @@ func _ready():
 	if CheddaBoards.has_signal("account_upgrade_failed"):
 		CheddaBoards.account_upgrade_failed.connect(_on_upgrade_failed)
 	
+	# Connect device code signals (native builds)
+	if CheddaBoards.has_signal("device_code_received"):
+		CheddaBoards.device_code_received.connect(_on_device_code_received)
+	if CheddaBoards.has_signal("device_code_approved"):
+		CheddaBoards.device_code_approved.connect(_on_device_code_approved)
+	if CheddaBoards.has_signal("device_code_expired"):
+		CheddaBoards.device_code_expired.connect(_on_device_code_expired)
+	if CheddaBoards.has_signal("device_code_error"):
+		CheddaBoards.device_code_error.connect(_on_device_code_error)
+	
 	# Connect scoreboard rank signal (rank display via SDK)
 	if CheddaBoards.has_signal("scoreboard_rank_loaded"):
 		CheddaBoards.scoreboard_rank_loaded.connect(_on_scoreboard_rank_loaded)
@@ -197,6 +218,12 @@ func _ready():
 		chedda_button.pressed.connect(_on_chedda_button_pressed)
 	if exit_button:
 		exit_button.pressed.connect(_on_exit_button_pressed)
+	
+	# Connect DEVICE CODE buttons (native builds)
+	if sign_in_button:
+		sign_in_button.pressed.connect(_on_sign_in_button_pressed)
+	if cancel_sign_in_button:
+		cancel_sign_in_button.pressed.connect(_on_cancel_sign_in_pressed)
 	
 	# Connect NAME ENTRY PANEL buttons
 	if confirm_name_button:
@@ -290,6 +317,14 @@ func _scale_login_panel():
 	
 	# Scale status label
 	MobileUI.scale_label(status_label, 16)
+	
+	# Scale device code elements (native builds)
+	if sign_in_button:
+		MobileUI.scale_button(sign_in_button, 18, 44)
+	if cancel_sign_in_button:
+		MobileUI.scale_button(cancel_sign_in_button, 14, 40)
+	if device_code_label:
+		MobileUI.scale_label(device_code_label, 14)
 	
 	# Scale margin container if exists
 	var margin = login_panel.get_node_or_null("MarginContainer")
@@ -683,15 +718,25 @@ func _show_login_panel():
 	_enable_login_buttons(true)
 	
 	# Show OAuth login buttons only on web (needs JS bridge)
-	var show_oauth = OS.get_name() == "Web"
+	# On native, show device code Sign In button instead
+	var is_web = OS.get_name() == "Web"
 	if or_label:
-		or_label.visible = show_oauth
+		or_label.visible = true  # Always show divider when sign-in option exists
+		or_label.text = "— or login to sync across devices —" if is_web else "— or sign in to sync across devices —"
 	if google_button:
-		google_button.visible = show_oauth
+		google_button.visible = is_web
 	if apple_button:
-		apple_button.visible = show_oauth
+		apple_button.visible = is_web
 	if chedda_button:
 		chedda_button.visible = false  # TEMP: Hidden until II/Chedda flow is ready
+	
+	# Device code auth (native builds)
+	if sign_in_button:
+		sign_in_button.visible = not is_web
+	if device_code_label:
+		device_code_label.visible = false
+	if cancel_sign_in_button:
+		cancel_sign_in_button.visible = false
 
 func _show_name_entry_panel(mode: String = "first_play"):
 	"""Show name entry panel. Mode: 'first_play' = start game after, 'rename' = return to dashboard"""
@@ -770,20 +815,30 @@ func _show_anonymous_panel():
 	# Update achievement button
 	_update_anon_achievement_button()
 	
-	# Show upgrade buttons only on web (OAuth needs JS bridge)
-	var show_upgrade = OS.get_name() == "Web"
+	# Show upgrade buttons on ALL platforms
+	# Web: uses JS bridge for direct Google/Apple OAuth
+	# Native: uses device code flow (same cheddaboards.com/link page)
+	var is_web = OS.get_name() == "Web"
 	if upgrade_separator:
-		upgrade_separator.visible = show_upgrade
+		upgrade_separator.visible = true
 	if upgrade_label:
-		upgrade_label.visible = show_upgrade
+		upgrade_label.visible = true
+		upgrade_label.text = "— save your progress —"
 	if upgrade_google_button:
-		upgrade_google_button.visible = show_upgrade
+		if is_web:
+			upgrade_google_button.visible = true
+			upgrade_google_button.text = "Link Google Account"
+		else:
+			# On native, show a single "Link Account" button that uses device code
+			upgrade_google_button.visible = true
+			upgrade_google_button.text = "Link Account"
 	if upgrade_apple_button:
-		upgrade_apple_button.visible = show_upgrade
+		# On native, only need one button (device code handles both providers)
+		upgrade_apple_button.visible = is_web
 	if upgrade_ii_button:
 		upgrade_ii_button.visible = false  # TEMP: Hidden until II/Chedda flow is ready
 	if upgrade_status_label:
-		upgrade_status_label.visible = show_upgrade
+		upgrade_status_label.visible = true
 		upgrade_status_label.text = ""
 	
 	# Auto-login anonymously and fetch stats
@@ -1028,6 +1083,8 @@ func _enable_login_buttons(enabled: bool):
 		chedda_button.disabled = not enabled
 	if exit_button:
 		exit_button.disabled = not enabled
+	if sign_in_button:
+		sign_in_button.disabled = not enabled
 
 func _set_main_buttons_disabled(disabled: bool):
 	"""Enable/disable main panel buttons"""
@@ -1101,6 +1158,57 @@ func _on_exit_button_pressed():
 		get_tree().quit()
 
 # ============================================================
+# DEVICE CODE AUTH HANDLERS (Native builds)
+# ============================================================
+
+func _on_sign_in_button_pressed():
+	"""Start device code login flow via popup (native builds)"""
+	_log("Sign In pressed - showing device code popup")
+	is_logging_in = true
+	
+	var popup = preload("res://scenes/DeviceCodePopup.tscn").instantiate()
+	add_child(popup)
+	popup.signed_in.connect(func(nickname):
+		_log("Device code popup: signed in as %s" % nickname)
+		is_logging_in = false
+		# login_success signal from SDK handles panel transition
+	)
+	popup.cancelled.connect(func():
+		_log("Device code popup: cancelled")
+		is_logging_in = false
+	)
+	popup.start_sign_in()
+
+func _on_cancel_sign_in_pressed():
+	"""Cancel device code login"""
+	_log("Cancel sign in pressed")
+	CheddaBoards.cancel_device_code()
+	is_logging_in = false
+	_set_status("")
+	_enable_login_buttons(true)
+
+func _on_device_code_received(user_code: String, verification_url: String):
+	"""Device code received - popup handles display"""
+	_log("Device code received: %s | URL: %s" % [user_code, verification_url])
+
+func _on_device_code_approved(nickname: String):
+	"""Device code approved - player authenticated!"""
+	_log("Device code approved: %s" % nickname)
+	# login_success signal handles the rest (transition to main panel)
+
+func _on_device_code_expired():
+	"""Device code expired"""
+	_log("Device code expired")
+	is_logging_in = false
+	_enable_login_buttons(true)
+
+func _on_device_code_error(reason: String):
+	"""Device code error"""
+	_log("Device code error: %s" % reason)
+	is_logging_in = false
+	_enable_login_buttons(true)
+
+# ============================================================
 # ANONYMOUS PANEL BUTTON HANDLERS
 # ============================================================
 
@@ -1128,15 +1236,30 @@ func _on_anon_change_name_pressed():
 
 func _on_upgrade_google_pressed():
 	"""Upgrade anonymous account to Google"""
-	_log("Upgrade to Google pressed")
-	_start_upgrade("google")
-	JavaScriptBridge.eval("chedda_upgrade_to_google()", true)
+	if OS.get_name() == "Web":
+		_log("Upgrade to Google pressed (web)")
+		_start_upgrade("google")
+		JavaScriptBridge.eval("chedda_upgrade_to_google()", true)
+	else:
+		# Native: use device code popup for upgrade
+		_log("Upgrade via device code pressed (native)")
+		var popup = preload("res://scenes/DeviceCodePopup.tscn").instantiate()
+		add_child(popup)
+		popup.signed_in.connect(func(nickname):
+			_log("Upgrade complete via device code: %s" % nickname)
+			_show_main_panel(CheddaBoards.get_cached_profile())
+		)
+		popup.start_sign_in()
 
 func _on_upgrade_apple_pressed():
 	"""Upgrade anonymous account to Apple"""
-	_log("Upgrade to Apple pressed")
-	_start_upgrade("apple")
-	JavaScriptBridge.eval("chedda_upgrade_to_apple()", true)
+	if OS.get_name() == "Web":
+		_log("Upgrade to Apple pressed (web)")
+		_start_upgrade("apple")
+		JavaScriptBridge.eval("chedda_upgrade_to_apple()", true)
+	else:
+		# Native: same popup (player picks provider on the web page)
+		_on_upgrade_google_pressed()
 
 func _on_upgrade_ii_pressed():
 	"""Upgrade anonymous account to Internet Identity"""
