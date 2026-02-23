@@ -8,7 +8,7 @@
 
 1. Go to [cheddaboards.com/dashboard](https://cheddaboards.com/dashboard)
 2. Create a game → Copy your **Game ID**
-3. Copy your **API Key** (for native builds)
+3. Copy your **API Key**
 
 ---
 
@@ -35,12 +35,12 @@ Open `CheddaBoards.gd` and set:
 
 ```gdscript
 var game_id: String = "your-game-id"
-var api_key: String = "cb_your_api_key"  # For native builds
+var api_key: String = "cb_your_api_key"
 ```
 
 ---
 
-## Step 4: Use It! (1 min)
+## Step 4: Use It (1 min)
 
 ```gdscript
 func _ready():
@@ -61,14 +61,11 @@ func _on_leaderboard(entries):
 
 ---
 
-## ✅ That's It!
+## That's It!
 
 **Total time: ~3 minutes**
 
-You now have:
-- ✅ Score submission
-- ✅ Global leaderboards
-- ✅ Works on Web, Windows, Mac, Linux, Mobile
+You now have score submission and global leaderboards on Web, Windows, Mac, Linux, and Mobile.
 
 ---
 
@@ -79,6 +76,15 @@ You now have:
 ```gdscript
 # Anonymous (works everywhere)
 CheddaBoards.login_anonymous("PlayerName")
+
+# Device Code Auth - Google/Apple on any platform (v1.9.0)
+CheddaBoards.login_google_device_code("PlayerName")
+CheddaBoards.login_apple_device_code("PlayerName")
+
+# Listen for device code to display to player
+CheddaBoards.device_code_received.connect(func(url, code, expires_in):
+    print("Go to %s and enter: %s" % [url, code])
+)
 
 # Check status
 if CheddaBoards.is_authenticated():
@@ -122,7 +128,7 @@ CheddaBoards.get_scoreboard("weekly", 100)
 CheddaBoards.get_scoreboard("daily", 100)
 ```
 
-### Scoreboard Archives (v1.3.0+)
+### Scoreboard Archives
 
 ```gdscript
 # View last week's results
@@ -154,6 +160,8 @@ CheddaBoards.change_nickname("NewName")
 | `sdk_ready` | - | SDK initialized |
 | `login_success` | nickname | Login completed |
 | `login_failed` | reason | Login error |
+| `device_code_received` | url, code, expires_in | Device code ready to display |
+| `device_code_expired` | - | Device code timed out |
 | `score_submitted` | score, streak | Score saved |
 | `score_error` | reason | Score failed |
 | `leaderboard_loaded` | entries | Leaderboard data |
@@ -161,19 +169,6 @@ CheddaBoards.change_nickname("NewName")
 | `player_rank_loaded` | rank, score, streak, total | Rank data |
 | `archived_scoreboard_loaded` | id, config, entries | Archive data |
 | `nickname_changed` | new_nickname | Name updated |
-
----
-
-## Debug Shortcuts
-
-Press these keys during development:
-
-| Key | Action |
-|-----|--------|
-| F6 | Submit 5 random test scores |
-| F7 | Submit 1 random test score |
-| F8 | Force profile refresh |
-| F9 | Debug status dump |
 
 ---
 
@@ -190,20 +185,16 @@ Press these keys during development:
 
 ## Web Export
 
-For web builds with full OAuth support (Google/Apple Sign-In + account upgrade):
-
-1. Copy `template.html` to project root
-2. Export → Web → Custom HTML Shell: `res://template.html`
-3. Export as `index.html`
-4. Test with: `python3 -m http.server 8000`
+For web builds with full OAuth support, see [SETUP_WEB.md](SETUP_WEB.md).
 
 ---
 
 ## Next Steps
 
-- **[TIMED_SCOREBOARDS.md](TIMED_SCOREBOARDS.md)** - Weekly/daily competitions with archives
-- **[SETUP.md](SETUP.md)** - Detailed setup guide
-- **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Common problems & fixes
+- [TIMED_LEADERBOARDS.md](TIMED_LEADERBOARDS.md) — Weekly/daily competitions with archives
+- [SETUP.md](SETUP.md) — Detailed setup guide
+- [SETUP_WEB.md](SETUP_WEB.md) — Web SDK setup guide
+- [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — Common problems & fixes
 
 ---
 
@@ -211,8 +202,3 @@ For web builds with full OAuth support (Google/Apple Sign-In + account upgrade):
 
 - **Dashboard:** [cheddaboards.com/dashboard](https://cheddaboards.com/dashboard)
 - **GitHub:** [github.com/cheddatech/CheddaBoards-Godot](https://github.com/cheddatech/CheddaBoards-Godot)
-- **Example:** [cheddaclick.cheddagames.com](https://cheddaclick.cheddagames.com)
-
----
-
-**Zero servers. Free forever. Any platform.** 🧀
