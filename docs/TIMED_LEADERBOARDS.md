@@ -11,9 +11,9 @@ CheddaBoards supports time-based scoreboards that automatically reset and archiv
 | Type | Resets | Archives Kept | Use Case |
 |------|--------|---------------|----------|
 | **All-Time** | Never | None | Career high scores |
-| **Weekly** | Every Monday | 52 (1 year) | Weekly competitions |
-| **Daily** | Every midnight | 52 | Daily challenges |
-| **Monthly** | 1st of month | 52 | Monthly tournaments |
+| **Weekly** | Every Monday | 52 | Weekly competitions |
+| **Daily** | Every midnight | 90 | Daily challenges |
+| **Monthly** | 1st of month | 12 | Monthly tournaments |
 
 ---
 
@@ -291,8 +291,9 @@ curl "https://api.cheddaboards.com/games/my-game/scoreboards/weekly/archives/lat
 
 | Setting | Value |
 |---------|-------|
-| Max archives per scoreboard | 52 |
-| Archive retention | ~1 year |
+| Max archives (weekly) | 52 |
+| Max archives (daily) | 90 |
+| Max archives (monthly) | 12 |
 | Archive ID format | `gameId:scoreboardId:timestamp` |
 | Timestamp format | Nanoseconds (ICP standard) |
 
@@ -319,4 +320,4 @@ Existing scores and scoreboards are unaffected.
 
 ---
 
-**Weekly competitions. Automatic archives. Zero maintenance.** 🧀
+**Need help?** info@cheddaboards.com
