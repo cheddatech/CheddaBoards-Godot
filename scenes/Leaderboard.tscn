@@ -19,7 +19,7 @@ extends Control
 # ============================================================
 
 ## How many entries to load per page
-const LEADERBOARD_LIMIT: int = 100
+const LEADERBOARD_LIMIT: int = 1000
 
 ## How long to wait before timing out
 const LOAD_TIMEOUT_SECONDS: float = 15.0
