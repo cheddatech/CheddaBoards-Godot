@@ -1,6 +1,6 @@
 [gd_scene load_steps=3 format=3 uid="uid://chvqlsbp0m0km"]
 
-[ext_resource type="Script" uid="uid://cr3gasb02kgv4" path="res://scripts/MainMenu.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://ckgybouabh1td" path="res://scripts/MainMenu.gd" id="1_script"]
 [ext_resource type="FontFile" uid="uid://b5c8vdfry2s83" path="res://assets/fonts/ZeroCool.ttf" id="3_h7a2f"]
 
 [node name="MainMenu" type="Control"]
@@ -51,7 +51,7 @@ layout_mode = 2
 theme_override_colors/font_color = Color(1, 1, 0, 1)
 theme_override_fonts/font = ExtResource("3_h7a2f")
 theme_override_font_sizes/font_size = 64
-text = "My Game"
+text = "Chedda Click"
 horizontal_alignment = 1
 
 [node name="SubtitleLabel" type="Label" parent="LoginPanel/MarginContainer/VBoxContainer"]
@@ -273,7 +273,7 @@ layout_mode = 2
 theme_override_colors/font_color = Color(1, 1, 0, 1)
 theme_override_fonts/font = ExtResource("3_h7a2f")
 theme_override_font_sizes/font_size = 48
-text = "My Game"
+text = "Chedda Click"
 horizontal_alignment = 1
 
 [node name="WelcomeLabel" type="Label" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
