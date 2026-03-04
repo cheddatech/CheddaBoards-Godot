@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.1] - 2025-03-04
+
+### Setup Wizard Rewrite, Leaderboard Cleanup & Device Code Hardening
+
+Developer experience and reliability improvements. Setup Wizard rebuilt from scratch, leaderboard cleaned up, and device code auth stress-tested.
+
+### Changed
+
+#### Setup Wizard v2.0 (Complete Rewrite)
+- **Single-field setup**: Enter your API Key and everything configures automatically
+- **Auto-derived Game ID**: Extracted from API key format (`cb_gamename_xxxxx` → `gamename`)
+- **Live preview**: Game ID shown in real-time as you type your API key
+- **Dual-file sync**: API Key and Game ID written to both `CheddaBoards.gd` and `template.html`
+- **Autoload auto-fix**: Checks and repairs CheddaBoards, Achievements, and MobileUI autoloads
+- Reduced from ~750 lines to ~300 lines — no more unnecessary checks or configuration screens
+
+#### Leaderboard Cleanup
+- Leaderboard UI cleaned up and simplified
+- Leaderboard code refactored for clarity and maintainability
+- New leaderboard add functionality
+
+#### Device Code Authentication
+- Stress tested device code polling for reliability under load
+- Improved timeout and expiry handling
+- Verified concurrent user flows
+
+### Removed
+
+#### Setup Wizard
+- Removed Godot version check (unnecessary for Godot 4+ projects)
+- Removed required files scan
+- Removed Google/Apple OAuth credential configuration (no longer needed with device code auth)
+- Removed export preset checks
+- Removed project settings checks (stretch mode, viewport, main scene)
+- Removed "next steps" prose output
+- Removed utility functions (`get_project_status()`, `is_ready_to_export()`, `is_ready_for_native()`)
+
+### Migration from v1.9.0
+
+1. **Replace `SetupWizard.gd`** with v2.0
+2. **Run the wizard**: `File → Run` (or `Ctrl+Shift+X`)
+3. **Enter your API Key** — Game ID is now auto-detected, no separate field needed
+4. **Restart Godot** for changes to take effect
+
+**No breaking changes** — existing game code works without modification.
+
+---
+
 ## [1.9.0] - 2025-02-23
 
 ### Device Code Authentication & Cross-Platform Account Linking
@@ -653,6 +701,7 @@ First public release of the CheddaBoards Godot 4 Template.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| **v1.9.1** | 2025-03-04 | Setup Wizard v2.0 (API key auto-config), leaderboard cleanup, device code stress testing |
 | **v1.9.0** | 2025-02-23 | Device Code Auth (cross-platform Google/Apple), account linking on all platforms |
 | **v1.7.0** | 2025-02-05 | Modular GameWrapper, OAuth restored (web), account upgrade, clean folder structure |
 | **v1.5.0** | 2026-01-14 | Play session anti-cheat, time validation |
@@ -667,6 +716,15 @@ First public release of the CheddaBoards Godot 4 Template.
 ---
 
 ## Upgrade Guide
+
+### From v1.9.0 to v1.9.1
+
+1. **Replace `SetupWizard.gd`** with v2.0
+2. **Run the wizard**: `File → Run` (or `Ctrl+Shift+X`)
+3. **Enter your API Key** — Game ID auto-detected from key format (`cb_gamename_xxxxx`)
+4. **Restart Godot** for changes to take effect
+
+**Note**: OAuth credential fields have been removed from the wizard. Device code auth replaces the need for Google/Apple OAuth configuration in your game project.
 
 ### From v1.7.0 to v1.9.0
 
@@ -724,7 +782,7 @@ First public release of the CheddaBoards Godot 4 Template.
    ```
 
 3. **Fix high-DPI click offset** (if affected):
-   - Project Settings → Display → Window → DPI → Allow Hidpi: `On`
+   - Project Settings → Display → Window → DPI → Allow Hidpi: On
 
 4. **Web builds**: No changes required - fully backward compatible
 
@@ -791,17 +849,15 @@ First public release of the CheddaBoards Godot 4 Template.
    - Change Custom HTML Shell to `res://template.html`
    - Always export as `index.html`
 
-### From Nothing to v1.9.0
+### From Nothing to v1.9.1
 
 1. Download/clone from GitHub
 2. Copy `addons/cheddaboards/` folder to your project
 3. Copy `template.html` to your project root (web only)
-4. Run `File > Run > addons/cheddaboards/SetupWizard.gd`
-5. Enter your Game ID in the popup
-6. Set API key in CheddaBoards.gd
-7. **For web**: Configure OAuth credentials (optional), export as `index.html`
-8. **For native**: Device Code Auth works out of the box
-9. Users can play immediately on any platform!
+4. Run `File → Run` on `addons/cheddaboards/SetupWizard.gd`
+5. Enter your API Key — Game ID is auto-detected
+6. Restart Godot
+7. You're ready to go on any platform!
 
 ---
 
