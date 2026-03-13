@@ -27,3 +27,7 @@
 *.otf binary
 *.woff binary
 *.woff2 binary
+
+# Exclude from ZIP downloads
+screenshots/ export-ignore
+docs/ export-ignore
