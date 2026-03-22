@@ -1,4 +1,4 @@
-# CheddaBoards.gd v2.0.0
+# CheddaBoards.gd v2.1.0
 # CheddaBoards integration for Godot 4.x
 # https://github.com/cheddatech/CheddaBoards-Godot
 # https://cheddaboards.com
@@ -9,6 +9,9 @@
 #   Player authenticates on their phone at cheddaboards.com/link
 # - Score submissions, play sessions, achievements: all via HTTP API
 #
+# v2.1.0: device_code_received now emits qr_data_url as third argument.
+#          QR code encodes the full verification URL with code pre-filled.
+#          Falls back gracefully if API returns null (raw code still shown).
 # v2.0.0: HTTP-only SDK. Removed JavaScript bridge / web SDK dependency.
 #          All platforms use the same REST API paths.
 #          Social login via Device Code Auth (works everywhere).
@@ -44,7 +47,8 @@ extends Node
 #        CheddaBoards.device_code_approved.connect(_on_approved)
 #        CheddaBoards.login_with_device_code()
 #
-#    func _on_code(user_code: String, url: String):
+#    func _on_code(user_code: String, url: String, qr_data_url: String):
+#        # qr_data_url is a base64 PNG data URL — pass to DeviceCodePopup or decode manually
 #        $CodeLabel.text = "Go to %s\nEnter code: %s" % [url, user_code]
 #
 #    func _on_approved(nickname: String):
@@ -111,7 +115,7 @@ signal account_upgraded(profile: Dictionary, migration: Dictionary)
 signal account_upgrade_failed(reason: String)
 
 # --- Device Code Auth (Cross-platform login) ---
-signal device_code_received(user_code: String, verification_url: String)
+signal device_code_received(user_code: String, verification_url: String, qr_data_url: String)
 signal device_code_approved(nickname: String)
 signal device_code_expired()
 signal device_code_error(reason: String)
@@ -125,8 +129,8 @@ var debug_logging: bool = true
 
 ## HTTP API Configuration
 const API_BASE_URL = "https://api.cheddaboards.com"
-var api_key: String = ""  ## Your API key (set via set_api_key())
-var game_id: String = ""  ## Your game ID (set via set_game_id())
+var api_key: String = "cb_this-game_2816548845"  ## Your API key (set via set_api_key())
+var game_id: String = "this-game"  ## Your game ID (set via set_game_id())
 var _player_id: String = ""
 var _session_token: String = ""  ## For OAuth session-based auth
 var _play_session_token: String = ""  ## For time validation
@@ -197,7 +201,7 @@ const DEVICE_ID_PATH = "user://cheddaboards_device.cfg"
 
 func _ready() -> void:
 	_setup_http_client()
-	_log("Initializing CheddaBoards v2.0.0 (HTTP API Mode)...")
+	_log("Initializing CheddaBoards v2.1.0 (HTTP API Mode)...")
 	_init_complete = true
 	call_deferred("_emit_sdk_ready")
 
@@ -484,8 +488,10 @@ func _emit_http_success(data) -> void:
 			_device_code_poll_interval = float(interval)
 			_device_code_expires_at = Time.get_unix_time_from_system() + float(expires_in)
 			
+			var qr_data_url = str(data.get("qr_data_url", ""))
+			
 			_log("Device code received: %s (expires in %ds)" % [uc, expires_in])
-			device_code_received.emit(uc, url_complete if url_complete != "" else url)
+			device_code_received.emit(uc, url_complete if url_complete != "" else url, qr_data_url)
 			_start_device_code_polling()
 		
 		"device_code_token":
@@ -1500,7 +1506,7 @@ func health_check() -> void:
 func debug_status() -> void:
 	print("")
 	print("╔══════════════════════════════════════════════╗")
-	print("║        CheddaBoards Debug Status v2.0.0      ║")
+	print("║        CheddaBoards Debug Status v2.1.0      ║")
 	print("╠══════════════════════════════════════════════╣")
 	print("║ Configuration                                ║")
 	print("║  - Platform:         %s" % OS.get_name().rpad(24) + "║")
