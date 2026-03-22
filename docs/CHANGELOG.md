@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.10.0] - 2026-03-22
+
+### QR Code Login
+
+Device code sign-in now displays a scannable QR code. Players point their phone camera at the screen and are taken directly to the verification page with their code pre-filled — no typing required.
+
+### Added
+
+#### DeviceCodeLogin Scene
+- QR code display via `TextureRect` — rendered from a base64 PNG returned by the API
+- `_set_qr_from_data_url()` — decodes base64 PNG data URL directly into an `ImageTexture` using `Marshalls.base64_to_raw()` and `Image.load_png_from_buffer()`
+- Graceful QR fallback — if QR decode fails for any reason, the raw code remains visible and the popup continues to function normally
+- Instruction text updated to "Scan to sign in instantly:" when QR is present
+- "Or enter code manually:" fallback label shown beneath the QR
+
+#### API (v1.7.1)
+- `POST /auth/device/code` response now includes `qr_data_url` — a base64 PNG data URL encoding the full verification URL with code pre-filled
+- QR generation failure is non-fatal — `qr_data_url` returns `null` and the client falls back gracefully
+
+### Changed
+
+#### DeviceCodeLogin Scene
+- `URLLabel` and `EnterCodeLabel` replaced by `QRCode` (`TextureRect`, 200×200)
+- `FallbackLabel` added beneath QR for manual code entry
+- Panel height adjusted to accommodate QR layout
+- `DeviceCodeLogin.gd` bumped to v1.1.0
+
+### Breaking Changes
+
+- **`device_code_received` signal now emits three arguments**: `(user_code: String, verification_url: String, qr_data_url: String)`
+- Any existing `_on_device_code_received` handler must be updated to accept the new third argument
+
+### Migration from v1.9.1
+
+1. **Replace `DeviceCodeLogin.gd`** with v1.1.0
+2. **Replace `DeviceCodeLogin.tscn`** with updated scene
+3. **Update `CheddaBoards.gd`** — add `qr_data_url: String` as third param to the `device_code_received` signal definition and emit
+4. **Update any listeners** connected to `device_code_received` to accept the third argument:
+   ```gdscript
+   # Before
+   func _on_device_code_received(user_code: String, verification_url: String):
+
+   # After
+   func _on_device_code_received(user_code: String, verification_url: String, qr_data_url: String):
+   ```
+
+---
+
 ## [1.9.1] - 2025-03-04
 
 ### Setup Wizard Rewrite, Leaderboard Cleanup & Device Code Hardening
@@ -701,6 +749,7 @@ First public release of the CheddaBoards Godot 4 Template.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| **v1.10.0** | 2026-03-22 | QR code login — scan to sign in instantly, no code typing required |
 | **v1.9.1** | 2025-03-04 | Setup Wizard v2.0 (API key auto-config), leaderboard cleanup, device code stress testing |
 | **v1.9.0** | 2025-02-23 | Device Code Auth (cross-platform Google/Apple), account linking on all platforms |
 | **v1.7.0** | 2025-02-05 | Modular GameWrapper, OAuth restored (web), account upgrade, clean folder structure |
@@ -716,6 +765,15 @@ First public release of the CheddaBoards Godot 4 Template.
 ---
 
 ## Upgrade Guide
+
+### From v1.9.1 to v1.10.0
+
+1. **Replace `DeviceCodeLogin.gd`** with v1.1.0
+2. **Replace `DeviceCodeLogin.tscn`** with updated scene
+3. **Update `CheddaBoards.gd`** — add `qr_data_url: String` as third param to `device_code_received` signal and emit
+4. **Update any `_on_device_code_received` handlers** to accept the third argument (see Breaking Changes above)
+
+**Breaking:** `device_code_received` signal signature has changed. Update all listeners before deploying.
 
 ### From v1.9.0 to v1.9.1
 
@@ -849,7 +907,7 @@ First public release of the CheddaBoards Godot 4 Template.
    - Change Custom HTML Shell to `res://template.html`
    - Always export as `index.html`
 
-### From Nothing to v1.9.1
+### From Nothing to v1.10.0
 
 1. Download/clone from GitHub
 2. Copy `addons/cheddaboards/` folder to your project
@@ -864,10 +922,10 @@ First public release of the CheddaBoards Godot 4 Template.
 ## Roadmap
 
 ### In Progress
-- [ ] Unity SDK
-
-### Planned
 - [ ] Expanded analytics dashboard
+
+### Completed
+- [x] Unity SDK
 
 ---
 
