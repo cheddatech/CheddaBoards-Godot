@@ -2,7 +2,7 @@
 
 **Detailed setup instructions for all platforms.**
 
-> **SDK Version:** 1.9.0 | [Changelog](CHANGELOG.md)
+> **SDK Version:** 1.10.0 | [Changelog](CHANGELOG.md)
 
 > Want the fast version? See [QUICKSTART.md](QUICKSTART.md)
 
