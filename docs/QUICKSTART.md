@@ -2,7 +2,7 @@
 
 **Add leaderboards to your game in minutes.**
 
-> **SDK Version:** 1.9.0 | [Changelog](CHANGELOG.md)
+> **SDK Version:** 1.10.0 | [Changelog](CHANGELOG.md)
 
 ---
 
