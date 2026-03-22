@@ -4,7 +4,7 @@
 
 # CheddaBoards Godot 4 Template
 
-> **SDK Version:** 1.9.1 | [Changelog](docs/CHANGELOG.md)
+> **SDK Version:** 1.10.0 | [Changelog](docs/CHANGELOG.md)
 
 <p align="center">
   <img src="screenshots/screenshot1.png" alt="CheddaBoards Screenshot" width="400">
