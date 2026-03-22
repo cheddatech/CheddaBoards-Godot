@@ -1069,7 +1069,7 @@ func _on_cancel_sign_in_pressed():
 	_set_status("")
 	_enable_login_buttons(true)
 
-func _on_device_code_received(user_code: String, verification_url: String):
+func _on_device_code_received(user_code: String, verification_url: String, qr_data_url: String):
 	"""Device code received - popup handles display"""
 	_log("Device code received: %s | URL: %s" % [user_code, verification_url])
 
