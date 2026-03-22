@@ -129,8 +129,8 @@ var debug_logging: bool = true
 
 ## HTTP API Configuration
 const API_BASE_URL = "https://api.cheddaboards.com"
-var api_key: String = "cb_this-game_2816548845"  ## Your API key (set via set_api_key())
-var game_id: String = "this-game"  ## Your game ID (set via set_game_id())
+var api_key: String = ""  ## Your API key (set via set_api_key())
+var game_id: String = ""  ## Your game ID (set via set_game_id())
 var _player_id: String = ""
 var _session_token: String = ""  ## For OAuth session-based auth
 var _play_session_token: String = ""  ## For time validation
