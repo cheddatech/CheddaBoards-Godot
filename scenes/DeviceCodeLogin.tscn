@@ -20,10 +20,10 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -220.0
-offset_top = -200.0
-offset_right = 220.0
-offset_bottom = 200.0
+offset_left = -180.0
+offset_top = -240.0
+offset_right = 180.0
+offset_bottom = 240.0
 grow_horizontal = 2
 grow_vertical = 2
 
@@ -54,36 +54,38 @@ layout_mode = 2
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
 theme_override_font_sizes/font_size = 16
-text = "On your phone, go to:"
+text = "Scan to sign in instantly:"
 horizontal_alignment = 1
+visible = false
 
-[node name="URLLabel" type="Label" parent="Panel/MarginContainer/VBox"]
+[node name="QRCode" type="TextureRect" parent="Panel/MarginContainer/VBox"]
+custom_minimum_size = Vector2(200, 200)
 layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
-theme_override_font_sizes/font_size = 20
-text = "cheddaboards.com/link"
-horizontal_alignment = 1
+size_flags_horizontal = 4
+stretch_mode = 5
+visible = false
 
 [node name="Spacer2" type="Control" parent="Panel/MarginContainer/VBox"]
-custom_minimum_size = Vector2(0, 8)
+custom_minimum_size = Vector2(0, 4)
 layout_mode = 2
 
-[node name="EnterCodeLabel" type="Label" parent="Panel/MarginContainer/VBox"]
+[node name="FallbackLabel" type="Label" parent="Panel/MarginContainer/VBox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
-theme_override_font_sizes/font_size = 16
-text = "Enter code:"
+theme_override_colors/font_color = Color(0.5, 0.5, 0.5, 1)
+theme_override_font_sizes/font_size = 13
+text = "Or enter code manually:"
 horizontal_alignment = 1
+visible = false
 
 [node name="CodeLabel" type="Label" parent="Panel/MarginContainer/VBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 1, 0, 1)
-theme_override_font_sizes/font_size = 36
+theme_override_font_sizes/font_size = 28
 text = "CHEDDA-XXXX"
 horizontal_alignment = 1
 
 [node name="Spacer3" type="Control" parent="Panel/MarginContainer/VBox"]
-custom_minimum_size = Vector2(0, 8)
+custom_minimum_size = Vector2(0, 4)
 layout_mode = 2
 
 [node name="StatusLabel" type="Label" parent="Panel/MarginContainer/VBox"]
