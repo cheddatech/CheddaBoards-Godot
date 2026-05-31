@@ -1,4 +1,4 @@
-# CheddaBoards.gd v2.1.0
+# CheddaBoards.gd v2.2.0
 # CheddaBoards integration for Godot 4.x
 # https://github.com/cheddatech/CheddaBoards-Godot
 # https://cheddaboards.com
@@ -9,6 +9,31 @@
 #   Player authenticates on their phone at cheddaboards.com/link
 # - Score submissions, play sessions, achievements: all via HTTP API
 #
+# v2.2.0:
+#   - profile_loaded signal now emits play_count as the 5th argument.
+#     Existing handlers with a 4-arg signature must add a trailing
+#     `play_count: int` parameter — this is a breaking change.
+#   - SDK keeps processing while the scene tree is paused
+#     (PROCESS_MODE_ALWAYS). Fixes hung submits on game-over screens.
+#   - Debug logging defaults to OFF. Set CheddaBoards.debug_logging = true
+#     while developing or investigating an issue.
+#   - Device codes and emails are redacted in log output for privacy.
+#   - Device-code polling fires an immediate out-of-cadence poll when the
+#     app regains focus, so there's no delay after the user finishes
+#     linking on their phone.
+#   - Anonymous players with no nickname now keep an empty _nickname,
+#     so UIs can display "Guest" instead of an auto-generated placeholder.
+#   - get_nickname() filters Player_dev_* and Player_p_* placeholders.
+#   - refresh_profile() always allows the first call; the cooldown applies
+#     from the second call onward.
+#   - 404 on scoreboard lookups is treated as non-fatal (a scoreboard
+#     that isn't configured for the game is a normal state).
+#   - change_nickname() can be called with no argument and emits a clean
+#     error signal.
+#   - Legacy method aliases retained for backwards compatibility:
+#     sync_achievements, submit_score_external, unlock_achievement_external,
+#     login_as_guest, login_ii, get_profile, get_current_user,
+#     get_session_id, configure, prompt_guest_name, is_logged_in.
 # v2.1.0: device_code_received now emits qr_data_url as third argument.
 #          QR code encodes the full verification URL with code pre-filled.
 #          Falls back gracefully if API returns null (raw code still shown).
@@ -75,7 +100,9 @@ signal logout_success()
 signal auth_error(reason: String)
 
 # --- Profile ---
-signal profile_loaded(nickname: String, score: int, streak: int, achievements: Array)
+# v2.2.0: play_count added as 5th arg. Existing handlers with a 4-arg
+# signature must add a trailing `play_count: int` parameter.
+signal profile_loaded(nickname: String, score: int, streak: int, achievements: Array, play_count: int)
 signal no_profile()
 signal nickname_changed(new_nickname: String)
 signal nickname_error(reason: String)
@@ -124,13 +151,24 @@ signal device_code_error(reason: String)
 # CONFIGURATION
 # ============================================================
 
-## Set to true to enable verbose logging
-var debug_logging: bool = true
+## Verbose logging toggle. Off by default so integrating games don't get
+## noisy stdout out of the box. Flip to true while developing or when
+## investigating an issue:
+##     CheddaBoards.debug_logging = true
+## All _log() calls are gated by this flag; push_error / push_warning for
+## genuine failures fire regardless.
+var debug_logging: bool = false
 
 ## HTTP API Configuration
 const API_BASE_URL = "https://api.cheddaboards.com"
-var api_key: String = ""  ## Your API key (set via set_api_key())
-var game_id: String = ""  ## Your game ID (set via set_game_id())
+## Your API key from the CheddaBoards developer dashboard (cheddaboards.com).
+## Set at runtime via set_api_key():
+##     CheddaBoards.set_api_key("cb_your-game_xxxxxxxxxx")
+var api_key: String = ""
+## Your game ID from the developer dashboard.
+## Set at runtime via set_game_id():
+##     CheddaBoards.set_game_id("your-game")
+var game_id: String = ""
 var _player_id: String = ""
 var _session_token: String = ""  ## For OAuth session-based auth
 var _play_session_token: String = ""  ## For time validation
@@ -200,8 +238,13 @@ const DEVICE_ID_PATH = "user://cheddaboards_device.cfg"
 # ============================================================
 
 func _ready() -> void:
+	# SDK must keep running when the game pauses the scene tree (e.g.
+	# during a game-over continue screen). Otherwise HTTP responses
+	# land silently, signals never fire, and in-flight submits appear
+	# to hang indefinitely.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	_setup_http_client()
-	_log("Initializing CheddaBoards v2.1.0 (HTTP API Mode)...")
+	_log("Initializing CheddaBoards v2.2.0 (HTTP API Mode)...")
 	_init_complete = true
 	call_deferred("_emit_sdk_ready")
 
@@ -211,6 +254,7 @@ func _emit_sdk_ready() -> void:
 func _setup_http_client() -> void:
 	_http_request = HTTPRequest.new()
 	add_child(_http_request)
+	_http_request.process_mode = Node.PROCESS_MODE_ALWAYS
 	_http_request.request_completed.connect(_on_http_request_completed)
 
 ## Fire-and-forget HTTP request (non-blocking, doesn't use queue)
@@ -222,6 +266,7 @@ func _make_http_request_async(endpoint: String, method: int, body: Dictionary, r
 	
 	var http = HTTPRequest.new()
 	add_child(http)
+	http.process_mode = Node.PROCESS_MODE_ALWAYS
 	
 	var headers = _build_headers(request_type)
 	var url = API_BASE_URL + endpoint
@@ -309,6 +354,11 @@ func _on_http_request_completed(result: int, response_code: int, headers: Packed
 			_current_meta = {}
 			_http_busy = false
 			_process_next_request()
+			return
+		# 404 on scoreboard lookup - scoreboard doesn't exist for this game (non-fatal)
+		if response_code == 404 and _current_endpoint in ["get_scoreboard", "scoreboard_rank", "list_scoreboards"]:
+			_log("Scoreboard not found (404) - may not be configured for this game")
+			_emit_http_failure(error_msg)
 			return
 		push_error("[CheddaBoards] API error (%d): %s" % [response_code, error_msg])
 		request_failed.emit(_current_endpoint, error_msg)
@@ -490,7 +540,7 @@ func _emit_http_success(data) -> void:
 			
 			var qr_data_url = str(data.get("qr_data_url", ""))
 			
-			_log("Device code received: %s (expires in %ds)" % [uc, expires_in])
+			_log("Device code received: %s (expires in %ds)" % [_redact_code(uc), expires_in])
 			device_code_received.emit(uc, url_complete if url_complete != "" else url, qr_data_url)
 			_start_device_code_polling()
 		
@@ -675,7 +725,7 @@ func _update_cached_profile(profile: Dictionary) -> void:
 		play_count = _safe_int(profile.get("playCount", profile.get("plays", 0)))
 	
 	_nickname = nickname
-	profile_loaded.emit(nickname, score, streak, achievements)
+	profile_loaded.emit(nickname, score, streak, achievements, play_count)
 
 # ============================================================
 # LOGGING
@@ -684,6 +734,26 @@ func _update_cached_profile(profile: Dictionary) -> void:
 func _log(message: String) -> void:
 	if debug_logging:
 		print("[CheddaBoards] %s" % message)
+
+# Redact a user-facing device code for logging. Shows the first 3 chars
+# so a developer can still correlate logs with what they see on screen,
+# but doesn't reveal the full code which is what an attacker would
+# brute-force during the 5-minute approval window.
+func _redact_code(code: String) -> String:
+	if code.length() <= 3:
+		return "***"
+	return code.left(3) + "***"
+
+# Redact an email address for logging. Keeps the first character of the
+# local part and the full domain so developers can still tell which user
+# they're looking at without exposing the full address.
+func _redact_email(email: String) -> String:
+	if email.is_empty():
+		return "(none)"
+	var at_idx = email.find("@")
+	if at_idx <= 1:
+		return "***" + email.substr(at_idx) if at_idx > 0 else "***"
+	return email.left(1) + "***" + email.substr(at_idx)
 
 # ============================================================
 # PUBLIC API - UTILITIES
@@ -720,18 +790,16 @@ func _get_default_nickname() -> String:
 	return "Player_" + get_player_id().left(6)
 
 func get_nickname() -> String:
-	if _nickname != "" and not _nickname.begins_with("Player_p_"):
+	if _nickname != "" and not _nickname.begins_with("Player_p_") and not _nickname.begins_with("Player_dev_"):
 		return _nickname
 	
 	if not _cached_profile.is_empty():
 		var profile_nick = str(_cached_profile.get("nickname", ""))
-		if profile_nick != "" and not profile_nick.begins_with("Player_p_"):
+		if profile_nick != "" and not profile_nick.begins_with("Player_p_") and not profile_nick.begins_with("Player_dev_"):
 			return profile_nick
 	
-	if _nickname != "":
-		return _nickname
-	
-	return _get_default_nickname()
+	# Return empty string — callers should show "Guest" for unnamed anonymous players
+	return ""
 
 func get_high_score() -> int:
 	if _cached_profile.is_empty():
@@ -857,10 +925,12 @@ func login_anonymous(nickname: String = "") -> void:
 		login_failed.emit("API key not set. Call set_api_key() first.")
 		return
 	
-	_nickname = nickname if nickname != "" else _get_default_nickname()
+	# Only store a nickname if one was explicitly provided.
+	# Do NOT auto-generate a placeholder — the UI will show "Guest" instead.
+	_nickname = nickname if nickname != "" else ""
 	_auth_type = "anonymous"
 	login_success.emit(_nickname)
-	_log("Anonymous login: %s (player: %s)" % [_nickname, get_player_id()])
+	_log("Anonymous login: player=%s" % get_player_id())
 
 ## Social login (Google, Apple, etc.) via Device Code Auth
 ## Use login_with_device_code() instead - works on all platforms
@@ -909,7 +979,8 @@ func refresh_profile() -> void:
 		return
 	
 	var current_time: float = Time.get_ticks_msec() / 1000.0
-	if current_time - _last_profile_refresh < PROFILE_REFRESH_COOLDOWN:
+	# Skip cooldown on first-ever call (_last_profile_refresh == 0.0)
+	if _last_profile_refresh > 0.0 and current_time - _last_profile_refresh < PROFILE_REFRESH_COOLDOWN:
 		return
 	
 	_is_refreshing_profile = true
@@ -917,7 +988,7 @@ func refresh_profile() -> void:
 	get_player_profile()
 	_log("Profile refresh requested")
 
-func change_nickname(new_nickname: String) -> void:
+func change_nickname(new_nickname: String = "") -> void:
 	if new_nickname.is_empty() or new_nickname.length() < 2:
 		nickname_error.emit("Nickname must be at least 2 characters")
 		return
@@ -1002,6 +1073,24 @@ func is_device_code_pending() -> bool:
 # DEVICE CODE POLLING (Internal)
 # ============================================================
 
+# When the app regains focus (e.g. user comes back to the game after
+# completing the link.html flow on a phone browser or second window),
+# fire an immediate poll. Without this, the next poll could be up to
+# _device_code_poll_interval seconds away (default 5s), so the user
+# experiences a "popup still hanging" delay after successful linking.
+# Standard RFC 8628 polling cadence allows out-of-schedule polls.
+func _notification(what: int) -> void:
+	if not _is_polling_device_code:
+		return
+	if what == NOTIFICATION_APPLICATION_FOCUS_IN or what == NOTIFICATION_APPLICATION_RESUMED:
+		_log("App regained focus during device code linking — polling immediately")
+		# Restart the timer so the next scheduled poll is N seconds from
+		# *now*, not from the last paused scheduled tick.
+		if _device_code_poll_timer and is_instance_valid(_device_code_poll_timer):
+			_device_code_poll_timer.start()
+		# Fire one immediate poll out-of-cadence.
+		call_deferred("_poll_device_code_token")
+
 func _start_device_code_polling() -> void:
 	_stop_device_code_polling()
 	_is_polling_device_code = true
@@ -1013,6 +1102,7 @@ func _start_device_code_polling() -> void:
 	_device_code_poll_timer.autostart = true
 	_device_code_poll_timer.timeout.connect(_poll_device_code_token)
 	add_child(_device_code_poll_timer)
+	_device_code_poll_timer.process_mode = Node.PROCESS_MODE_ALWAYS
 	_log("Device code polling started (every %ds)" % int(_device_code_poll_interval))
 
 func _stop_device_code_polling() -> void:
@@ -1033,7 +1123,7 @@ func _poll_device_code_token() -> void:
 	
 	# Check expiry
 	if Time.get_unix_time_from_system() >= _device_code_expires_at:
-		_log("Device code expired: %s" % _device_user_code)
+		_log("Device code expired: %s" % _redact_code(_device_user_code))
 		_stop_device_code_polling()
 		_device_code = ""
 		_device_user_code = ""
@@ -1044,6 +1134,7 @@ func _poll_device_code_token() -> void:
 	
 	var http = HTTPRequest.new()
 	add_child(http)
+	http.process_mode = Node.PROCESS_MODE_ALWAYS
 	
 	var headers: PackedStringArray = ["Content-Type: application/json"]
 	if not game_id.is_empty():
@@ -1103,7 +1194,7 @@ func _handle_device_code_poll_response(result: int, response_code: int, body: Pa
 		var nickname = str(data.get("nickname", "Player"))
 		var email = str(data.get("email", ""))
 		
-		_log("Device code approved! User: %s (%s)" % [nickname, email])
+		_log("Device code approved! User: %s (%s)" % [nickname, _redact_email(email)])
 		
 		# Save anonymous player ID BEFORE switching auth — needed for migration
 		var previous_anonymous_id = _player_id
@@ -1128,7 +1219,7 @@ func _handle_device_code_poll_response(result: int, response_code: int, body: Pa
 			})
 		else:
 			_cached_profile = {"nickname": nickname}
-			profile_loaded.emit(nickname, 0, 0, [])
+			profile_loaded.emit(nickname, 0, 0, [], 0)
 		
 		# Clear device code state
 		_device_code = ""
@@ -1479,6 +1570,71 @@ func _flush_deferred_achievements() -> void:
 	_deferred_achievement_ids.clear()
 
 # ============================================================
+# BACKWARDS COMPATIBILITY ALIASES (legacy SDK method names)
+# ============================================================
+# Retained so games written against earlier versions of the SDK continue
+# to work without code changes. New integrations should use the canonical
+# method names (e.g. login_anonymous, refresh_profile) instead.
+
+func sync_achievements(achievement_ids: Array) -> void:
+	"""Legacy alias for unlock_achievements_batch."""
+	unlock_achievements_batch(achievement_ids)
+
+func submit_score_external(player_id: String, score: int, streak: int = 0, _rounds: int = -1, nickname: String = "") -> void:
+	"""Submit score for external player (API key mode)"""
+	if api_key.is_empty():
+		score_error.emit("API key not set")
+		return
+	var body = {
+		"playerId": player_id,
+		"score": score,
+		"streak": streak,
+		"gameId": game_id
+	}
+	if nickname != "":
+		body["nickname"] = nickname
+	_make_http_request("/scores", HTTPClient.METHOD_POST, body, "submit_score")
+
+func unlock_achievement_external(player_id: String, achievement_id: String) -> void:
+	"""Unlock achievement for external player (API key mode)"""
+	if api_key.is_empty():
+		return
+	var body = {"playerId": player_id, "achievementId": achievement_id}
+	_make_http_request_async("/achievements", HTTPClient.METHOD_POST, body, "unlock_achievement")
+
+func login_as_guest(nickname: String = "") -> void:
+	"""Legacy alias for login_anonymous."""
+	login_anonymous(nickname)
+
+func login_ii() -> void:
+	"""Legacy alias for login_with_device_code."""
+	login_with_device_code()
+
+func get_profile() -> void:
+	"""Legacy alias for refresh_profile."""
+	refresh_profile()
+
+func get_current_user() -> Dictionary:
+	"""Legacy alias for get_cached_profile."""
+	return get_cached_profile()
+
+func get_session_id() -> String:
+	"""Legacy alias for session token."""
+	return _session_token
+
+func configure(p_game_id: String) -> void:
+	"""Legacy configure method."""
+	set_game_id(p_game_id)
+
+func prompt_guest_name() -> void:
+	"""Stub - no longer uses browser prompt. Override in your menu scene."""
+	_log("prompt_guest_name() is deprecated. Use a LineEdit dialog in your scene instead.")
+
+## Convenience alias for MainMenu compatibility
+func is_logged_in() -> bool:
+	return is_authenticated()
+
+# ============================================================
 # PUBLIC API - ANALYTICS
 # ============================================================
 
@@ -1503,10 +1659,14 @@ func health_check() -> void:
 # DEBUG
 # ============================================================
 
+## Developer diagnostic dump. Prints current SDK state to stdout.
+## Opt-in tool — call this from your own code when investigating a bug.
+## Output is intentionally always printed (does not respect debug_logging),
+## but sensitive values (device codes, tokens) are redacted.
 func debug_status() -> void:
 	print("")
 	print("╔══════════════════════════════════════════════╗")
-	print("║        CheddaBoards Debug Status v2.1.0      ║")
+	print("║        CheddaBoards Debug Status v2.2.0      ║")
 	print("╠══════════════════════════════════════════════╣")
 	print("║ Configuration                                ║")
 	print("║  - Platform:         %s" % OS.get_name().rpad(24) + "║")
@@ -1533,7 +1693,7 @@ func debug_status() -> void:
 	print("║  - HTTP Busy:        %s" % str(_http_busy).rpad(24) + "║")
 	print("║  - Queue Size:       %s" % str(_request_queue.size()).rpad(24) + "║")
 	print("║  - Play Session:     %s" % str(has_play_session()).rpad(24) + "║")
-	print("║  - Device Code:      %s" % (_device_user_code if _device_user_code != "" else "none").rpad(24) + "║")
+	print("║  - Device Code:      %s" % (_redact_code(_device_user_code) if _device_user_code != "" else "none").rpad(24) + "║")
 	print("║  - DC Polling:       %s" % str(_is_polling_device_code).rpad(24) + "║")
 	print("╚══════════════════════════════════════════════╝")
 	print("")
