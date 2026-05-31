@@ -4,7 +4,7 @@
 
 # CheddaBoards Godot 4 Template
 
-> **SDK Version:** 1.10.0 | [Changelog](docs/CHANGELOG.md)
+> **SDK Version:** 2.2.0 | [Changelog](docs/CHANGELOG.md)
 
 <p align="center">
   <img src="screenshots/screenshot1.png" alt="CheddaBoards Screenshot" width="400">
@@ -15,7 +15,9 @@ A complete game template with leaderboards, achievements, and authentication bui
 
 **Download → Add your game → Export. That's it.**
 
-Zero servers. $0 for indie devs. Windows, Mac, Linux, Mobile, Web.
+Free tier available. Windows, Mac, Linux, Mobile, Web.
+
+Built on the [Internet Computer](https://internetcomputer.org) — distributed compute with transparent, predictable costs. No per-player fees, no surprise bills.
 
 ---
 
@@ -25,9 +27,9 @@ Zero servers. $0 for indie devs. Windows, Mac, Linux, Mobile, Web.
 |----------|--------|-------|
 | **Native (Windows/Mac/Linux)** | ✅ Stable | HTTP API + Device Code Auth |
 | **Mobile** | ✅ Stable | HTTP API + Device Code Auth |
-| **Web** | ✅ Stable | HTTP API + direct OAuth |
+| **Web** | ✅ Stable | HTTP API + Device Code Auth |
 
-> **Note:** All platforms support Google/Apple Sign-In via Device Code Auth — no browser integration or OAuth SDKs needed in your game. Web also supports direct OAuth and anonymous account upgrade.
+> **Note:** All platforms support Google/Apple Sign-In via Device Code Auth — no browser integration or OAuth SDKs needed in your game. Anonymous players can upgrade their account to a verified provider on any platform.
 
 ---
 
@@ -46,79 +48,88 @@ Zero servers. $0 for indie devs. Windows, Mac, Linux, Mobile, Web.
 
 ---
 
-## What's New in v1.9.0
+## Quick Look
 
-### Device Code Authentication (Cross-Platform)
-- **Google & Apple Sign-In on ANY platform** — no browser popups, no OAuth SDKs
-- Game shows a code and URL → player signs in on their phone → game picks up the session
-- Same flow works on Windows, Mac, Linux, Mobile, Web, consoles, anything
-- Uses OAuth 2.0 Device Authorization Grant (RFC 8628) — same pattern as Netflix, YouTube on TV, GitHub CLI
-- Developers need zero auth dependencies — just two HTTP calls and a text label
+Five lines from a fresh project to a working leaderboard:
 
-### Cross-Platform Account Linking
-- Players can link anonymous accounts to Google or Apple via device code flow
-- Preserves all scores, achievements, and progress
-- Enables cross-device sync across any platform
-- Works from both the in-game menu and the Anonymous Dashboard
+```gdscript
+func _ready():
+    CheddaBoards.set_api_key("cb_your-api-key")
+    CheddaBoards.set_game_id("your-game-id")
+    CheddaBoards.login_anonymous("PlayerName")
+
+func _on_game_over(score: int, streak: int):
+    CheddaBoards.submit_score(score, streak)
+```
+
+Profile, leaderboard rank, achievements, and anti-cheat all work without further setup. Drop in the `MainMenu` and `Leaderboard` scenes from this template and you've got a full UI as well.
+
+---
+
+## What's New in v2.x
+
+### v2.2.0 — Polish & Privacy
+
+- **`profile_loaded` now emits `play_count`** as the 5th argument. Existing handlers with a 4-arg signature must add a trailing `play_count: int` parameter — this is a breaking change. Update your `_on_profile_loaded` handler accordingly.
+- **SDK keeps processing while the scene tree is paused** (`PROCESS_MODE_ALWAYS`). Fixes hung score submits when a game-over screen pauses the tree.
+- **Debug logging defaults to OFF** — set `CheddaBoards.debug_logging = true` while developing.
+- **Device codes and emails are redacted in log output** for privacy.
+- **Focus-regain immediate polling** — when the user finishes signing in on their phone and returns to the game, the popup closes within ~100ms instead of waiting for the next scheduled poll.
+- **Empty-nickname semantics** — anonymous players without a custom name keep an empty `_nickname` so UIs can show "Guest" instead of an auto-generated placeholder.
+- **Non-fatal 404 on scoreboard lookups** — a scoreboard that isn't configured for the game is treated as a normal state, not an error.
+- **Legacy method aliases** retained for backwards compatibility (e.g. `login_as_guest`, `get_profile`, `configure`).
+
+### v2.1.0 — QR Codes
+
+- `device_code_received` now emits a `qr_data_url` (base64 PNG) as a third argument.
+- The QR code encodes the full verification URL with the code pre-filled, so players scan once and tap a single button instead of typing a 6-digit code.
+- Falls back gracefully to the raw code if the API returns null.
+
+### v2.0.0 — HTTP-Only SDK
+
+- **Removed the JavaScript bridge / web SDK dependency** entirely.
+- All platforms now use the same REST API paths — one codebase, no `OS.get_name() == "Web"` branching.
+- Social login moved to **Device Code Auth** (works everywhere — Windows, Mac, Linux, Mobile, Web, consoles).
 
 ### How Device Code Auth Works
 
 ```
-┌─────────────┐                    ┌──────────────────────┐
+┌──────────────┐                    ┌──────────────────────┐
 │  Your Game   │                    │  Player's Phone      │
 │              │                    │                      │
-│  "Go to      │                    │  cheddaboards.com/   │
-│   cheddaboards│                   │  link                │
-│   .com/link" │                    │                      │
-│              │                    │  Enter: CHEDDA-7K3M  │
-│  "Enter code:│                    │  [Google] [Apple]    │
-│   CHEDDA-7K3M"│                   │                      │
-│              │    polls every 5s  │  ✅ Signed in!       │
+│  "Scan QR or │                    │  cheddaboards.com/   │
+│   go to      │                    │  link                │
+│   cheddaboards                    │                      │
+│   .com/link" │                    │  Enter: CHEDDA-7K3M  │
+│              │                    │  [Google] [Apple]    │
+│  "Enter code:│                    │                      │
+│   CHEDDA-7K3M"│    polls every 5s │  ✅ Signed in!       │
 │  ✅ Logged in!│◄──────────────────│                      │
-└─────────────┘                    └──────────────────────┘
+└──────────────┘                    └──────────────────────┘
 ```
 
 ```gdscript
-# In your game - that's it, no OAuth SDKs needed
-CheddaBoards.login_google_device_code("PlayerName")
+# In your game — no OAuth SDKs needed
+CheddaBoards.login_with_device_code()
 
-# Listen for the code to display
-CheddaBoards.device_code_received.connect(func(url, code, expires_in):
-    show_label("Go to %s and enter: %s" % [url, code])
+# Listen for the code/URL/QR to display
+CheddaBoards.device_code_received.connect(func(user_code, verification_url, qr_data_url):
+    show_label("Go to %s and enter: %s" % [verification_url, user_code])
+    # qr_data_url is a base64 PNG you can decode into a TextureRect
+    # (see scripts/DeviceCodeLogin.gd for a reference implementation)
 )
 
 # Login completes automatically via polling
-CheddaBoards.login_success.connect(func(nickname):
+CheddaBoards.device_code_approved.connect(func(nickname):
     print("Welcome, %s!" % nickname)
 )
 ```
 
----
+### Cross-Platform Account Linking
 
-## What's New in v1.7.0
-
-### Modular Game Wrapper Architecture
-- **Game.gd/Game.tscn** now acts as a wrapper that handles all CheddaBoards integration
-- Drop in ANY game scene - just emit 4 signals and you're done
-- Your game stays clean - no SDK code mixed with gameplay
-- Example game (CheddaClick) included in `example_game/` folder
-
-### Account Upgrade (Web)
-- Anonymous players can link their account to Google or Apple
-- Preserves all scores and achievements
-- Enables cross-device sync
-- Available from the Anonymous Dashboard panel
-
-### Clean Folder Structure
-- `scenes/` - All .tscn files
-- `scripts/` - All .gd files  
-- `autoloads/` - Achievements.gd, MobileUI.gd
-- `example_game/` - CheddaClick example
-- `addons/cheddaboards/` - SDK only
-
-### Updated Setup Wizard
-- Now checks new folder structure
-- Auto-configures all autoloads including MobileUI
+- Anonymous players can upgrade to Google/Apple via the same device code flow.
+- All scores, achievements, and progress are preserved through migration.
+- Available from both the in-game Sign In button and the Anonymous Dashboard.
 
 ---
 
@@ -126,12 +137,12 @@ CheddaBoards.login_success.connect(func(nickname):
 
 ### Platform Support
 
-- **Native exports** - HTTP API for Windows, Mac, Linux, Mobile
-- **Web exports** - HTTP API with direct OAuth option
-- **Anonymous play** - No account required, instant play with device ID
-- **Device Code Auth** - Google/Apple Sign-In on any platform, no OAuth SDKs needed
-- **Cross-platform** - Same codebase works everywhere
-- **Account linking** - Upgrade anonymous accounts to Google/Apple from any platform
+- **Native exports** — HTTP API for Windows, Mac, Linux, Mobile
+- **Web exports** — HTTP API, same flow as native (no platform branching)
+- **Anonymous play** — No account required, instant play with device ID
+- **Device Code Auth** — Google/Apple Sign-In on any platform, no OAuth SDKs needed
+- **Cross-platform** — Same codebase works everywhere
+- **Account linking** — Upgrade anonymous accounts to Google/Apple from any platform
 
 ### Game Wrapper System (v1.7.0)
 
@@ -194,12 +205,8 @@ Set your limits based on your game's mechanics (e.g. max 200,000 points per roun
 | Google Sign-In (Device Code) | ✅ | ✅ | ✅ | **Working** |
 | Apple Sign-In (Device Code) | ✅ | ✅ | ✅ | **Working** |
 | Account Upgrade (Anon → Google/Apple) | ✅ | ✅ | ✅ | **Working** |
-| Google Sign-In (direct OAuth) | — | — | ✅ | **Working** |
-| Apple Sign-In (direct OAuth) | — | — | ✅ | **Working** |
 
-> **Device Code Auth (v1.9.0):** Works on every platform. The game displays a code and URL, the player signs in on their phone browser, and the game picks up the session automatically. No OAuth SDKs, no browser popups, no platform-specific code. Anonymous players can also upgrade their account to Google/Apple from any platform, preserving all progress.
->
-> **Direct OAuth (Web only):** Web builds can also use direct Google/Apple Sign-In buttons for a streamlined browser experience.
+> **Device Code Auth:** Works on every platform. The game displays a QR code, URL, and short code; the player signs in on their phone browser, and the game picks up the session automatically. No OAuth SDKs, no browser popups, no platform-specific code. Anonymous players can also upgrade their account to Google/Apple from any platform, preserving all progress.
 
 ### Leaderboards
 
@@ -271,7 +278,7 @@ Run weekly, daily, or monthly competitions that reset and archive automatically 
   <img src="screenshots/screenshot_setup_wizard.png" alt="Setup Wizard" width="500">
 </p>
 
-1. Download the template from Asset Library or GitHub
+1. Download the template from the [Godot Asset Library](https://godotengine.org/asset-library/asset/4574) or [GitHub](https://github.com/cheddatech/CheddaBoards-Godot)
 2. Open in Godot 4.x
 3. Run Setup Wizard: `File → Run → addons/cheddaboards/SetupWizard.gd`
 4. Enter your Game ID & API key from [cheddaboards.com](https://cheddaboards.com)
@@ -400,19 +407,16 @@ The Setup Wizard configures these automatically, or set manually:
 
 ### Game ID & API Key
 
-Set via Setup Wizard, or manually in `CheddaBoards.gd`:
-
-```gdscript
-var game_id: String = "your-game-id"
-var api_key: String = "cb_your_api_key_here"
-```
-
-Or at runtime:
+As of SDK v2.2.0, the SDK ships with empty credential defaults. Set them at runtime before any other CheddaBoards call — the template's `MainMenu._ready()` is a good place:
 
 ```gdscript
 func _ready():
-    CheddaBoards.set_api_key("cb_your_api_key_here")
+    CheddaBoards.set_api_key("cb_your-game_xxxxxxxxxx")
+    CheddaBoards.set_game_id("your-game-id")
+    # ... rest of your setup
 ```
+
+Get your credentials from the developer dashboard at [cheddaboards.com](https://cheddaboards.com). The Setup Wizard can also set these for you.
 
 ### Game Scene Path
 
@@ -437,42 +441,99 @@ const SCOREBOARD_WEEKLY: String = "weekly"
 
 ### CheddaBoards.gd
 
+The SDK exposes 34 signals across nine categories. All are typed in Godot 4.x.
+
+#### Initialization
+
 ```gdscript
-# Initialization
 signal sdk_ready()
 signal init_error(reason: String)
+```
 
-# Authentication
+#### Authentication
+
+```gdscript
 signal login_success(nickname: String)
 signal login_failed(reason: String)
-signal login_timeout()
 signal logout_success()
+signal auth_error(reason: String)
+```
 
-# Device Code Auth (v1.9.0)
-signal device_code_received(url: String, code: String, expires_in: int)
-signal device_code_expired()
+#### Profile
 
-# Account Upgrade
-signal account_upgraded(provider: String)
-signal account_upgrade_failed(reason: String)
-
-# Profile
-signal profile_loaded(nickname: String, score: int, streak: int, achievements: Array)
+```gdscript
+# v2.2.0: play_count added as 5th arg.
+# 4-arg handlers from older versions must add a trailing play_count: int.
+signal profile_loaded(nickname: String, score: int, streak: int, achievements: Array, play_count: int)
 signal no_profile()
 signal nickname_changed(new_nickname: String)
+signal nickname_error(reason: String)
+```
 
-# Scores
+#### Scores & Legacy Leaderboard
+
+```gdscript
 signal score_submitted(score: int, streak: int)
 signal score_error(reason: String)
-
-# Leaderboards
 signal leaderboard_loaded(entries: Array)
+signal player_rank_loaded(rank: int, score: int, streak: int, total_players: int)
+signal rank_error(reason: String)
+```
+
+#### Scoreboards (Time-based)
+
+```gdscript
+signal scoreboards_loaded(scoreboards: Array)
 signal scoreboard_loaded(scoreboard_id: String, config: Dictionary, entries: Array)
 signal scoreboard_rank_loaded(scoreboard_id: String, rank: int, score: int, streak: int, total: int)
+signal scoreboard_error(reason: String)
+```
 
-# Play Sessions
+#### Scoreboard Archives
+
+```gdscript
+signal archives_list_loaded(scoreboard_id: String, archives: Array)
+signal archived_scoreboard_loaded(archive_id: String, config: Dictionary, entries: Array)
+signal archive_stats_loaded(total_archives: int, by_scoreboard: Array)
+signal archive_error(reason: String)
+```
+
+#### Achievements
+
+```gdscript
+signal achievement_unlocked(achievement_id: String)
+signal achievements_loaded(achievements: Array)
+```
+
+#### Play Sessions (Anti-Cheat)
+
+```gdscript
 signal play_session_started(token: String)
 signal play_session_error(reason: String)
+```
+
+#### Account Upgrade (Anonymous → Verified)
+
+```gdscript
+signal account_upgraded(profile: Dictionary, migration: Dictionary)
+signal account_upgrade_failed(reason: String)
+```
+
+#### Device Code Auth
+
+```gdscript
+# qr_data_url is a base64 PNG of a QR encoding the full verification URL
+# with the code pre-filled. Decode and apply to a TextureRect for scanning.
+signal device_code_received(user_code: String, verification_url: String, qr_data_url: String)
+signal device_code_approved(nickname: String)
+signal device_code_expired()
+signal device_code_error(reason: String)
+```
+
+#### HTTP (catch-all)
+
+```gdscript
+signal request_failed(endpoint: String, error: String)
 ```
 
 ### Achievements.gd
@@ -499,8 +560,10 @@ signal game_over(final_score: int, stats: Dictionary)
 
 | Issue | Solution |
 |-------|----------|
-| "API key not set" | Set `api_key` in CheddaBoards.gd or run Setup Wizard |
-| "Game ID not set" | Set `game_id` in CheddaBoards.gd or run Setup Wizard |
+| "API key not set" | Call `CheddaBoards.set_api_key(...)` in your MainMenu's `_ready()` (SDK v2.2.0 ships with empty defaults), or run Setup Wizard |
+| "Game ID not set" | Call `CheddaBoards.set_game_id(...)` in your MainMenu's `_ready()`, or run Setup Wizard |
+| 4-arg `_on_profile_loaded` errors | v2.2.0 added `play_count` as 5th arg — add a trailing `play_count: int` parameter |
+| Score submit hangs on pause screen | SDK v2.2.0+ keeps processing while the tree is paused — make sure you're on v2.2.0 or later |
 | Game not loading | Check `game_scene_path` points to correct .tscn file |
 | Script not found | Ensure .tscn files reference scripts in `scripts/` folder |
 | Score not submitting | Check `is_authenticated()` and connect to `score_error` |
@@ -508,26 +571,59 @@ signal game_over(final_score: int, stats: Dictionary)
 
 ---
 
+## Migrating
+
+### From v2.1.x and earlier → v2.2.0
+
+The only breaking change is `profile_loaded` gaining `play_count` as its 5th argument. If your handler still has the 4-arg signature, the signal won't connect and the profile UI won't update.
+
+```gdscript
+# Before (v2.1.x and earlier)
+func _on_profile_loaded(nickname, score, streak, achievements):
+    ...
+
+# After (v2.2.0+)
+func _on_profile_loaded(nickname, score, streak, achievements, play_count):
+    ...
+```
+
+Credentials also moved out of `CheddaBoards.gd` defaults — call `set_api_key()` and `set_game_id()` in your menu's `_ready()` if you weren't already.
+
+---
+
 ## Version History
 
 | Version | Date | Changes |
 |---------|------|---------|
-| **v1.9.0** | **2025-02-23** | **Device Code Auth (cross-platform Google/Apple), account linking on all platforms** |
-| v1.7.0 | 2025-02-05 | Modular GameWrapper, account upgrade (web), clean folder structure |
-| v1.6.0 | 2025-01-16 | Anonymous dashboard, score-first achievements |
-| v1.5.0 | 2025-01-14 | Play session anti-cheat, time validation |
-| v1.4.0 | 2025-01-04 | OAuth in Setup Wizard, nickname fixes |
-| v1.3.0 | 2024-12-30 | Timed scoreboards, archives, level system |
-| v1.2.0 | 2024-12-15 | Anonymous play with device ID |
-| v1.1.0 | 2024-12-03 | Setup Wizard, Asset Library structure |
-| v1.0.0 | 2024-11-02 | Initial release |
+| v2.2.0 | 2026-05-31 | `profile_loaded` adds `play_count` (breaking), pause-safe HTTP, legacy method aliases |
+| v2.1.0 | 2026-05 | QR code support — `device_code_received` adds `qr_data_url` |
+| v2.0.0 | 2026-04 | HTTP-only SDK — removed JS bridge, device code auth on all platforms |
+| v1.9.0 | 2026-02-23 | Device Code Auth (cross-platform Google/Apple), account linking on all platforms |
+| v1.7.0 | 2026-02-05 | Modular GameWrapper, account upgrade (web), clean folder structure |
+| v1.6.0 | 2026-01-16 | Anonymous dashboard, score-first achievements |
+| v1.5.0 | 2026-01-14 | Play session anti-cheat, time validation |
+| v1.4.0 | 2026-01-04 | OAuth in Setup Wizard, nickname fixes |
+| v1.3.0 | 2025-12-30 | Timed scoreboards, archives, level system |
+| v1.2.0 | 2025-12-15 | Anonymous play with device ID |
+| v1.1.0 | 2025-12-03 | Setup Wizard, Asset Library structure |
+| v1.0.0 | 2025-11-02 | Initial release |
 
 ---
 
 ## Roadmap
 
+- [ ] Godot 3.6 SDK release on GitHub
 - [ ] Unity SDK (in progress)
 - [ ] Expanded analytics dashboard
+
+---
+
+## Support & Community
+
+- **Bug reports & feature requests:** [GitHub Issues](https://github.com/cheddatech/CheddaBoards-Godot/issues)
+- **Player & developer info:** [cheddaboards.com](https://cheddaboards.com)
+- **Studio:** [cheddatech.com](https://cheddatech.com)
+- **Support development:** [Buy me a coffee](https://buymeacoffee.com/CheddaTech) — no VC, no investors, built by a solo founder for indie devs
 
 ---
 
