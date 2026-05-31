@@ -1,4 +1,4 @@
-# MainMenu.gd v2.0.0
+# MainMenu.gd v2.1.0
 # Main menu with authentication flow and profile display
 # - Login panel: PLAY NOW (with name entry), Leaderboard, and Sign In (device code)
 # - Name entry panel: For new anonymous players to set their display name
@@ -9,6 +9,12 @@
 # - MobileUI integration for responsive scaling
 # https://github.com/cheddatech/CheddaBoards-Godot
 #
+# v2.1.0: Sync with CheddaBoards SDK v2.2.0.
+#          - profile_loaded handler takes play_count as 5th arg.
+#          - Credentials set explicitly in _ready() (SDK ships with empty
+#            defaults now; replace with your own from the dashboard).
+#          - Welcome label coerces empty get_nickname() to "Guest" / "Player"
+#            so the UI never shows "Welcome, !".
 # v2.0.0: HTTP-only. Removed all JS bridge / web SDK code.
 #          All platforms use same auth flow (device code for social login).
 #          Google/Apple/Chedda buttons removed from login panel.
@@ -166,6 +172,13 @@ var state_history: Array = []
 # ============================================================
 
 func _ready():
+	# CheddaBoards credentials.
+	# Replace with your own from the developer dashboard at cheddaboards.com.
+	# SDK v2.2.0+ ships with empty defaults — set them here before any
+	# other CheddaBoards call (login, profile fetch, score submit).
+	CheddaBoards.set_api_key("cb_YOUR_API_KEY_HERE")
+	CheddaBoards.set_game_id("your-game-id")
+	
 	# Generate anonymous player ID
 	_setup_anonymous_player()
 	
@@ -261,7 +274,7 @@ func _ready():
 	status_label.text = "Connecting..."
 	_enable_login_buttons(false)
 	
-	_log("MainMenu v2.0.0 initialized | Mobile: %s | UI Scale: %.2f" % [MobileUI.is_mobile, MobileUI.ui_scale])
+	_log("MainMenu v2.1.0 initialized | Mobile: %s | UI Scale: %.2f" % [MobileUI.is_mobile, MobileUI.ui_scale])
 	
 	# Check if SDK already ready
 	if CheddaBoards.is_ready():
@@ -592,8 +605,13 @@ func _on_profile_timeout():
 		_log("Max attempts - using defaults")
 		_stop_all_timers()
 		waiting_for_profile = false
+		# SDK v2.2.0+: get_nickname() returns "" for unnamed anonymous players.
+		# Coerce here so the welcome label shows "Guest" instead of empty.
+		var nick = CheddaBoards.get_nickname()
+		if nick.is_empty():
+			nick = "Guest"
 		_show_main_panel({
-			"nickname": CheddaBoards.get_nickname(),
+			"nickname": nick,
 			"score": 0,
 			"streak": 0,
 			"playCount": 0
@@ -936,6 +954,11 @@ func _show_main_panel(profile: Dictionary):
 		anonymous_panel.visible = false
 	
 	var nickname = str(profile.get("nickname", profile.get("username", "Player")))
+	# Dict.get default doesn't fire when the key exists with an empty value,
+	# so coerce explicitly — protects against upstream callers that pass through
+	# an empty nickname from the SDK's new "" for unnamed anonymous players.
+	if nickname.is_empty():
+		nickname = "Player"
 	var weekly = int(profile.get("score", 0))
 	var play_count = int(profile.get("playCount", profile.get("plays", 0)))
 	var rank = int(profile.get("rank", 0))
@@ -960,6 +983,8 @@ func _show_main_panel(profile: Dictionary):
 func _update_main_panel_stats(profile: Dictionary):
 	"""Update stats on main panel"""
 	var nickname = str(profile.get("nickname", "Player"))
+	if nickname.is_empty():
+		nickname = "Player"
 	var weekly = int(profile.get("score", 0))
 	var play_count = int(profile.get("playCount", profile.get("plays", 0)))
 	var rank = int(profile.get("rank", 0))
@@ -1286,9 +1311,13 @@ func _on_login_failed(reason: String):
 	_stop_all_timers()
 	is_logging_in = false
 
-func _on_profile_loaded(nickname: String, score: int, _streak: int, achievements: Array):
-	"""Profile loaded from backend"""
-	_log("Profile loaded: %s (weekly score: %d)" % [nickname, score])
+func _on_profile_loaded(nickname: String, score: int, _streak: int, achievements: Array, play_count: int):
+	"""Profile loaded from backend.
+	
+	SDK v2.2.0+ emits play_count as 5th arg — prefer it over digging into
+	the cached profile dict, which can be stale or inconsistently shaped
+	between session-auth and API-key paths."""
+	_log("Profile loaded: %s (weekly score: %d, plays: %d)" % [nickname, score, play_count])
 	
 	# If backend has different nickname (e.g. auto-suffixed), update local storage
 	if CheddaBoards.is_anonymous() and not nickname.is_empty():
@@ -1298,12 +1327,6 @@ func _on_profile_loaded(nickname: String, score: int, _streak: int, achievements
 			_save_player_data()
 			if anonymous_panel and anonymous_panel.visible and anon_welcome_label:
 				anon_welcome_label.text = "Welcome back, %s!" % nickname
-	
-	var cached = CheddaBoards.get_cached_profile()
-	var play_count = 0
-	
-	if not cached.is_empty():
-		play_count = int(cached.get("playCount", cached.get("plays", 0)))
 	
 	var profile = {
 		"nickname": nickname,
@@ -1336,8 +1359,12 @@ func _on_no_profile():
 	else:
 		_stop_all_timers()
 		waiting_for_profile = false
+		# SDK v2.2.0+: get_nickname() returns "" for unnamed anonymous players.
+		var nick = CheddaBoards.get_nickname()
+		if nick.is_empty():
+			nick = "Guest"
 		_show_main_panel({
-			"nickname": CheddaBoards.get_nickname(),
+			"nickname": nick,
 			"score": 0,
 			"streak": 0,
 			"playCount": 0
@@ -1447,7 +1474,7 @@ func _dump_debug():
 	"""Dump debug info (F9)"""
 	print("")
 	print("========================================")
-	print("       MainMenu Debug v2.0.0           ")
+	print("       MainMenu Debug v2.1.0           ")
 	print("========================================")
 	print(" State")
 	print("  - Is Logging In:   %s" % str(is_logging_in))

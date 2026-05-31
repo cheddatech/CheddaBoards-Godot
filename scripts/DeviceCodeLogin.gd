@@ -1,7 +1,8 @@
-# DeviceCodePopup.gd v1.1.0
+# DeviceCodeLogin.gd v1.2.0
 # Reusable popup for device code sign-in flow.
 # Displays a scannable QR code pointing to the verification URL with the
-# code pre-filled. Falls back to showing the raw code for manual entry.
+# code pre-filled, plus a clickable LinkButton fallback for desktop / no-camera
+# scenarios. Also shows the raw code for manual entry as a last resort.
 #
 # USAGE (from any script):
 #   var popup = preload("res://scenes/DeviceCodePopup.tscn").instantiate()
@@ -14,6 +15,11 @@
 # The popup connects to CheddaBoards signals automatically.
 # When approved, it emits `signed_in(nickname)` and removes itself.
 # When cancelled/expired, it emits `cancelled` and removes itself.
+#
+# v1.2.0: Clickable LinkButton opens the verification URL (with code pre-filled)
+#          in the system browser via OS.shell_open(). Falls back gracefully if
+#          the SDK didn't supply a URL.
+# v1.1.0: QR code rendering from base64 data URL.
 #
 # REQUIRES: CheddaBoards.device_code_received to emit:
 #   (user_code: String, verification_url: String, qr_data_url: String)
@@ -30,6 +36,7 @@ signal cancelled()
 @onready var title_label = $Panel/MarginContainer/VBox/TitleLabel
 @onready var instruction_label = $Panel/MarginContainer/VBox/InstructionLabel
 @onready var qr_texture = $Panel/MarginContainer/VBox/QRCode
+@onready var link_button = $Panel/MarginContainer/VBox/LinkButton
 @onready var fallback_label = $Panel/MarginContainer/VBox/FallbackLabel
 @onready var code_label = $Panel/MarginContainer/VBox/CodeLabel
 @onready var status_label = $Panel/MarginContainer/VBox/StatusLabel
@@ -38,9 +45,11 @@ signal cancelled()
 
 var _expires_at: float = 0.0
 var _is_active: bool = false
+var _verification_url: String = ""
 
 func _ready():
 	cancel_button.pressed.connect(_on_cancel_pressed)
+	link_button.pressed.connect(_on_link_pressed)
 
 	CheddaBoards.device_code_received.connect(_on_device_code_received)
 	CheddaBoards.device_code_approved.connect(_on_device_code_approved)
@@ -81,9 +90,10 @@ static func show_sign_in(parent: Node) -> Node:
 # SIGNAL HANDLERS
 # ============================================================
 
-func _on_device_code_received(user_code: String, _verification_url: String, qr_data_url: String):
+func _on_device_code_received(user_code: String, verification_url: String, qr_data_url: String):
 	_is_active = true
 	_expires_at = Time.get_unix_time_from_system() + 300  # 5 minutes
+	_verification_url = verification_url
 
 	# Build QR texture from base64 data URL
 	var qr_ok = _set_qr_from_data_url(qr_data_url)
@@ -94,6 +104,8 @@ func _on_device_code_received(user_code: String, _verification_url: String, qr_d
 	instruction_label.text = "Scan to sign in instantly:"
 	instruction_label.visible = true
 	qr_texture.visible = qr_ok
+	# Show clickable link only if SDK gave us a URL — graceful fallback otherwise
+	link_button.visible = not _verification_url.is_empty()
 	fallback_label.visible = true
 	code_label.visible = true
 	status_label.text = "Waiting for you to sign in..."
@@ -108,6 +120,7 @@ func _on_device_code_approved(nickname: String):
 	title_label.text = "Signed In!"
 	instruction_label.visible = false
 	qr_texture.visible = false
+	link_button.visible = false
 	fallback_label.visible = false
 	code_label.text = "Welcome, %s!" % nickname
 	code_label.add_theme_color_override("font_color", Color(0.3, 1, 0.4, 1))
@@ -123,6 +136,7 @@ func _on_device_code_expired():
 	_is_active = false
 
 	qr_texture.visible = false
+	link_button.visible = false
 	status_label.text = "Code expired. Try again."
 	status_label.add_theme_color_override("font_color", Color(1, 0.4, 0.3, 1))
 	timer_label.visible = false
@@ -135,6 +149,7 @@ func _on_device_code_error(reason: String):
 	_is_active = false
 
 	qr_texture.visible = false
+	link_button.visible = false
 	status_label.text = "Error: %s" % reason
 	status_label.add_theme_color_override("font_color", Color(1, 0.4, 0.3, 1))
 	timer_label.visible = false
@@ -147,6 +162,15 @@ func _on_cancel_pressed():
 	_is_active = false
 	cancelled.emit()
 	_cleanup()
+
+func _on_link_pressed():
+	# Open the verification URL (with code pre-filled) in the system browser.
+	# On web exports OS.shell_open routes through JavaScript window.open;
+	# on desktop/mobile it hands off to the OS handler.
+	if _verification_url.is_empty():
+		push_warning("DeviceCodePopup: link pressed but no verification URL set")
+		return
+	OS.shell_open(_verification_url)
 
 # ============================================================
 # INTERNAL
@@ -180,6 +204,7 @@ func _show_requesting_state():
 	title_label.text = "Sign In"
 	instruction_label.visible = false
 	qr_texture.visible = false
+	link_button.visible = false
 	fallback_label.visible = false
 	code_label.text = "Requesting code..."
 	code_label.add_theme_color_override("font_color", Color(1, 1, 0, 1))
