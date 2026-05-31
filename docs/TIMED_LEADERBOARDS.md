@@ -314,8 +314,8 @@ Existing scores and scoreboards are unaffected.
 
 ## Links
 
-- **Dashboard:** [cheddaboards.com/dashboard](https://cheddaboards.com/dashboard)
-- **API Quickstart:** [API_QUICKSTART.md](API_QUICKSTART.md)
+- **Dashboard:** [cheddaboards.com/developers](https://cheddaboards.com/developers)
+- **Quickstart:** [QUICKSTART.md](QUICKSTART.md)
 - **GitHub:** [github.com/cheddatech/CheddaBoards-Godot](https://github.com/cheddatech/CheddaBoards-Godot)
 
 ---

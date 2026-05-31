@@ -7,6 +7,224 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.2.0] - 2026-05-31
+
+### Polish, Privacy & Pause-Safety
+
+Backwards-compatible release focused on production hardening: signal completeness, pause-safe HTTP, log redaction, and legacy method aliases. One breaking change to `profile_loaded`.
+
+### Added
+
+#### Profile
+- `profile_loaded` signal now emits `play_count` as a 5th argument
+- Internal `_update_cached_profile` populates play_count from API response and emits it directly via the signal, removing the need for handlers to dig into `get_cached_profile()` afterwards
+
+#### Privacy & Logging
+- `_redact_code()` helper — masks device user codes in log output (shows first 3 chars only)
+- `_redact_email()` helper — masks emails in log output (first char + full domain)
+- Device codes and emails redacted automatically at the three log lines that previously emitted them raw (code-received, code-expired, approval)
+- `debug_status()` output now redacts the active device code
+
+#### Lifecycle
+- `_notification()` handler watches for `NOTIFICATION_APPLICATION_FOCUS_IN` and `NOTIFICATION_APPLICATION_RESUMED` during device-code polling, firing an immediate out-of-cadence poll. Eliminates the up-to-5-second delay players previously experienced after completing sign-in on their phone and returning to the game.
+
+#### Backwards Compatibility Aliases
+Legacy method names from earlier SDK versions retained so games written against older APIs continue to work without code changes:
+- `sync_achievements(ids)` → `unlock_achievements_batch`
+- `submit_score_external(player_id, score, streak, _rounds, nickname)` — API-key-mode external player submit
+- `unlock_achievement_external(player_id, achievement_id)` — API-key-mode external achievement
+- `login_as_guest(nickname)` → `login_anonymous`
+- `login_ii()` → `login_with_device_code`
+- `get_profile()` → `refresh_profile`
+- `get_current_user()` → `get_cached_profile`
+- `get_session_id()` → returns `_session_token`
+- `configure(game_id)` → `set_game_id`
+- `prompt_guest_name()` — deprecation stub
+- `is_logged_in()` → `is_authenticated`
+
+### Changed
+
+#### Pause-Safe Processing
+- Autoload SDK node, the main `HTTPRequest`, all async `HTTPRequest` instances, and the device-code poll Timer now set `process_mode = Node.PROCESS_MODE_ALWAYS`
+- Fixes hung score submits when the scene tree is paused (e.g. during a game-over continue screen). Previously HTTP responses landed silently, signals never fired, and in-flight submits appeared to hang indefinitely.
+
+#### Defaults
+- `debug_logging` default flipped from `true` to `false` — clean stdout for shipped games
+- `api_key` and `game_id` cleared to `""` — set them at runtime via `set_api_key()` and `set_game_id()` in your game's `_ready()` instead of pasting into `CheddaBoards.gd`
+
+#### Anonymous Nickname Semantics
+- `login_anonymous(nickname="")` with no name argument keeps `_nickname` as an empty string instead of auto-generating `Player_dev_xxxxxx`
+- `get_nickname()` filters both `Player_p_*` and `Player_dev_*` placeholder prefixes and returns `""` for unnamed anonymous players
+- UIs should display "Guest" (or equivalent) when `get_nickname()` returns empty
+
+#### Profile Refresh
+- `refresh_profile()` always allows the first call (when `_last_profile_refresh == 0.0`); the cooldown window applies only from the second call onward. Fixes a silent no-op when the function was called within `PROFILE_REFRESH_COOLDOWN` of game boot.
+
+#### Nickname Changes
+- `change_nickname(new_nickname: String = "")` accepts a no-arg call and emits a clean `nickname_error` for empty or sub-2-character input
+
+#### Non-Fatal Scoreboard 404
+- `_on_http_request_completed` now treats a 404 on `get_scoreboard`, `scoreboard_rank`, and `list_scoreboards` as non-fatal — emits `scoreboard_error` rather than `push_error`. A scoreboard that isn't configured for the game is a normal state, not an error.
+
+### Breaking Changes
+
+- **`profile_loaded` signal gained a 5th argument: `play_count: int`.** Existing 4-arg handlers will silently fail to connect in Godot 4.x. Add the trailing `play_count: int` parameter to your `_on_profile_loaded` handler.
+
+### Migration from v2.1.0
+
+```gdscript
+# Before
+func _on_profile_loaded(nickname, score, streak, achievements):
+    ...
+
+# After
+func _on_profile_loaded(nickname, score, streak, achievements, play_count):
+    ...
+```
+
+If your game was relying on the SDK's hardcoded `api_key` / `game_id` defaults (e.g. from a development build), set them explicitly in `_ready()` before any other CheddaBoards call:
+
+```gdscript
+func _ready():
+    CheddaBoards.set_api_key("cb_your-game_xxxxxxxxx")
+    CheddaBoards.set_game_id("your-game-id")
+```
+
+If you were tailing stdout in production with `debug_logging = true`, you'll find the SDK is now quiet by default. Flip it back on while investigating an issue:
+
+```gdscript
+CheddaBoards.debug_logging = true
+```
+
+---
+
+## [2.1.0] - 2026-05
+
+### QR Code Login
+
+Device-code sign-in now displays a scannable QR code. Players point their phone camera at the screen and land directly on the verification page with their code pre-filled — no typing required.
+
+### Added
+
+#### Device Code Auth
+- `device_code_received` signal now emits a third argument: `qr_data_url: String`
+- QR data URL is a base64 PNG (e.g. `data:image/png;base64,iVBORw0KGgo...`) encoding the full verification URL with code pre-filled
+- Falls back gracefully if the API returns null — the raw code remains visible and the popup continues to function normally
+
+#### Reference Implementation
+- `DeviceCodeLogin.tscn` ships with a `TextureRect` (200×200) for displaying the QR code
+- `DeviceCodeLogin.gd` includes `_set_qr_from_data_url()` — decodes base64 PNG data URL into an `ImageTexture` using `Marshalls.base64_to_raw()` and `Image.load_png_from_buffer()`
+- Instruction text switches to "Scan to sign in instantly:" when QR is present
+
+### Breaking Changes
+
+- **`device_code_received` signal now emits three arguments**: `(user_code: String, verification_url: String, qr_data_url: String)`
+- Any existing `_on_device_code_received` handler must be updated to accept the new third argument
+
+### Migration from v2.0.0
+
+```gdscript
+# Before
+func _on_device_code_received(user_code: String, verification_url: String):
+    ...
+
+# After
+func _on_device_code_received(user_code: String, verification_url: String, qr_data_url: String):
+    ...
+```
+
+---
+
+## [2.0.0] - 2026-04
+
+### HTTP-Only SDK
+
+Major architectural shift. The JavaScript bridge and web SDK dependency are gone. Every platform — Windows, Mac, Linux, mobile, web — now uses the same REST API paths. Social login moved to Device Code Auth so it works everywhere without OAuth SDKs or browser popups in your game.
+
+### Added
+
+#### Device Code Auth (Cross-Platform)
+- `login_with_device_code()` — unified method for Google, Apple, and Internet Identity sign-in via OAuth 2.0 Device Authorization Grant (RFC 8628)
+- Works identically on every platform: Windows, Mac, Linux, mobile, web, consoles
+- No OAuth SDKs required in your game — just two HTTP calls and a label to display the code
+- Cross-platform account linking: anonymous players can upgrade to Google/Apple from any platform, preserving scores and achievements
+
+#### Polling Infrastructure
+- `_start_device_code_polling()` / `_stop_device_code_polling()` — internal poll lifecycle management
+- `_poll_device_code_token()` — RFC 8628 compliant polling with configurable interval (default 5s)
+- Out-of-cadence poll support — focus-regain and manual triggers can fire a poll without waiting for the next scheduled tick
+- Signals: `device_code_received`, `device_code_approved`, `device_code_expired`, `device_code_error`
+
+#### REST API Surface
+- All endpoints documented and reachable via plain HTTP from any engine
+- `X-API-Key` header authentication for anonymous/API-key flows
+- Session token authentication for verified accounts (Google/Apple/II)
+- JWKS-based OAuth token verification on the server side
+
+### Changed
+
+#### Removed JavaScript Bridge
+- `JavaScriptBridge` dependency removed entirely
+- `template.html` no longer needed for SDK functionality (still required for custom HTML export shells if you want one)
+- `OS.get_name() == "Web"` platform branching removed throughout the SDK — one code path for all platforms
+
+#### Authentication
+- `login_google()` and `login_apple()` retained as convenience methods, both now route to `login_with_device_code()` internally
+- `login_internet_identity()` retained as alias, also routes to `login_with_device_code()`
+- Native builds no longer require platform-specific OAuth setup
+
+#### Score Submission
+- All scores submitted via `POST /scores` REST endpoint
+- Anti-cheat validation (play session tokens, score caps, streak limits) enforced server-side
+- Per-game configurable limits via developer dashboard — no client-side caps
+
+### Removed
+
+- JavaScript-side authentication state management
+- Browser popup login flows
+- Web-only authentication code paths
+- `OS.get_name() == "Web"` platform branching
+
+### Breaking Changes
+
+- **`login_google_device_code()` and `login_apple_device_code()` removed.** Use `login_with_device_code()` instead — provider selection happens on the verification page, not in the SDK call.
+- **JavaScript bridge functions removed.** Any code calling `JavaScriptBridge.eval()` to interact with the web SDK must be removed; use the REST API instead.
+- **`template.html` OAuth config no longer used by the SDK.** Existing `GOOGLE_CLIENT_ID` and `APPLE_SERVICE_ID` config in `template.html` is now inert. Direct OAuth flow is gone; all auth goes through device code.
+
+### Migration from v1.x
+
+1. **Replace login method calls:**
+
+   ```gdscript
+   # Before
+   CheddaBoards.login_google_device_code("PlayerName")
+   CheddaBoards.login_apple_device_code("PlayerName")
+   
+   # After
+   CheddaBoards.login_with_device_code()
+   ```
+
+2. **Remove any web-specific branching:**
+
+   ```gdscript
+   # Before
+   if OS.get_name() == "Web":
+       CheddaBoards.login_google()  # used JS bridge
+   else:
+       CheddaBoards.login_google_device_code()  # used device code
+   
+   # After
+   CheddaBoards.login_with_device_code()  # works everywhere
+   ```
+
+3. **Remove `JavaScriptBridge` calls** that interacted with the old web SDK.
+
+4. **Keep your `template.html`** if you want a custom export shell — it just no longer needs OAuth credentials in the CONFIG section.
+
+5. **No changes required** to score submission, leaderboards, achievements, or scoreboards — those APIs are unchanged.
+
+---
+
 ## [1.10.0] - 2026-03-22
 
 ### QR Code Login

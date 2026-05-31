@@ -2,9 +2,11 @@
 
 **Full web integration with login UI, achievements, OAuth, and account upgrade.**
 
-> **SDK Version:** 1.10.0 | [Changelog](CHANGELOG.md)
+> **SDK Version:** 2.2.0 | [Changelog](CHANGELOG.md)
 
 > Looking for the native/API setup? See [SETUP.md](SETUP.md)
+
+> **Note on v2.0+:** As of SDK v2.0.0, all platforms use HTTP + Device Code Auth — the OAuth setup in this doc is for **legacy v1.x projects** still relying on the JavaScript bridge. New projects should follow [SETUP.md](SETUP.md) or [QUICKSTART.md](QUICKSTART.md) and use device code auth on web. This doc is retained for users maintaining older builds.
 
 ---
 
@@ -224,8 +226,7 @@ YourGame/
 | Doc | Description |
 |-----|-------------|
 | [SETUP.md](SETUP.md) | Native/API setup guide |
-| [QUICKSTART.md](QUICKSTART.md) | Fast setup guide |
-| [API_QUICKSTART.md](API_QUICKSTART.md) | Full API reference |
+| [QUICKSTART.md](QUICKSTART.md) | Fast setup + API reference |
 | [TIMED_LEADERBOARDS.md](TIMED_LEADERBOARDS.md) | Weekly/daily competitions |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common problems & solutions |
 | [CHANGELOG.md](CHANGELOG.md) | Version history |

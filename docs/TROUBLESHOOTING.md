@@ -49,16 +49,18 @@ It auto-fixes:
 
 ### "API key not set"
 
-**Cause:** Native builds require an API key.
+**Cause:** SDK v2.2.0+ ships with empty credential defaults — the SDK doesn't know which game it's talking to.
 
 **Fix:**
-1. Go to [cheddaboards.com/dashboard](https://cheddaboards.com/dashboard)
+1. Go to [cheddaboards.com/developers](https://cheddaboards.com/developers)
 2. Open your game → Generate API Key
 3. Copy the key (looks like `cb_your-game_xxxxxxxxx`)
-4. Set in CheddaBoards.gd:
+4. Set in your game's `_ready()` before any other CheddaBoards call:
 
 ```gdscript
-var api_key: String = "cb_your-game_xxxxxxxxx"
+func _ready():
+    CheddaBoards.set_api_key("cb_your-game_xxxxxxxxx")
+    CheddaBoards.set_game_id("your-game-id")
 ```
 
 ### "Invalid API key"
@@ -96,9 +98,10 @@ CheddaBoards.request_failed.connect(func(endpoint, error):
 | Anonymous | ✅ | ✅ | ✅ |
 | Google (Device Code) | ✅ | ✅ | ✅ |
 | Apple (Device Code) | ✅ | ✅ | ✅ |
-| Google (Direct OAuth) | — | — | ✅ |
-| Apple (Direct OAuth) | — | — | ✅ |
+| Internet Identity (Device Code) | ✅ | ✅ | ✅ |
 | Account Upgrade | ✅ | ✅ | ✅ |
+
+> Legacy direct OAuth (in-browser Google/Apple buttons in `template.html`) was removed in v2.0.0. See [SETUP_WEB.md](SETUP_WEB.md) if you're maintaining a v1.x project that still uses it.
 
 ### "Not authenticated"
 
@@ -107,6 +110,8 @@ CheddaBoards.request_failed.connect(func(endpoint, error):
 **Fix:**
 ```gdscript
 func _ready():
+    CheddaBoards.set_api_key("cb_your-game_xxxxxxxxx")
+    CheddaBoards.set_game_id("your-game-id")
     await CheddaBoards.wait_until_ready()
     CheddaBoards.login_anonymous("Player")  # Do this first!
 
@@ -126,8 +131,8 @@ func _on_game_over(score, streak):
 
 **Debug:**
 ```gdscript
-CheddaBoards.device_code_received.connect(func(url, code, expires_in):
-    print("Code: %s at %s (expires in %ds)" % [code, url, expires_in])
+CheddaBoards.device_code_received.connect(func(user_code, verification_url, qr_data_url):
+    print("Code: %s at %s" % [user_code, verification_url])
 )
 
 CheddaBoards.device_code_expired.connect(func():
@@ -143,7 +148,7 @@ CheddaBoards.login_failed.connect(func(reason):
 
 **Cause:** Codes expire after 5 minutes.
 
-**Fix:** Call `login_google_device_code()` or `login_apple_device_code()` again to get a fresh code.
+**Fix:** Call `login_with_device_code()` again to get a fresh code.
 
 ### Login button does nothing (Web)
 
@@ -335,9 +340,9 @@ Achievements.debug_status()
 
 ### API / Native Build
 
-- [ ] API key set in CheddaBoards.gd
+- [ ] `set_api_key()` and `set_game_id()` called in `_ready()`
 - [ ] CheddaBoards in Autoloads
-- [ ] Using `login_anonymous()` before submitting
+- [ ] Using `login_anonymous()` or `login_with_device_code()` before submitting
 - [ ] Allow Hidpi enabled (for high-DPI)
 
 ### Web Build

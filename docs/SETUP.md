@@ -2,7 +2,7 @@
 
 **Detailed setup instructions for all platforms.**
 
-> **SDK Version:** 1.10.0 | [Changelog](CHANGELOG.md)
+> **SDK Version:** 2.2.0 | [Changelog](CHANGELOG.md)
 
 > Want the fast version? See [QUICKSTART.md](QUICKSTART.md)
 
@@ -69,33 +69,22 @@ YourGame/
 
 ### 4. Set API Key
 
-Open `CheddaBoards.gd` and find (around line 35):
-
-```gdscript
-var api_key: String = ""
-var game_id: String = ""
-```
-
-Change to:
-
-```gdscript
-var api_key: String = "cb_my-game_xxxxxxxxx"
-var game_id: String = "my-game"
-```
-
-Or set at runtime:
+As of SDK v2.2.0, the SDK ships with empty credential defaults. Set them at runtime in your game's `_ready()` before any other CheddaBoards call:
 
 ```gdscript
 func _ready():
     CheddaBoards.set_api_key("cb_my-game_xxxxxxxxx")
+    CheddaBoards.set_game_id("my-game")
 ```
 
-> **Tip:** Run the Setup Wizard (`File → Run → addons/cheddaboards/SetupWizard.gd`) to configure these automatically!
+> **Tip:** Run the Setup Wizard (`File → Run → addons/cheddaboards/SetupWizard.gd`) to handle this automatically. The wizard writes the calls into your MainMenu.gd for you.
 
 ### 5. Use It
 
 ```gdscript
 func _ready():
+    CheddaBoards.set_api_key("cb_my-game_xxxxxxxxx")
+    CheddaBoards.set_game_id("my-game")
     await CheddaBoards.wait_until_ready()
     CheddaBoards.login_anonymous("Player1")
 
@@ -165,47 +154,47 @@ func _on_archive(archive_id, config, entries):
 | **Anonymous** | ✅ | ✅ | ✅ | Just API key |
 | **Google (Device Code)** | ✅ | ✅ | ✅ | None — built in |
 | **Apple (Device Code)** | ✅ | ✅ | ✅ | None — built in |
-| **Google (Direct OAuth)** | — | — | ✅ | Your OAuth credentials |
-| **Apple (Direct OAuth)** | — | — | ✅ | Your OAuth credentials |
-| **Account Upgrade** | ✅ | ✅ | ✅ | None (anon → Google/Apple) |
+| **Internet Identity (Device Code)** | ✅ | ✅ | ✅ | None — built in |
+| **Account Upgrade** | ✅ | ✅ | ✅ | None (anon → Google/Apple/II) |
 
-### Device Code Auth (v1.9.0)
+### Device Code Auth (v2.0+)
 
-Device Code Auth lets players sign in with Google or Apple on **any platform** — no browser popups, no OAuth SDKs needed in your game.
+Device Code Auth lets players sign in with Google, Apple, or Internet Identity on **any platform** — no browser popups, no OAuth SDKs needed in your game.
 
 **How it works:**
 1. Game requests a device code from CheddaBoards
-2. Game displays: "Go to cheddaboards.com/link and enter: CHEDDA-7K3M"
-3. Player opens that URL on their phone and signs in with Google or Apple
-4. Game automatically picks up the session via polling
+2. Game displays a QR code, the verification URL, and a short code (e.g. `CHEDDA-7K3M`)
+3. Player either scans the QR with their phone or opens the URL manually and picks Google/Apple/II
+4. Game automatically picks up the session via background polling
 
 ```gdscript
-# Start device code login
-CheddaBoards.login_google_device_code("PlayerName")
+# Start device code login (provider chosen on the verification page)
+CheddaBoards.login_with_device_code()
 
-# Show the code to the player
-CheddaBoards.device_code_received.connect(func(url, code, expires_in):
-    $CodeLabel.text = "Go to %s\nEnter code: %s" % [url, code]
+# Show the code, URL, and QR to the player
+CheddaBoards.device_code_received.connect(func(user_code: String, verification_url: String, qr_data_url: String):
+    $CodeLabel.text = "Go to %s\nEnter code: %s" % [verification_url, user_code]
+    # qr_data_url is a base64 PNG — see scripts/DeviceCodeLogin.gd for how to render it
 )
 
 # Login completes automatically
-CheddaBoards.login_success.connect(func(nickname):
+CheddaBoards.device_code_approved.connect(func(nickname: String):
     print("Welcome, %s!" % nickname)
 )
 
-# Handle expiry
+# Handle expiry (5-minute window)
 CheddaBoards.device_code_expired.connect(func():
     $CodeLabel.text = "Code expired — try again"
 )
 ```
 
-The DeviceCodeLogin scene (`scenes/DeviceCodeLogin.tscn`) provides a ready-made UI for this flow.
+The `DeviceCodeLogin` scene (`scenes/DeviceCodeLogin.tscn`) provides a ready-made UI for this flow, including QR rendering and a clickable LinkButton fallback.
 
 ### Account Upgrade
 
-Players can start anonymous and upgrade their account to Google or Apple later via Device Code Auth. This preserves all scores and achievements while enabling cross-device sync.
+Players can start anonymous and upgrade their account to Google, Apple, or Internet Identity later via Device Code Auth. This preserves all scores and achievements while enabling cross-device sync.
 
-> For web-specific auth options (direct OAuth, Anonymous Dashboard upgrade), see [SETUP_WEB.md](SETUP_WEB.md).
+> Legacy v1.x direct OAuth (in-browser Google/Apple buttons) was removed in v2.0.0. If you have an older project that needs the legacy web setup, see [SETUP_WEB.md](SETUP_WEB.md) — but new projects should use device code auth throughout.
 
 ---
 
@@ -350,9 +339,8 @@ YourGame/
 
 | Doc | Description |
 |-----|-------------|
-| [SETUP_WEB.md](SETUP_WEB.md) | Web SDK setup guide |
-| [QUICKSTART.md](QUICKSTART.md) | Fast setup guide |
-| [API_QUICKSTART.md](API_QUICKSTART.md) | Full API reference |
+| [QUICKSTART.md](QUICKSTART.md) | Fast setup + API reference |
+| [SETUP_WEB.md](SETUP_WEB.md) | Web export specifics (template.html, legacy OAuth) |
 | [TIMED_LEADERBOARDS.md](TIMED_LEADERBOARDS.md) | Weekly/daily competitions |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common problems & solutions |
 | [CHANGELOG.md](CHANGELOG.md) | Version history |
