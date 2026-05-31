@@ -1,9 +1,9 @@
-[gd_scene load_steps=3 format=3 uid="uid://chvqlsbp0m0km"]
+[gd_scene format=3 uid="uid://chvqlsbp0m0km"]
 
-[ext_resource type="Script" uid="uid://ckgybouabh1td" path="res://scripts/MainMenu.gd" id="1_script"]
-[ext_resource type="FontFile" uid="uid://b5c8vdfry2s83" path="res://assets/fonts/ZeroCool.ttf" id="3_h7a2f"]
+[ext_resource type="Script" uid="uid://bjythe25ich12" path="res://scripts/MainMenu.gd" id="1_script"]
+[ext_resource type="FontFile" uid="uid://2c7ig5uxin2m" path="res://assets/fonts/ZeroCool.ttf" id="3_h7a2f"]
 
-[node name="MainMenu" type="Control"]
+[node name="MainMenu" type="Control" unique_id=2102351680]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -12,7 +12,7 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_script")
 
-[node name="Background" type="ColorRect" parent="."]
+[node name="Background" type="ColorRect" parent="." unique_id=1439279365]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -21,7 +21,7 @@ grow_horizontal = 2
 grow_vertical = 2
 color = Color(0, 0, 0, 1)
 
-[node name="LoginPanel" type="Panel" parent="."]
+[node name="LoginPanel" type="Panel" parent="." unique_id=973084063]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -29,7 +29,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="MarginContainer" type="MarginContainer" parent="LoginPanel"]
+[node name="MarginContainer" type="MarginContainer" parent="LoginPanel" unique_id=1419822152]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -41,20 +41,20 @@ theme_override_constants/margin_top = 40
 theme_override_constants/margin_right = 40
 theme_override_constants/margin_bottom = 40
 
-[node name="VBoxContainer" type="VBoxContainer" parent="LoginPanel/MarginContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="LoginPanel/MarginContainer" unique_id=1358412173]
 layout_mode = 2
 theme_override_constants/separation = 15
 alignment = 1
 
-[node name="TitleLabel" type="Label" parent="LoginPanel/MarginContainer/VBoxContainer"]
+[node name="TitleLabel" type="Label" parent="LoginPanel/MarginContainer/VBoxContainer" unique_id=175797180]
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 1, 0, 1)
 theme_override_fonts/font = ExtResource("3_h7a2f")
 theme_override_font_sizes/font_size = 64
-text = "Chedda Click"
+text = "My Game"
 horizontal_alignment = 1
 
-[node name="SubtitleLabel" type="Label" parent="LoginPanel/MarginContainer/VBoxContainer"]
+[node name="SubtitleLabel" type="Label" parent="LoginPanel/MarginContainer/VBoxContainer" unique_id=623518629]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
 theme_override_fonts/font = ExtResource("3_h7a2f")
@@ -62,11 +62,11 @@ theme_override_font_sizes/font_size = 18
 text = "Welcome!"
 horizontal_alignment = 1
 
-[node name="Spacer" type="Control" parent="LoginPanel/MarginContainer/VBoxContainer"]
+[node name="Spacer" type="Control" parent="LoginPanel/MarginContainer/VBoxContainer" unique_id=1971314492]
 custom_minimum_size = Vector2(0, 30)
 layout_mode = 2
 
-[node name="DirectPlayButton" type="Button" parent="LoginPanel/MarginContainer/VBoxContainer"]
+[node name="DirectPlayButton" type="Button" parent="LoginPanel/MarginContainer/VBoxContainer" unique_id=1741778010]
 custom_minimum_size = Vector2(300, 80)
 layout_mode = 2
 size_flags_horizontal = 4
@@ -75,7 +75,7 @@ theme_override_fonts/font = ExtResource("3_h7a2f")
 theme_override_font_sizes/font_size = 28
 text = "PLAY NOW"
 
-[node name="LeaderboardButton" type="Button" parent="LoginPanel/MarginContainer/VBoxContainer"]
+[node name="LeaderboardButton" type="Button" parent="LoginPanel/MarginContainer/VBoxContainer" unique_id=2100649276]
 custom_minimum_size = Vector2(300, 60)
 layout_mode = 2
 size_flags_horizontal = 4
@@ -84,11 +84,11 @@ theme_override_fonts/font = ExtResource("3_h7a2f")
 theme_override_font_sizes/font_size = 20
 text = "Leaderboard"
 
-[node name="Spacer2" type="Control" parent="LoginPanel/MarginContainer/VBoxContainer"]
+[node name="Spacer2" type="Control" parent="LoginPanel/MarginContainer/VBoxContainer" unique_id=743540203]
 custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 
-[node name="OrLabel" type="Label" parent="LoginPanel/MarginContainer/VBoxContainer"]
+[node name="OrLabel" type="Label" parent="LoginPanel/MarginContainer/VBoxContainer" unique_id=1025225914]
 visible = false
 layout_mode = 2
 theme_override_colors/font_color = Color(0.5, 0.5, 0.5, 1)
@@ -96,7 +96,7 @@ theme_override_font_sizes/font_size = 14
 text = "— or login to sync across devices —"
 horizontal_alignment = 1
 
-[node name="SignInButton" type="Button" parent="LoginPanel/MarginContainer/VBoxContainer"]
+[node name="SignInButton" type="Button" parent="LoginPanel/MarginContainer/VBoxContainer" unique_id=1392342340]
 visible = false
 custom_minimum_size = Vector2(300, 60)
 layout_mode = 2
@@ -106,7 +106,7 @@ theme_override_fonts/font = ExtResource("3_h7a2f")
 theme_override_font_sizes/font_size = 18
 text = "Sign In"
 
-[node name="DeviceCodeLabel" type="Label" parent="LoginPanel/MarginContainer/VBoxContainer"]
+[node name="DeviceCodeLabel" type="Label" parent="LoginPanel/MarginContainer/VBoxContainer" unique_id=2015527177]
 visible = false
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
@@ -115,7 +115,7 @@ theme_override_font_sizes/font_size = 14
 horizontal_alignment = 1
 autowrap_mode = 2
 
-[node name="CancelSignInButton" type="Button" parent="LoginPanel/MarginContainer/VBoxContainer"]
+[node name="CancelSignInButton" type="Button" parent="LoginPanel/MarginContainer/VBoxContainer" unique_id=1750529972]
 visible = false
 custom_minimum_size = Vector2(300, 40)
 layout_mode = 2
@@ -124,7 +124,7 @@ theme_override_colors/font_color = Color(0.6, 0.6, 0.6, 1)
 theme_override_font_sizes/font_size = 14
 text = "Cancel"
 
-[node name="GoogleButton" type="Button" parent="LoginPanel/MarginContainer/VBoxContainer"]
+[node name="GoogleButton" type="Button" parent="LoginPanel/MarginContainer/VBoxContainer" unique_id=1655374943]
 visible = false
 custom_minimum_size = Vector2(300, 60)
 layout_mode = 2
@@ -132,7 +132,7 @@ size_flags_horizontal = 4
 theme_override_font_sizes/font_size = 18
 text = "Login with Google"
 
-[node name="AppleButton" type="Button" parent="LoginPanel/MarginContainer/VBoxContainer"]
+[node name="AppleButton" type="Button" parent="LoginPanel/MarginContainer/VBoxContainer" unique_id=1717665317]
 visible = false
 custom_minimum_size = Vector2(300, 60)
 layout_mode = 2
@@ -140,7 +140,7 @@ size_flags_horizontal = 4
 theme_override_font_sizes/font_size = 18
 text = "Login with Apple"
 
-[node name="CheddaButton" type="Button" parent="LoginPanel/MarginContainer/VBoxContainer"]
+[node name="CheddaButton" type="Button" parent="LoginPanel/MarginContainer/VBoxContainer" unique_id=645336235]
 visible = false
 custom_minimum_size = Vector2(300, 60)
 layout_mode = 2
@@ -148,7 +148,7 @@ size_flags_horizontal = 4
 theme_override_font_sizes/font_size = 18
 text = "Login with Chedda"
 
-[node name="ExitButton" type="Button" parent="LoginPanel/MarginContainer/VBoxContainer"]
+[node name="ExitButton" type="Button" parent="LoginPanel/MarginContainer/VBoxContainer" unique_id=970486516]
 custom_minimum_size = Vector2(300, 50)
 layout_mode = 2
 size_flags_horizontal = 4
@@ -157,12 +157,12 @@ theme_override_fonts/font = ExtResource("3_h7a2f")
 theme_override_font_sizes/font_size = 18
 text = "Exit"
 
-[node name="StatusLabel" type="Label" parent="LoginPanel/MarginContainer/VBoxContainer"]
+[node name="StatusLabel" type="Label" parent="LoginPanel/MarginContainer/VBoxContainer" unique_id=449814034]
 layout_mode = 2
 theme_override_font_sizes/font_size = 14
 horizontal_alignment = 1
 
-[node name="NameEntryPanel" type="Panel" parent="."]
+[node name="NameEntryPanel" type="Panel" parent="." unique_id=526218570]
 visible = false
 layout_mode = 1
 anchors_preset = 8
@@ -177,7 +177,7 @@ offset_bottom = 180.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="MarginContainer" type="MarginContainer" parent="NameEntryPanel"]
+[node name="MarginContainer" type="MarginContainer" parent="NameEntryPanel" unique_id=878202733]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -189,28 +189,28 @@ theme_override_constants/margin_top = 20
 theme_override_constants/margin_right = 20
 theme_override_constants/margin_bottom = 20
 
-[node name="VBoxContainer" type="VBoxContainer" parent="NameEntryPanel/MarginContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="NameEntryPanel/MarginContainer" unique_id=1244371290]
 layout_mode = 2
 theme_override_constants/separation = 15
 
-[node name="TitleLabel" type="Label" parent="NameEntryPanel/MarginContainer/VBoxContainer"]
+[node name="TitleLabel" type="Label" parent="NameEntryPanel/MarginContainer/VBoxContainer" unique_id=983491894]
 layout_mode = 2
 theme_override_font_sizes/font_size = 28
 text = "Enter Your Name"
 horizontal_alignment = 1
 
-[node name="SubtitleLabel" type="Label" parent="NameEntryPanel/MarginContainer/VBoxContainer"]
+[node name="SubtitleLabel" type="Label" parent="NameEntryPanel/MarginContainer/VBoxContainer" unique_id=214531082]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
 theme_override_font_sizes/font_size = 14
 text = "This will appear on the leaderboard"
 horizontal_alignment = 1
 
-[node name="Spacer" type="Control" parent="NameEntryPanel/MarginContainer/VBoxContainer"]
+[node name="Spacer" type="Control" parent="NameEntryPanel/MarginContainer/VBoxContainer" unique_id=2083532573]
 custom_minimum_size = Vector2(0, 10)
 layout_mode = 2
 
-[node name="NameLineEdit" type="LineEdit" parent="NameEntryPanel/MarginContainer/VBoxContainer"]
+[node name="NameLineEdit" type="LineEdit" parent="NameEntryPanel/MarginContainer/VBoxContainer" unique_id=1037616110]
 custom_minimum_size = Vector2(0, 50)
 layout_mode = 2
 theme_override_font_sizes/font_size = 20
@@ -218,31 +218,31 @@ placeholder_text = "Enter your name..."
 alignment = 1
 max_length = 16
 
-[node name="NameStatusLabel" type="Label" parent="NameEntryPanel/MarginContainer/VBoxContainer"]
+[node name="NameStatusLabel" type="Label" parent="NameEntryPanel/MarginContainer/VBoxContainer" unique_id=65535696]
 custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 theme_override_font_sizes/font_size = 12
 horizontal_alignment = 1
 
-[node name="Spacer2" type="Control" parent="NameEntryPanel/MarginContainer/VBoxContainer"]
+[node name="Spacer2" type="Control" parent="NameEntryPanel/MarginContainer/VBoxContainer" unique_id=1972173143]
 custom_minimum_size = Vector2(0, 10)
 layout_mode = 2
 
-[node name="ConfirmNameButton" type="Button" parent="NameEntryPanel/MarginContainer/VBoxContainer"]
+[node name="ConfirmNameButton" type="Button" parent="NameEntryPanel/MarginContainer/VBoxContainer" unique_id=266246489]
 custom_minimum_size = Vector2(0, 60)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.3, 1, 0.4, 1)
 theme_override_font_sizes/font_size = 22
 text = "LET'S GO!"
 
-[node name="CancelNameButton" type="Button" parent="NameEntryPanel/MarginContainer/VBoxContainer"]
+[node name="CancelNameButton" type="Button" parent="NameEntryPanel/MarginContainer/VBoxContainer" unique_id=270417564]
 custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.6, 0.6, 0.6, 1)
 theme_override_font_sizes/font_size = 16
 text = "Back"
 
-[node name="AnonymousPanel" type="Panel" parent="."]
+[node name="AnonymousPanel" type="Panel" parent="." unique_id=1877289298]
 visible = false
 layout_mode = 1
 anchors_preset = 15
@@ -251,7 +251,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="MarginContainer" type="MarginContainer" parent="AnonymousPanel"]
+[node name="MarginContainer" type="MarginContainer" parent="AnonymousPanel" unique_id=132637077]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -263,37 +263,37 @@ theme_override_constants/margin_top = 40
 theme_override_constants/margin_right = 40
 theme_override_constants/margin_bottom = 40
 
-[node name="VBoxContainer" type="VBoxContainer" parent="AnonymousPanel/MarginContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="AnonymousPanel/MarginContainer" unique_id=88545192]
 layout_mode = 2
 theme_override_constants/separation = 15
 alignment = 1
 
-[node name="TitleLabel2" type="Label" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
+[node name="TitleLabel2" type="Label" parent="AnonymousPanel/MarginContainer/VBoxContainer" unique_id=1627041211]
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 1, 0, 1)
 theme_override_fonts/font = ExtResource("3_h7a2f")
 theme_override_font_sizes/font_size = 48
-text = "Chedda Click"
+text = "My Game"
 horizontal_alignment = 1
 
-[node name="WelcomeLabel" type="Label" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
+[node name="WelcomeLabel" type="Label" parent="AnonymousPanel/MarginContainer/VBoxContainer" unique_id=1151993880]
 layout_mode = 2
 theme_override_fonts/font = ExtResource("3_h7a2f")
 theme_override_font_sizes/font_size = 32
 text = "Welcome back, Player!"
 horizontal_alignment = 1
 
-[node name="HSeparator" type="HSeparator" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
+[node name="HSeparator" type="HSeparator" parent="AnonymousPanel/MarginContainer/VBoxContainer" unique_id=1959069406]
 layout_mode = 2
 
-[node name="StatsPanel" type="PanelContainer" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
+[node name="StatsPanel" type="PanelContainer" parent="AnonymousPanel/MarginContainer/VBoxContainer" unique_id=352905012]
 layout_mode = 2
 
-[node name="VBoxContainer" type="VBoxContainer" parent="AnonymousPanel/MarginContainer/VBoxContainer/StatsPanel"]
+[node name="VBoxContainer" type="VBoxContainer" parent="AnonymousPanel/MarginContainer/VBoxContainer/StatsPanel" unique_id=1667871364]
 layout_mode = 2
 theme_override_constants/separation = 5
 
-[node name="WeeklyScoreLabel" type="Label" parent="AnonymousPanel/MarginContainer/VBoxContainer/StatsPanel/VBoxContainer"]
+[node name="WeeklyScoreLabel" type="Label" parent="AnonymousPanel/MarginContainer/VBoxContainer/StatsPanel/VBoxContainer" unique_id=1417173762]
 custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
 theme_override_fonts/font = ExtResource("3_h7a2f")
@@ -301,7 +301,7 @@ theme_override_font_sizes/font_size = 20
 text = "This Week: 0"
 horizontal_alignment = 1
 
-[node name="RankLabel" type="Label" parent="AnonymousPanel/MarginContainer/VBoxContainer/StatsPanel/VBoxContainer"]
+[node name="RankLabel" type="Label" parent="AnonymousPanel/MarginContainer/VBoxContainer/StatsPanel/VBoxContainer" unique_id=848777159]
 visible = false
 custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
@@ -310,7 +310,7 @@ theme_override_font_sizes/font_size = 20
 text = "Rank: --"
 horizontal_alignment = 1
 
-[node name="PlaysLabel" type="Label" parent="AnonymousPanel/MarginContainer/VBoxContainer/StatsPanel/VBoxContainer"]
+[node name="PlaysLabel" type="Label" parent="AnonymousPanel/MarginContainer/VBoxContainer/StatsPanel/VBoxContainer" unique_id=865296901]
 custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
 theme_override_fonts/font = ExtResource("3_h7a2f")
@@ -318,10 +318,10 @@ theme_override_font_sizes/font_size = 20
 text = "Games Played: 0"
 horizontal_alignment = 1
 
-[node name="HSeparator2" type="HSeparator" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
+[node name="HSeparator2" type="HSeparator" parent="AnonymousPanel/MarginContainer/VBoxContainer" unique_id=1361422566]
 layout_mode = 2
 
-[node name="PlayButton" type="Button" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
+[node name="PlayButton" type="Button" parent="AnonymousPanel/MarginContainer/VBoxContainer" unique_id=1767571069]
 custom_minimum_size = Vector2(300, 80)
 layout_mode = 2
 size_flags_horizontal = 4
@@ -330,7 +330,7 @@ theme_override_fonts/font = ExtResource("3_h7a2f")
 theme_override_font_sizes/font_size = 28
 text = "PLAY NOW"
 
-[node name="LeaderboardButton" type="Button" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
+[node name="LeaderboardButton" type="Button" parent="AnonymousPanel/MarginContainer/VBoxContainer" unique_id=135744922]
 custom_minimum_size = Vector2(300, 60)
 layout_mode = 2
 size_flags_horizontal = 4
@@ -339,7 +339,7 @@ theme_override_fonts/font = ExtResource("3_h7a2f")
 theme_override_font_sizes/font_size = 20
 text = "Leaderboard"
 
-[node name="AchievementsButton" type="Button" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
+[node name="AchievementsButton" type="Button" parent="AnonymousPanel/MarginContainer/VBoxContainer" unique_id=2049218590]
 custom_minimum_size = Vector2(300, 60)
 layout_mode = 2
 size_flags_horizontal = 4
@@ -347,7 +347,7 @@ theme_override_fonts/font = ExtResource("3_h7a2f")
 theme_override_font_sizes/font_size = 20
 text = "Achievements"
 
-[node name="ChangeNameButton" type="Button" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
+[node name="ChangeNameButton" type="Button" parent="AnonymousPanel/MarginContainer/VBoxContainer" unique_id=1426489879]
 custom_minimum_size = Vector2(300, 50)
 layout_mode = 2
 size_flags_horizontal = 4
@@ -356,10 +356,10 @@ theme_override_fonts/font = ExtResource("3_h7a2f")
 theme_override_font_sizes/font_size = 16
 text = "Change Name"
 
-[node name="UpgradeSeparator" type="HSeparator" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
+[node name="UpgradeSeparator" type="HSeparator" parent="AnonymousPanel/MarginContainer/VBoxContainer" unique_id=1805089680]
 layout_mode = 2
 
-[node name="UpgradeLabel" type="Label" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
+[node name="UpgradeLabel" type="Label" parent="AnonymousPanel/MarginContainer/VBoxContainer" unique_id=807564153]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.5, 0.5, 0.5, 1)
 theme_override_fonts/font = ExtResource("3_h7a2f")
@@ -367,7 +367,7 @@ theme_override_font_sizes/font_size = 14
 text = "— save your progress —"
 horizontal_alignment = 1
 
-[node name="UpgradeGoogleButton" type="Button" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
+[node name="UpgradeGoogleButton" type="Button" parent="AnonymousPanel/MarginContainer/VBoxContainer" unique_id=1352782919]
 custom_minimum_size = Vector2(300, 50)
 layout_mode = 2
 size_flags_horizontal = 4
@@ -375,7 +375,7 @@ theme_override_fonts/font = ExtResource("3_h7a2f")
 theme_override_font_sizes/font_size = 16
 text = "Link Google Account"
 
-[node name="UpgradeAppleButton" type="Button" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
+[node name="UpgradeAppleButton" type="Button" parent="AnonymousPanel/MarginContainer/VBoxContainer" unique_id=1186570942]
 custom_minimum_size = Vector2(300, 50)
 layout_mode = 2
 size_flags_horizontal = 4
@@ -383,7 +383,7 @@ theme_override_fonts/font = ExtResource("3_h7a2f")
 theme_override_font_sizes/font_size = 16
 text = "Link Apple Account"
 
-[node name="UpgradeIIButton" type="Button" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
+[node name="UpgradeIIButton" type="Button" parent="AnonymousPanel/MarginContainer/VBoxContainer" unique_id=48314413]
 custom_minimum_size = Vector2(300, 50)
 layout_mode = 2
 size_flags_horizontal = 4
@@ -391,12 +391,12 @@ theme_override_fonts/font = ExtResource("3_h7a2f")
 theme_override_font_sizes/font_size = 16
 text = "Link Chedda ID"
 
-[node name="UpgradeStatusLabel" type="Label" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
+[node name="UpgradeStatusLabel" type="Label" parent="AnonymousPanel/MarginContainer/VBoxContainer" unique_id=1498686247]
 layout_mode = 2
 theme_override_font_sizes/font_size = 14
 horizontal_alignment = 1
 
-[node name="ExitButton" type="Button" parent="AnonymousPanel/MarginContainer/VBoxContainer"]
+[node name="ExitButton" type="Button" parent="AnonymousPanel/MarginContainer/VBoxContainer" unique_id=1592006119]
 custom_minimum_size = Vector2(300, 50)
 layout_mode = 2
 size_flags_horizontal = 4
@@ -405,7 +405,7 @@ theme_override_fonts/font = ExtResource("3_h7a2f")
 theme_override_font_sizes/font_size = 16
 text = "Exit"
 
-[node name="MainPanel" type="Panel" parent="."]
+[node name="MainPanel" type="Panel" parent="." unique_id=514770647]
 visible = false
 layout_mode = 1
 anchors_preset = 15
@@ -414,7 +414,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="MarginContainer" type="MarginContainer" parent="MainPanel"]
+[node name="MarginContainer" type="MarginContainer" parent="MainPanel" unique_id=1211473459]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -426,35 +426,35 @@ theme_override_constants/margin_top = 40
 theme_override_constants/margin_right = 40
 theme_override_constants/margin_bottom = 40
 
-[node name="VBoxContainer" type="VBoxContainer" parent="MainPanel/MarginContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="MainPanel/MarginContainer" unique_id=1416490661]
 layout_mode = 2
 theme_override_constants/separation = 15
 alignment = 1
 
-[node name="WelcomeLabel" type="Label" parent="MainPanel/MarginContainer/VBoxContainer"]
+[node name="WelcomeLabel" type="Label" parent="MainPanel/MarginContainer/VBoxContainer" unique_id=1783416945]
 layout_mode = 2
 theme_override_font_sizes/font_size = 32
 text = "Welcome, Player!"
 horizontal_alignment = 1
 
-[node name="HSeparator" type="HSeparator" parent="MainPanel/MarginContainer/VBoxContainer"]
+[node name="HSeparator" type="HSeparator" parent="MainPanel/MarginContainer/VBoxContainer" unique_id=922508995]
 layout_mode = 2
 
-[node name="StatsPanel" type="PanelContainer" parent="MainPanel/MarginContainer/VBoxContainer"]
+[node name="StatsPanel" type="PanelContainer" parent="MainPanel/MarginContainer/VBoxContainer" unique_id=937093025]
 layout_mode = 2
 
-[node name="VBoxContainer" type="VBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsPanel"]
+[node name="VBoxContainer" type="VBoxContainer" parent="MainPanel/MarginContainer/VBoxContainer/StatsPanel" unique_id=1235608565]
 layout_mode = 2
 theme_override_constants/separation = 5
 
-[node name="WeeklyScoreLabel" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsPanel/VBoxContainer"]
+[node name="WeeklyScoreLabel" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsPanel/VBoxContainer" unique_id=2118043049]
 custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
 theme_override_font_sizes/font_size = 20
 text = "This Week: 0"
 horizontal_alignment = 1
 
-[node name="RankLabel" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsPanel/VBoxContainer"]
+[node name="RankLabel" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsPanel/VBoxContainer" unique_id=137364678]
 custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.85, 0.4, 1)
@@ -462,17 +462,17 @@ theme_override_font_sizes/font_size = 20
 text = "Rank: --"
 horizontal_alignment = 1
 
-[node name="PlaysLabel" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsPanel/VBoxContainer"]
+[node name="PlaysLabel" type="Label" parent="MainPanel/MarginContainer/VBoxContainer/StatsPanel/VBoxContainer" unique_id=777350378]
 custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
 theme_override_font_sizes/font_size = 20
 text = "Games Played: 0"
 horizontal_alignment = 1
 
-[node name="HSeparator2" type="HSeparator" parent="MainPanel/MarginContainer/VBoxContainer"]
+[node name="HSeparator2" type="HSeparator" parent="MainPanel/MarginContainer/VBoxContainer" unique_id=1705043763]
 layout_mode = 2
 
-[node name="PlayButton" type="Button" parent="MainPanel/MarginContainer/VBoxContainer"]
+[node name="PlayButton" type="Button" parent="MainPanel/MarginContainer/VBoxContainer" unique_id=1258096382]
 custom_minimum_size = Vector2(300, 80)
 layout_mode = 2
 size_flags_horizontal = 4
@@ -480,7 +480,7 @@ theme_override_colors/font_color = Color(0.3, 1, 0.4, 1)
 theme_override_font_sizes/font_size = 28
 text = "PLAY NOW"
 
-[node name="LeaderboardButton" type="Button" parent="MainPanel/MarginContainer/VBoxContainer"]
+[node name="LeaderboardButton" type="Button" parent="MainPanel/MarginContainer/VBoxContainer" unique_id=1432718674]
 custom_minimum_size = Vector2(300, 60)
 layout_mode = 2
 size_flags_horizontal = 4
@@ -488,14 +488,14 @@ theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
 theme_override_font_sizes/font_size = 20
 text = "Leaderboard"
 
-[node name="AchievementsButton" type="Button" parent="MainPanel/MarginContainer/VBoxContainer"]
+[node name="AchievementsButton" type="Button" parent="MainPanel/MarginContainer/VBoxContainer" unique_id=1628338901]
 custom_minimum_size = Vector2(300, 60)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_font_sizes/font_size = 20
 text = "Achievements"
 
-[node name="ChangeNicknameButton" type="Button" parent="MainPanel/MarginContainer/VBoxContainer"]
+[node name="ChangeNicknameButton" type="Button" parent="MainPanel/MarginContainer/VBoxContainer" unique_id=1070662416]
 custom_minimum_size = Vector2(300, 50)
 layout_mode = 2
 size_flags_horizontal = 4
@@ -503,7 +503,7 @@ theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
 theme_override_font_sizes/font_size = 16
 text = "Change Nickname"
 
-[node name="LogoutButton" type="Button" parent="MainPanel/MarginContainer/VBoxContainer"]
+[node name="LogoutButton" type="Button" parent="MainPanel/MarginContainer/VBoxContainer" unique_id=1746625074]
 custom_minimum_size = Vector2(300, 50)
 layout_mode = 2
 size_flags_horizontal = 4
