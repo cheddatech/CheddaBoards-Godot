@@ -209,8 +209,8 @@ func _ready():
 	# Replace with your own from the developer dashboard at cheddaboards.com.
 	# SDK v2.2.0+ ships with empty defaults — set them here before any
 	# other CheddaBoards call (login, profile fetch, score submit).
-	CheddaBoards.set_api_key("cb_YOUR-API-KEY-HERE")
-	CheddaBoards.set_game_id("GAME-ID-HERE")
+	CheddaBoards.set_api_key("cb_game_857355884")
+	CheddaBoards.set_game_id("game")
 	
 	# Generate anonymous player ID
 	_setup_anonymous_player()
