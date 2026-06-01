@@ -33,7 +33,7 @@ Three ways in. Pick the row that matches where you are.
 | **Global leaderboards** | Submit a score + streak, read the top 100, highlight the player's own rank | Quickstarts |
 | **Timed scoreboards** | Weekly / daily / monthly boards that reset and archive automatically | [Guide](guides/timed-leaderboards.md) |
 | **Achievements** | Auto-unlock on score/streak/level, offline cache, deferred sync, popups | [Guide](guides/achievements.md) |
-| **Device Code Auth** | Google / Apple sign-in on *any* platform via QR + code — no OAuth SDKs | [Guide](guides/authentication.md) |
+| **Device Code Auth** | Google / Apple sign-in on *any* platform via QR + code — no OAuth SDKs | [Guide](guides/device-code-login.md) |
 | **Account linking** | Anonymous players upgrade to Google/Apple later, keeping all progress | [Guide](guides/authentication.md) |
 | **Anti-cheat** | Server-side sessions, score validation, rate limiting, configurable caps | [Guide](guides/anti-cheat.md) |
 
@@ -61,6 +61,7 @@ Anonymous play works everywhere with zero setup — no account required to start
 | [Setup & Platforms](SETUP.md) | Detailed setup, web export, OAuth specifics |
 | [Timed Leaderboards](guides/timed-leaderboards.md) | Weekly/daily/monthly competitions & archives |
 | [Authentication](guides/authentication.md) | Device code auth, QR, account linking |
+| [Device Code Login](guides/device-code-login.md) | Build the Google/Apple sign-in screen (QR rendering, signals) |
 | [Achievements](guides/achievements.md) | Definitions, sync, notifications |
 | [Anti-cheat](guides/anti-cheat.md) | Sessions, validation, dashboard config |
 | [Signals Reference](guides/signals-reference.md) | All 34 signals, grouped by category |
