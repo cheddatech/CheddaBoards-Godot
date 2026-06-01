@@ -53,7 +53,7 @@ func _on_level_up(level: int):
 
 `check_game_over` evaluates the run against your achievement definitions; `submit_with_score` piggybacks the achievement sync onto the score submission so there's only one round trip.
 
-> **Sync requires login for the backend copy.** Full achievement sync needs a verified account (Google/Apple/Internet Identity). Anonymous players have achievements stored locally and synced automatically once they upgrade — see [Authentication → Account linking](authentication.md#account-linking-anonymous--verified).
+> **Sync requires login for the backend copy.** Full achievement sync needs a verified account (Google/Apple). Anonymous players have achievements stored locally and synced automatically once they upgrade — see [Authentication → Account linking](authentication.md#account-linking-anonymous--verified).
 
 ---
 

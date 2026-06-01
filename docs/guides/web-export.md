@@ -40,7 +40,6 @@ Web builds support every auth method the rest of the SDK does:
 | Anonymous | ✅ | Just the API key |
 | Google (Device Code) | ✅ | None — built in |
 | Apple (Device Code) | ✅ | None — built in |
-| Internet Identity (Device Code) | ✅ | None — built in |
 | Account upgrade (anon → verified) | ✅ | None |
 
 Device Code Auth is the recommended path on web exactly as on every other platform — see [Device Code Login](device-code-login.md). No OAuth credentials, no browser popups, no platform branching.
