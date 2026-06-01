@@ -1,4 +1,4 @@
-# MainMenu.gd v2.1.0
+# MainMenu.gd v2.1.5
 # Main menu with authentication flow and profile display
 # - Login panel: PLAY NOW (with name entry), Leaderboard, and Sign In (device code)
 # - Name entry panel: For new anonymous players to set their display name
@@ -9,6 +9,39 @@
 # - MobileUI integration for responsive scaling
 # https://github.com/cheddatech/CheddaBoards-Godot
 #
+# v2.1.5: Clear local anonymous state when it's no longer valid.
+#          After linking/upgrading an anonymous account into a real one, the
+#          stale on-disk anon markers (nickname + has_played) used to route a
+#          later logout/exit back to the anonymous dashboard. Now _clear_
+#          anonymous_data() wipes those on upgrade success AND on logout, and
+#          rotates the guest device ID, so the player correctly returns to the
+#          first menu (the beginning).
+# v2.1.4: Startup routing now keys off the persisted has_played flag.
+#          A returning anonymous player (a score was submitted in any prior
+#          session, saved to disk) lands on the anonymous dashboard on every
+#          launch, cold restart included. Only a brand-new player who has
+#          never played sees the first menu. Removes the v2.1.3 SceneTree
+#          meta, which was warm-session-only and is no longer needed.
+# v2.1.3: Smarter startup routing.
+#          Cold launch still opens on the first menu, but returning to the
+#          menu after playing a game (same app run) now shows the anonymous
+#          dashboard so the player sees their saved score. Distinguished via
+#          a SceneTree meta (PLAYED_SESSION_META) set just before launching
+#          a game — survives scene changes, resets on app restart.
+# v2.1.2: Launch always lands on the first menu (login / start screen).
+#          _check_existing_auth() no longer auto-routes a returning
+#          anonymous player into the anonymous dashboard on startup — that
+#          dashboard is still reachable mid-session. Real signed-in accounts
+#          still resume straight to the main panel.
+# v2.1.1: Two menu fixes.
+#          - No longer bounces a returning anonymous player from the
+#            dashboard back to the login screen: _on_no_profile() now
+#            ignores the no_profile signal while the anonymous panel is
+#            visible or a silent login is in flight.
+#          - Rank label no longer flickers to "--" on every refresh.
+#            Rank is fetched separately, so refreshes arrive with rank 0;
+#            _set_rank_label() now holds the last good rank until a new
+#            one comes in, only showing "--" when nothing is on screen yet.
 # v2.1.0: Sync with CheddaBoards SDK v2.2.0.
 #          - profile_loaded handler takes play_count as 5th arg.
 #          - Credentials set explicitly in _ready() (SDK ships with empty
@@ -176,8 +209,8 @@ func _ready():
 	# Replace with your own from the developer dashboard at cheddaboards.com.
 	# SDK v2.2.0+ ships with empty defaults — set them here before any
 	# other CheddaBoards call (login, profile fetch, score submit).
-	CheddaBoards.set_api_key("cb_YOUR_API_KEY_HERE")
-	CheddaBoards.set_game_id("your-game-id")
+	CheddaBoards.set_api_key("cb_game_857355884")
+	CheddaBoards.set_game_id("game")
 	
 	# Generate anonymous player ID
 	_setup_anonymous_player()
@@ -481,6 +514,31 @@ func _mark_anonymous_has_played():
 	_save_player_data()
 	_log("Saved anonymous player data")
 
+func _rotate_device_id() -> String:
+	"""Generate a brand-new device/guest ID and overwrite the stored one."""
+	randomize()
+	var new_id = "dev_%d_%08x" % [Time.get_unix_time_from_system(), randi()]
+	var file = FileAccess.open(DEVICE_ID_FILE, FileAccess.WRITE)
+	if file:
+		file.store_line(new_id)
+		file.close()
+	return new_id
+
+func _clear_anonymous_data():
+	"""Reset local anonymous-player state.
+	
+	Run after an account upgrade (the anon identity is now part of a real
+	account) and on logout, so _check_existing_auth() stops treating this
+	device as a 'returning anonymous player' and routes to the first menu
+	instead of the anonymous dashboard. The device/guest ID is rotated too, so
+	any future guest play starts as a fresh anonymous identity rather than
+	reusing the one that was just upgraded."""
+	anonymous_nickname = ""
+	anonymous_has_played = false
+	anonymous_player_id = _rotate_device_id()
+	_save_player_data()
+	_log("Cleared anonymous data; new guest device ID: %s" % anonymous_player_id)
+
 # ============================================================
 # AUTHENTICATION CHECK
 # ============================================================
@@ -498,12 +556,15 @@ func _check_existing_auth():
 	if CheddaBoards.has_account() and CheddaBoards.is_authenticated() and not CheddaBoards.is_anonymous():
 		_log("User has real account and is authenticated - loading profile")
 		_load_authenticated_profile()
-	# Check for returning anonymous player (has played before)
+	# Returning anonymous player (has played / submitted a score before, per the
+	# save file) → anonymous dashboard on ANY launch, cold restart included, so
+	# they land on their saved score. Only a brand-new player sees the first menu.
 	elif _is_returning_anonymous_player():
 		_log("Returning anonymous player - showing anonymous dashboard")
 		_show_anonymous_panel()
 	else:
-		_log("New player - showing login panel")
+		# Brand-new player (never played) → first menu (start screen).
+		_log("New player - showing first menu (login panel)")
 		_show_login_panel()
 
 func _is_returning_anonymous_player() -> bool:
@@ -896,13 +957,27 @@ func _update_anonymous_panel_stats_direct(weekly_score: int, play_count: int, ra
 	
 	if anon_weekly_score_label:
 		anon_weekly_score_label.text = "This Week: %d" % weekly_score
-	if anon_rank_label:
-		if rank > 0:
-			anon_rank_label.text = "Rank: #%d" % rank
-		else:
-			anon_rank_label.text = "Rank: --"
+	_set_rank_label(anon_rank_label, rank)
 	if anon_plays_label:
 		anon_plays_label.text = "Games Played: %d" % play_count
+
+func _set_rank_label(label: Label, rank: int):
+	"""Update a rank label without flicker.
+	
+	Rank isn't part of the profile payload — it's fetched separately via
+	get_scoreboard_rank(), so stat refreshes always arrive with rank == 0.
+	If we blanked to "--" on every refresh the displayed rank would flash
+	off and back on. Instead: only overwrite when we have a real rank, and
+	only show the "--" placeholder when nothing valid is on screen yet.
+	The last good rank stays put until the new one arrives."""
+	if not label:
+		return
+	if rank > 0:
+		label.text = "Rank: #%d" % rank
+	elif not label.text.begins_with("Rank: #"):
+		# Nothing real currently shown -> placeholder (first load only)
+		label.text = "Rank: --"
+	# else: keep the existing "Rank: #N" until a fresh rank comes in
 
 func _update_anon_achievement_button():
 	"""Update achievement button text on anonymous panel"""
@@ -966,11 +1041,7 @@ func _show_main_panel(profile: Dictionary):
 	welcome_label.text = "Welcome, %s!" % nickname
 	if weekly_score_label:
 		weekly_score_label.text = "This Week: %d" % weekly
-	if rank_label:
-		if rank > 0:
-			rank_label.text = "Rank: #%d" % rank
-		else:
-			rank_label.text = "Rank: --"
+	_set_rank_label(rank_label, rank)
 	if plays_label:
 		plays_label.text = "Games Played: %d" % play_count
 	
@@ -992,11 +1063,7 @@ func _update_main_panel_stats(profile: Dictionary):
 	welcome_label.text = "Welcome, %s!" % nickname
 	if weekly_score_label:
 		weekly_score_label.text = "This Week: %d" % weekly
-	if rank_label:
-		if rank > 0:
-			rank_label.text = "Rank: #%d" % rank
-		else:
-			rank_label.text = "Rank: --"
+	_set_rank_label(rank_label, rank)
 	if plays_label:
 		plays_label.text = "Games Played: %d" % play_count
 	
@@ -1148,6 +1215,7 @@ func _on_upgrade_device_code_pressed():
 	popup.signed_in.connect(func(nickname):
 		_log("Upgrade complete via device code: %s" % nickname)
 		_is_upgrading = false
+		_clear_anonymous_data()
 		_show_main_panel(CheddaBoards.get_cached_profile())
 	)
 	popup.cancelled.connect(func():
@@ -1185,6 +1253,11 @@ func _on_upgrade_success(profile: Dictionary, migration: Dictionary):
 	var migrated_games = int(migration.get("migratedGames", 0))
 	var migrated_scoreboards = int(migration.get("migratedScoreboards", 0))
 	_log("Upgrade success! Migrated %d games, %d scoreboards" % [migrated_games, migrated_scoreboards])
+	
+	# The anonymous identity is now part of a real account — drop the local
+	# anon markers so a later logout/exit returns to the first menu, not the
+	# anonymous dashboard.
+	_clear_anonymous_data()
 	
 	_show_main_panel(profile)
 
@@ -1350,6 +1423,16 @@ func _on_no_profile():
 	"""No profile found"""
 	_log("No profile signal")
 	
+	# Anonymous dashboard / silent login: a "no profile" here just means the
+	# backend has no record for this anonymous player yet. Stay put and keep
+	# showing cached/placeholder stats — do NOT bounce back to the login panel.
+	# (Anonymous players report has_account() == false and the silent login
+	# never sets is_logging_in, so without this guard the old code fell into
+	# the branch below and reset the UI to the start screen.)
+	if _is_silent_login or (anonymous_panel and anonymous_panel.visible):
+		_log("Ignoring no_profile (anonymous dashboard / silent login active)")
+		return
+	
 	if not CheddaBoards.has_account() and not is_logging_in:
 		_stop_all_timers()
 		waiting_for_profile = false
@@ -1374,6 +1457,9 @@ func _on_logout_success():
 	"""Logout completed"""
 	_log("Logout success")
 	is_logging_in = false
+	# Back to a clean slate — clear any lingering anon markers so startup
+	# routes to the first menu rather than the anonymous dashboard.
+	_clear_anonymous_data()
 	_show_login_panel()
 
 func _on_nickname_changed(new_nickname: String):
