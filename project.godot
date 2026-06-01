@@ -8,12 +8,16 @@
 
 config_version=5
 
+[animation]
+
+compatibility/default_parent_skeleton_in_mesh_instance_3d=true
+
 [application]
 
-config/name="CheddaBoards Template"
+config/name="Press Start"
 run/main_scene="res://scenes/MainMenu.tscn"
-config/features=PackedStringArray("4.5", "Forward Plus")
-boot_splash/fullsize=false
+config/features=PackedStringArray("4.6", "Forward Plus")
+boot_splash/stretch_mode=0
 boot_splash/image="uid://c4ifusj1tgphd"
 config/icon="uid://cighw5yua3ygf"
 
