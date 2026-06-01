@@ -21,6 +21,20 @@ Built on the [Internet Computer](https://internetcomputer.org) — distributed c
 
 ---
 
+## Choose your path
+
+This repo is a full **template** — most people should just start with the [Quick Start](#quick-start) below. If that's not you, the [`docs/`](docs/README.md) folder has the other routes:
+
+| You have… | Best route | Time |
+|-----------|------------|------|
+| A fresh project, or you want the full UI out of the box | **Template** — keep reading, start at [Quick Start](#quick-start) | ~3 min |
+| A game you've already built | **[Drop-in SDK](docs/quickstart-dropin.md)** — just the SDK, your own UI | ~10 min |
+| A non-Godot engine, or you want raw control | **[REST API](docs/quickstart-api.md)** | varies |
+
+> 📚 Full documentation index: **[docs/README.md](docs/README.md)**
+
+---
+
 ## Current Status
 
 | Platform | Status | Notes |
@@ -241,7 +255,7 @@ Run weekly, daily, or monthly competitions that reset and archive automatically 
 - Winner highlighted with crown in archive view
 - Hall of fame across multiple archived periods
 
-> 📖 **Full guide:** [TIMED_LEADERBOARDS.md](docs/TIMED_LEADERBOARDS.md)
+> 📖 **Full guide:** [Timed Leaderboards](docs/guides/timed-leaderboards.md)
 
 ### Achievements
 
@@ -376,12 +390,18 @@ CheddaBoards-Godot/
 │   ├── screenshot_leaderboard_weekly.png
 │   └── screenshot_setup_wizard.png
 ├── docs/
-│   ├── API_QUICKSTART.md
-│   ├── CHANGELOG.md
-│   ├── QUICKSTART.md
+│   ├── README.md               # Docs index / router
+│   ├── quickstart-dropin.md
+│   ├── quickstart-api.md
 │   ├── SETUP.md
-│   ├── TIMED_LEADERBOARDS.md
-│   └── TROUBLESHOOTING.md
+│   ├── CHANGELOG.md
+│   ├── TROUBLESHOOTING.md
+│   └── guides/
+│       ├── authentication.md
+│       ├── achievements.md
+│       ├── anti-cheat.md
+│       ├── signals-reference.md
+│       └── timed-leaderboards.md
 ├── template.html                 # Web export template
 ├── project.godot                 # Pre-configured project
 ├── favicon.ico
