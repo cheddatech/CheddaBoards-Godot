@@ -25,7 +25,7 @@ The full sequence diagram is in [Authentication → Device Code Auth](authentica
 The Template ships a reusable popup scene + script that wires every signal and cleans itself up. Instantiate it and start the flow:
 
 ```gdscript
-var popup = preload("res://scenes/DeviceCodePopup.tscn").instantiate()
+var popup = preload("res://scenes/DeviceCodeLogin.tscn").instantiate()
 add_child(popup)
 popup.start_sign_in()
 
