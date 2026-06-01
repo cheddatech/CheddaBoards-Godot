@@ -118,7 +118,7 @@ You now have anonymous login, score submission, and global leaderboards on web, 
 # Anonymous (works everywhere)
 CheddaBoards.login_anonymous("PlayerName")
 
-# Device Code Auth - Google/Apple/Internet Identity on any platform
+# Device Code Auth - Google/Apple on any platform
 CheddaBoards.login_with_device_code()
 
 # Listen for the code, verification URL, and QR data to display to the player
@@ -227,7 +227,7 @@ func _on_game_over(score: int, streak: int):
     Achievements.submit_with_score(score, streak)
 ```
 
-> Full achievement sync requires login (Google/Apple/II). Anonymous users have achievements stored locally and synced once they upgrade their account.
+> Full achievement sync requires login (Google/Apple). Anonymous users have achievements stored locally and synced once they upgrade their account.
 
 ---
 

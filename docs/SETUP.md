@@ -154,17 +154,16 @@ func _on_archive(archive_id, config, entries):
 | **Anonymous** | ✅ | ✅ | ✅ | Just API key |
 | **Google (Device Code)** | ✅ | ✅ | ✅ | None — built in |
 | **Apple (Device Code)** | ✅ | ✅ | ✅ | None — built in |
-| **Internet Identity (Device Code)** | ✅ | ✅ | ✅ | None — built in |
-| **Account Upgrade** | ✅ | ✅ | ✅ | None (anon → Google/Apple/II) |
+| **Account Upgrade** | ✅ | ✅ | ✅ | None (anon → Google/Apple) |
 
 ### Device Code Auth (v2.0+)
 
-Device Code Auth lets players sign in with Google, Apple, or Internet Identity on **any platform** — no browser popups, no OAuth SDKs needed in your game.
+Device Code Auth lets players sign in with Google or Apple on **any platform** — no browser popups, no OAuth SDKs needed in your game.
 
 **How it works:**
 1. Game requests a device code from CheddaBoards
 2. Game displays a QR code, the verification URL, and a short code (e.g. `CHEDDA-7K3M`)
-3. Player either scans the QR with their phone or opens the URL manually and picks Google/Apple/II
+3. Player either scans the QR with their phone or opens the URL manually and picks Google or Apple
 4. Game automatically picks up the session via background polling
 
 ```gdscript
@@ -192,7 +191,7 @@ The `DeviceCodeLogin` scene (`scenes/DeviceCodeLogin.tscn`) provides a ready-mad
 
 ### Account Upgrade
 
-Players can start anonymous and upgrade their account to Google, Apple, or Internet Identity later via Device Code Auth. This preserves all scores and achievements while enabling cross-device sync.
+Players can start anonymous and upgrade their account to Google or Apple later via Device Code Auth. This preserves all scores and achievements while enabling cross-device sync.
 
 > Legacy v1.x direct OAuth (in-browser Google/Apple buttons) was removed in v2.0.0. If you have an older project that needs the legacy web setup, see [guides/web-export.md](guides/web-export.md) — but new projects should use device code auth throughout.
 
