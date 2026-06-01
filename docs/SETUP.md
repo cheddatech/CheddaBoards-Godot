@@ -4,7 +4,7 @@
 
 > **SDK Version:** 2.2.0 | [Changelog](CHANGELOG.md)
 
-> Want the fast version? See [QUICKSTART.md](QUICKSTART.md)
+> Want the fast version? See [quickstart-dropin.md](quickstart-dropin.md)
 
 ---
 
@@ -22,7 +22,7 @@
 | Setup | Platforms | Auth Options | Complexity |
 |-------|-----------|--------------|------------|
 | **[API / Native](#api-only-setup)** | All | Anonymous, Device Code (Google/Apple) | Simple |
-| **[Web SDK](SETUP_WEB.md)** | Web | Anonymous, Google, Apple, Device Code, Account Upgrade | Medium |
+| **[Web SDK](guides/web-export.md)** | Web | Anonymous, Google, Apple, Device Code, Account Upgrade | Medium |
 
 ---
 
@@ -141,7 +141,7 @@ func _on_archive(archive_id, config, entries):
         print("Last week's winner: %s" % entries[0].nickname)
 ```
 
-> Full guide: [TIMED_LEADERBOARDS.md](TIMED_LEADERBOARDS.md)
+> Full guide: [guides/timed-leaderboards.md](guides/timed-leaderboards.md)
 
 ---
 
@@ -194,7 +194,7 @@ The `DeviceCodeLogin` scene (`scenes/DeviceCodeLogin.tscn`) provides a ready-mad
 
 Players can start anonymous and upgrade their account to Google, Apple, or Internet Identity later via Device Code Auth. This preserves all scores and achievements while enabling cross-device sync.
 
-> Legacy v1.x direct OAuth (in-browser Google/Apple buttons) was removed in v2.0.0. If you have an older project that needs the legacy web setup, see [SETUP_WEB.md](SETUP_WEB.md) — but new projects should use device code auth throughout.
+> Legacy v1.x direct OAuth (in-browser Google/Apple buttons) was removed in v2.0.0. If you have an older project that needs the legacy web setup, see [guides/web-export.md](guides/web-export.md) — but new projects should use device code auth throughout.
 
 ---
 
@@ -311,7 +311,7 @@ YourGame/
 └── project.godot
 ```
 
-> For the web-specific project structure, see [SETUP_WEB.md](SETUP_WEB.md).
+> For the web-specific project structure, see [guides/web-export.md](guides/web-export.md).
 
 ---
 
@@ -339,9 +339,9 @@ YourGame/
 
 | Doc | Description |
 |-----|-------------|
-| [QUICKSTART.md](QUICKSTART.md) | Fast setup + API reference |
-| [SETUP_WEB.md](SETUP_WEB.md) | Web export specifics (template.html, legacy OAuth) |
-| [TIMED_LEADERBOARDS.md](TIMED_LEADERBOARDS.md) | Weekly/daily competitions |
+| [quickstart-dropin.md](quickstart-dropin.md) | Fast setup + API reference |
+| [guides/web-export.md](guides/web-export.md) | Web export specifics (template.html, legacy OAuth) |
+| [guides/timed-leaderboards.md](guides/timed-leaderboards.md) | Weekly/daily competitions |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common problems & solutions |
 | [CHANGELOG.md](CHANGELOG.md) | Version history |
 

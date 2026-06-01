@@ -61,7 +61,7 @@ curl "https://api.cheddaboards.com/leaderboard?sort=score&limit=100" \
 
 `sort` accepts `score` or `streak`. Entries come back with rank, nickname, score, and streak.
 
-## 3. Sign in with Google / Apple (Device Code)
+## 3. Sign in with Google / Apple / Internet Identity (Device Code)
 
 A two-step polling flow (RFC 8628). The player authorises on their phone; you poll until approved.
 
