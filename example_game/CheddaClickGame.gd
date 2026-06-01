@@ -1,7 +1,12 @@
-# CheddaClickGame.gd v1.0.0
+# CheddaClickGame.gd v1.1.0
 # Standalone clicker game - works with GameWrapper
 # Emits signals that GameWrapper listens to for CheddaBoards integration
 #
+# v1.1.0: Spicier gameplay.
+#          - Loads more cheese: higher per-level target caps and faster,
+#            randomised spawn intervals (SPAWN_TIME_MIN..MAX, scaled by level).
+#          - Off-target clicks now drain the clock (MISS_TIME_PENALTY) with a
+#            red "-Xs" popup.
 # ============================================================
 # SIGNALS (required by GameWrapper)
 # ============================================================
@@ -42,21 +47,25 @@ const TARGET_MIN_LIFETIME: float = 3.0
 const TARGET_MAX_LIFETIME: float = 8.0
 const MAX_TARGETS_ON_SCREEN: int = 5
 
-# Spawn timing
-const SPAWN_TIME_MIN: float = 0.5
-const SPAWN_TIME_MAX: float = 2.0
+# Spawn timing (randomised each spawn between MIN and MAX, then scaled by level)
+const SPAWN_TIME_MIN: float = 0.3
+const SPAWN_TIME_MAX: float = 1.2
 
 # Time extension
 const TIME_BONUS_PER_HIT: float = 0.15
 const TIME_BONUS_PER_LEVEL: float = 3.0
 const MAX_TIME: float = 45.0
 
+# Time penalty — clicking empty space (off-target) drains the clock.
+# Also handy for recording: spam empty space to fast-forward a take.
+const MISS_TIME_PENALTY: float = 0.75
+
 # Level system
 const LEVEL_THRESHOLDS: Array[int] = [0, 1000, 2500, 5000, 8000]
 const LEVEL_SPEED_MULT: Array[float] = [1.0, 1.1, 1.2, 1.35, 1.5]
 const LEVEL_SPAWN_MULT: Array[float] = [1.0, 0.85, 0.7, 0.55, 0.4]
 const LEVEL_SIZE_MULT: Array[float] = [1.0, 0.95, 0.9, 0.85, 0.8]
-const LEVEL_MAX_TARGETS: Array[int] = [5, 6, 7, 8, 10]
+const LEVEL_MAX_TARGETS: Array[int] = [8, 11, 14, 17, 22]
 const MAX_LEVEL: int = 5
 
 # ============================================================
@@ -125,7 +134,7 @@ func _start_game():
 	
 	_clear_all_targets()
 	
-	spawn_timer.wait_time = SPAWN_TIME_MAX
+	spawn_timer.wait_time = _next_spawn_interval()
 	spawn_timer.start()
 	
 	# Emit initial state
@@ -213,9 +222,16 @@ func _physics_process(delta):
 # ============================================================
 
 func _on_spawn_timer_timeout():
+	# Randomise the next interval (scaled by level) so the board fills organically
+	spawn_timer.wait_time = _next_spawn_interval()
 	if is_game_over or active_targets.size() >= _get_level_max_targets():
 		return
 	_spawn_target()
+
+func _next_spawn_interval() -> float:
+	"""Random spawn gap between MIN and MAX, tightened as the level climbs."""
+	var spawn_mult = LEVEL_SPAWN_MULT[current_level - 1]
+	return randf_range(SPAWN_TIME_MIN, SPAWN_TIME_MAX) * spawn_mult
 
 func _spawn_target():
 	var target = _create_target()
@@ -291,7 +307,7 @@ func _on_game_area_input(event: InputEvent):
 		return
 	
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		_register_miss()
+		_register_miss(event.position)
 
 func _hit_target(target: Control):
 	if not is_instance_valid(target):
@@ -333,10 +349,24 @@ func _on_target_missed(target: Control):
 	_reset_combo()
 	stats_changed.emit(total_hits, total_misses, current_level)
 
-func _register_miss():
+func _register_miss(at_pos: Vector2 = Vector2.ZERO):
 	total_misses += 1
 	_reset_combo()
+	# Clicking empty space costs time (and is a quick fast-forward for recording)
+	_apply_time_penalty(MISS_TIME_PENALTY, at_pos)
 	stats_changed.emit(total_hits, total_misses, current_level)
+
+func _apply_time_penalty(amount: float, at_pos: Vector2):
+	"""Drain the clock by `amount` seconds, flash a popup, end if it hits zero."""
+	if amount <= 0:
+		return
+	_add_time(-amount)
+	time_changed.emit(time_remaining, MAX_TIME)
+	if at_pos != Vector2.ZERO:
+		_show_time_penalty_popup(at_pos, amount)
+	if time_remaining <= 0:
+		time_remaining = 0
+		_end_game()
 
 func _reset_combo():
 	combo_count = 0
@@ -365,8 +395,8 @@ func _level_up(new_level: int):
 	
 	var time_added = _add_time(TIME_BONUS_PER_LEVEL)
 	
-	var spawn_mult = LEVEL_SPAWN_MULT[current_level - 1]
-	spawn_timer.wait_time = SPAWN_TIME_MAX * spawn_mult
+	# Next spawn picks up the new level's faster cadence
+	spawn_timer.wait_time = _next_spawn_interval()
 	
 	_show_level_up_popup(time_added)
 	
@@ -395,6 +425,22 @@ func _add_time(amount: float) -> float:
 # ============================================================
 # VISUAL FEEDBACK
 # ============================================================
+
+func _show_time_penalty_popup(pos: Vector2, amount: float):
+	var popup = Label.new()
+	popup.text = "-%.1fs" % amount
+	popup.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	popup.position = pos - Vector2(40, 20)
+	popup.add_theme_color_override("font_color", Color(1.0, 0.3, 0.3))
+	popup.add_theme_font_size_override("font_size", 28)
+	popup.mouse_filter = Control.MOUSE_FILTER_IGNORE  # never eat a click
+	game_area.add_child(popup)
+	
+	var tween = create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(popup, "position:y", pos.y - 60, 0.7)
+	tween.tween_property(popup, "modulate:a", 0, 0.7)
+	tween.chain().tween_callback(popup.queue_free)
 
 func _show_score_popup(pos: Vector2, points: int, is_bonus: bool):
 	var popup = Label.new()
