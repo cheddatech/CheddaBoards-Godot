@@ -14,7 +14,7 @@
   <img src="screenshots/screenshot_leaderboard_alltime.png" alt="Leaderboard" width="45%"/>
 </p>
 
-Built on the [Internet Computer](https://internetcomputer.org) — no per-player fees, no surprise bills. Battle-tested in production by the studio's own arcade games.
+Free tier. No per-player fees, no surprise bills. Battle-tested in production by the studio's own arcade games.
 
 ---
 
@@ -48,6 +48,8 @@ func _on_game_over(score: int, streak: int):
 
 Drop in the MainMenu and Leaderboard scenes and you've got a full UI too — profile, rank, achievements, and anti-cheat all work with no further setup.
 
+> That free tier is possible because CheddaBoards runs on the [Internet Computer](https://internetcomputer.org) — predictable infrastructure costs, so there's no per-player billing to pass on to you.
+
 ---
 
 ## What's included
@@ -61,7 +63,7 @@ Drop in the MainMenu and Leaderboard scenes and you've got a full UI too — pro
 | **Achievements** | Backend-synced, with popup notifications & offline cache |
 | **CheddaBoards SDK** | Core backend integration (also usable standalone) |
 
-**Status:** Native, Mobile, and Web are all ✅ stable. Every platform supports Google/Apple sign-in via Device Code Auth — no OAuth SDKs in your game. → [Device Code Login](docs/guides/device-code-login.md)
+**Status:** Native, Mobile, and Web are all ✅ stable. Every platform supports Google / Apple sign-in via Device Code Auth — no OAuth SDKs in your game. → [Device Code Login](docs/guides/device-code-login.md)
 
 ---
 
@@ -107,7 +109,7 @@ func _on_game_ended():
 
 | Feature | Learn more |
 |---------|------------|
-| Cross-platform auth — anonymous, Google/Apple via device code, account linking | [Authentication](docs/guides/authentication.md) · [Device Code Login](docs/guides/device-code-login.md) |
+| Cross-platform auth — anonymous, Google / Apple via device code, account linking | [Authentication](docs/guides/authentication.md) · [Device Code Login](docs/guides/device-code-login.md) |
 | Global leaderboards (sort by score or streak, player rank highlighted) | [Drop-in Quickstart](docs/quickstart-dropin.md) |
 | Timed scoreboards — weekly / daily / monthly, auto-reset & archive | [Timed Leaderboards](docs/guides/timed-leaderboards.md) |
 | Achievements — auto-unlock, offline cache, deferred sync, popups | [Achievements](docs/guides/achievements.md) |
