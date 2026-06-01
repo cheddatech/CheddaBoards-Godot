@@ -1,6 +1,6 @@
 # Device Code Login
 
-Sign players in with Google or Apple on **any** platform — desktop, mobile, web, even consoles — with no bundled OAuth SDK and no in-game browser popup. The player authorises on their phone; your game polls and picks up the session automatically.
+sign players in with Google, Apple, or Internet Identity on **any** platform — desktop, mobile, web, even consoles — with no bundled OAuth SDK and no in-game browser popup. The player authorises on their phone; your game polls and picks up the session automatically.
 
 This is the hands-on companion to [Authentication](authentication.md), which covers the wider auth picture (anonymous play, account linking). Here we build the **login screen** itself.
 
@@ -13,7 +13,7 @@ This is the hands-on companion to [Authentication](authentication.md), which cov
 
 1. You call `login_with_device_code()`.
 2. The SDK emits `device_code_received` with a short code, a verification URL, and a QR image.
-3. You show those to the player. They scan the QR (or open the link) on their phone and sign in with Google/Apple.
+3. You show those to the player. They scan the QR (or open the link) on their phone and sign in with Google, Apple, or Internet Identity.
 4. The SDK polls in the background and emits `device_code_approved(nickname)` when they're done — or `device_code_expired` after 5 minutes.
 
 The full sequence diagram is in [Authentication → Device Code Auth](authentication.md#device-code-auth-google--apple).
@@ -25,7 +25,7 @@ The full sequence diagram is in [Authentication → Device Code Auth](authentica
 The Template ships a reusable popup scene + script that wires every signal and cleans itself up. Instantiate it and start the flow:
 
 ```gdscript
-var popup = preload("res://scenes/DeviceCodeLogin.tscn").instantiate()
+var popup = preload("res://scenes/DeviceCodePopup.tscn").instantiate()
 add_child(popup)
 popup.start_sign_in()
 

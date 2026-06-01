@@ -1,13 +1,14 @@
 # Authentication
 
-CheddaBoards supports three levels of identity, all cross-platform: **anonymous play**, **Device Code Auth** (Google/Apple on any platform), and **account upgrade** (turn an anonymous player into a verified one without losing progress).
+CheddaBoards supports three levels of identity, all cross-platform: **anonymous play**, **Device Code Auth** (Google / Apple / Internet Identity on any platform), and **account upgrade** (turn an anonymous player into a verified one without losing progress).
 
 | Method | Native | Mobile | Web | Status |
 |--------|--------|--------|-----|--------|
 | Anonymous / Device ID | ✅ | ✅ | ✅ | **Working** |
 | Google Sign-In (Device Code) | ✅ | ✅ | ✅ | **Working** |
 | Apple Sign-In (Device Code) | ✅ | ✅ | ✅ | **Working** |
-| Account Upgrade (Anon → Google/Apple) | ✅ | ✅ | ✅ | **Working** |
+| Internet Identity (Device Code) | ✅ | ✅ | ✅ | **Working** |
+| Account Upgrade (Anon → Google / Apple / II) | ✅ | ✅ | ✅ | **Working** |
 
 No OAuth SDKs, no browser popups, no platform-specific branching — every platform uses the same flow.
 
@@ -25,7 +26,7 @@ Anonymous players keep an empty `_nickname` until they set one, so your UI can s
 
 ---
 
-## Device Code Auth (Google / Apple)
+## Device Code Auth (Google / Apple / Internet Identity)
 
 The game shows a QR code, a URL, and a short code. The player signs in on their phone browser, and the game picks up the session automatically via background polling.
 
@@ -71,7 +72,7 @@ When the player finishes signing in on their phone and returns to the game, focu
 
 ## Account linking (Anonymous → Verified)
 
-- Anonymous players can upgrade to Google/Apple via the same device code flow.
+- Anonymous players can upgrade to Google / Apple / Internet Identity via the same device code flow.
 - All scores, achievements, and progress are preserved through migration.
 - Available from both the in-game **Sign In** button and the **Anonymous Dashboard**.
 
@@ -94,7 +95,7 @@ The Template's MainMenu handles the whole identity lifecycle for you:
 |-------|------------|----------|
 | **Login Panel** | First-time players | PLAY NOW, Leaderboard, login buttons |
 | **Name Entry** | Before first game | Custom nickname input |
-| **Anonymous Dashboard** | Returning anonymous players | Stats, achievements, **upgrade to Google/Apple** |
+| **Anonymous Dashboard** | Returning anonymous players | Stats, achievements, **upgrade to a verified provider** |
 | **Main Panel** | Logged-in users | Full profile with all features |
 
 If you're on the Drop-in path, you build your own equivalents and drive them with the signals below.

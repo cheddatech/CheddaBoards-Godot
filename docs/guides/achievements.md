@@ -14,6 +14,29 @@ Backend-synced achievements that also work offline and for anonymous players.
 
 ---
 
+## Defining your achievements
+
+Achievements are declared in `autoloads/Achievements.gd` as a dictionary keyed by ID:
+
+```gdscript
+const ACHIEVEMENTS = {
+    # Games played
+    "games_1":     {"name": "First Game", "desc": "Play your first game"},
+    "games_10":    {"name": "Dedicated",  "desc": "Play 10 games"},
+
+    # Score milestones
+    "score_1000":  {"name": "Beginner",   "desc": "Score 1,000 points"},
+    "score_5000":  {"name": "Skilled",    "desc": "Score 5,000 points"},
+
+    # Streaks
+    "streak_10":   {"name": "On Fire",    "desc": "10 streak"},
+
+    # Levels
+    "level_2":     {"name": "Level 2",    "desc": "Reach Level 2"},
+    "level_5":     {"name": "Master",     "desc": "Reach Level 5"},
+}
+```
+
 ## Quick usage
 
 Call these from your game-over handler, alongside your score submission:
@@ -21,8 +44,11 @@ Call these from your game-over handler, alongside your score submission:
 ```gdscript
 func _on_game_over(score: int, streak: int):
     Achievements.increment_games_played()
-    Achievements.check_game_over(score, 0, streak)
+    Achievements.check_game_over(score, 0, streak)   # checks score & streak achievements
     Achievements.submit_with_score(score, streak)
+
+func _on_level_up(level: int):
+    Achievements.check_level(level)                  # checks level achievements
 ```
 
 `check_game_over` evaluates the run against your achievement definitions; `submit_with_score` piggybacks the achievement sync onto the score submission so there's only one round trip.
