@@ -18,8 +18,8 @@ config/name="Press Start"
 run/main_scene="res://scenes/MainMenu.tscn"
 config/features=PackedStringArray("4.6", "Forward Plus")
 boot_splash/stretch_mode=0
-boot_splash/image="uid://c4ifusj1tgphd"
-config/icon="uid://cighw5yua3ygf"
+boot_splash/image="res://addons/cheddaboards/icon.png"
+config/icon="res://addons/cheddaboards/icon.png"
 
 [autoload]
 
