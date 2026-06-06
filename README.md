@@ -7,7 +7,7 @@
 **A complete game template with leaderboards, achievements, and cross-platform auth built in.**
 **Download → Add your game → Export. That's it.**
 
-> **SDK 2.2.0** · Godot 4.x · Windows / Mac / Linux / Mobile / Web · MIT · Free tier · [Changelog](docs/CHANGELOG.md)
+> **SDK 2.2.0** · Godot 4.6+ · Windows / Mac / Linux / Mobile / Web · MIT · Free tier · [Changelog](docs/CHANGELOG.md)
 
 <p align="center">
   <img src="screenshots/screenshot1.png" alt="In-game" width="45%"/>
@@ -34,19 +34,24 @@ This repo is a full **template** — most people should just start with the [Qui
 
 ## Quick Look
 
-Five lines from a fresh project to a working leaderboard:
+The template already ships with login, a leaderboard, achievements, and anti-cheat wired up. To plug in **your** game, you emit **one signal** when a run ends:
 
 ```gdscript
-func _ready():
-    CheddaBoards.set_api_key("cb_your-api-key")
-    CheddaBoards.set_game_id("your-game-id")
-    CheddaBoards.login_anonymous("PlayerName")
+# In your own game scene
+signal game_over(final_score: int, stats: Dictionary)
 
-func _on_game_over(score: int, streak: int):
-    CheddaBoards.submit_score(score, streak)
+func _on_run_finished():
+    game_over.emit(final_score, {
+        "hits": total_hits,
+        "max_combo": max_combo,
+        "level": current_level,
+        "accuracy": accuracy_percent,
+    })
 ```
 
-Drop in the MainMenu and Leaderboard scenes and you've got a full UI too — profile, rank, achievements, and anti-cheat all work with no further setup.
+Point the wrapper at your scene and that's the whole game-side integration — the wrapper shows the game-over screen, submits the score, syncs achievements, and runs the anti-cheat play session for you.
+
+> Of that dict, only `final_score` and `max_combo` reach the leaderboard — saved as the player's **score** and **streak**. The rest (`hits`, `level`, `accuracy`) just feed the game-over screen and achievements. If your game's streak isn't a combo, that's the value to put in `max_combo`. → [What CheddaBoards stores](docs/guides/data-model.md)
 
 > That free tier is possible because CheddaBoards runs on the [Internet Computer](https://internetcomputer.org) — predictable infrastructure costs, so there's no per-player billing to pass on to you.
 
@@ -56,7 +61,7 @@ Drop in the MainMenu and Leaderboard scenes and you've got a full UI too — pro
 
 | Component | Description |
 |-----------|-------------|
-| **Game Wrapper** | Drop-in wrapper handles HUD, game over, score submission, achievements |
+| **Game Wrapper** | Drop-in wrapper handles HUD, game over, score submission, achievements, and play sessions |
 | **Example Game** | CheddaClick — a clicker game with levels & combos |
 | **MainMenu** | Four-panel auth flow with anonymous dashboard |
 | **Leaderboard** | Full UI with time periods & archives |
@@ -69,37 +74,81 @@ Drop in the MainMenu and Leaderboard scenes and you've got a full UI too — pro
 
 ## Quick Start
 
-**1. Setup** — Download from the [Asset Library](https://godotengine.org/asset-library/asset/4574) or GitHub, open in Godot 4.x, then run the Setup Wizard:
+> 🆕 **New to Godot?** Follow the step-by-step **[Getting Started guide](docs/guides/getting-started.md)** instead — it assumes zero Godot experience and walks you from install to a score on the board. The three steps below are the fast version for people who already know Godot.
+
+### 1. Setup
+
+Download from the [Asset Library](https://godotengine.org/asset-library/asset/4574) or GitHub, open in **Godot 4.6+**, then run the Setup Wizard:
 
 ```
 File → Run → addons/cheddaboards/SetupWizard.gd
 ```
 
-Enter your Game ID & API key from [cheddaboards.com](https://cheddaboards.com). The wizard also registers the autoloads (`CheddaBoards`, `Achievements`, `MobileUI`).
+Enter your **API key** from [cheddaboards.com](https://cheddaboards.com) — the wizard reads your Game ID from it automatically. It also registers the autoloads (`CheddaBoards`, `Achievements`, `MobileUI`).
 
-**2. Add your game** — Create your game scene, add the four required signals, emit them as things happen, and set `game_scene_path` in `scenes/Game.tscn`:
+### 2. Add your game
+
+The template runs the example game (**CheddaClick**) out of the box — here's how to swap in your own. Your game lives in its **own scene** (any root node — `Node2D`, `Control`, whatever your game needs). The wrapper loads it as a child and listens for its signals. You only have to emit **one**.
+
+> 📖 Step-by-step version, with a complete example game and how to remove CheddaClick: **[Build Your Own Game](docs/guides/your-own-game.md)**
+
+**Required — emit `game_over` when a run ends.** This is the only signal the wrapper needs:
 
 ```gdscript
-extends Control
+extends Node2D  # your game's root — any node type is fine
 
-# The Game wrapper listens to these — emit them and it handles the rest
-signal score_changed(score: int, combo: int)
-signal stats_changed(hits: int, misses: int, level: int)
-signal time_changed(time_remaining: float, max_time: float)
+# The ONE signal the wrapper requires.
 signal game_over(final_score: int, stats: Dictionary)
 
-func _on_game_ended():
-    game_over.emit(current_score, {
-        "hits": total_hits, "max_combo": max_combo, "level": current_level
+func end_run():
+    game_over.emit(score, {
+        "hits": hits,          # every key is optional — sensible defaults if omitted
+        "misses": misses,
+        "max_combo": max_combo,
+        "level": level,
+        "accuracy": accuracy,  # 0–100
     })
 ```
 
+The wrapper takes it from there: shows the game-over screen, submits the score, checks achievements, and closes the anti-cheat session.
+
+**Optional — feed the built-in HUD live.** Add these *only* if you're using the template's HUD. Each one is picked up automatically if (and only if) your scene declares it:
+
 ```gdscript
-# In scenes/Game.tscn
-@export var game_scene_path: String = "res://example_game/CheddaClickGame.tscn"
+signal score_changed(score: int, combo: int)               # live score/combo + mid-game achievement pops
+signal stats_changed(hits: int, misses: int, level: int)   # level + misses readout
+signal time_changed(time_remaining: float, max_time: float) # countdown timer
+
+# …then emit them as those values change during play:
+score_changed.emit(score, combo)
+stats_changed.emit(hits, misses, level)
+time_changed.emit(time_left, round_length)
 ```
 
-**3. Export** — players get leaderboards, achievements, and anti-cheat.
+> Without `score_changed`, score/combo achievements still unlock — they're just evaluated once at game-over instead of live during the run.
+
+**Optional — Play Again & pause.** If your game can reset itself in place, add a `restart()` method and the wrapper calls it instead of reloading the whole scene:
+
+```gdscript
+func restart():
+    # reset your game state back to the start
+    pass
+
+func pause():    # optional — called if you wire up pause support
+    pass
+func unpause():  # optional
+    pass
+```
+
+**Point the wrapper at your scene.** Select the `Game` node in `scenes/Game.tscn` and set **Game Scene Path** in the Inspector to your scene — or change the default in the wrapper script:
+
+```gdscript
+@export var game_scene_path: String = "res://your_game/YourGame.tscn"
+```
+
+### 3. Export
+
+Players get leaderboards, achievements, and anti-cheat — no further wiring.
 
 > 📖 Detailed setup, web export & OAuth specifics: **[SETUP.md](docs/SETUP.md)**
 
@@ -113,8 +162,8 @@ func _on_game_ended():
 | Global leaderboards (sort by score or streak, player rank highlighted) | [Drop-in Quickstart](docs/quickstart-dropin.md) |
 | Timed scoreboards — weekly / daily / monthly, auto-reset & archive | [Timed Leaderboards](docs/guides/timed-leaderboards.md) |
 | Achievements — auto-unlock, offline cache, deferred sync, popups | [Achievements](docs/guides/achievements.md) |
-| Anti-cheat — server-side sessions, score validation, configurable caps | [Anti-cheat](docs/guides/anti-cheat.md) |
-| 34 typed signals across the SDK | [Signals Reference](docs/guides/signals-reference.md) |
+| Anti-cheat — server-side play sessions, score validation, configurable caps | [Anti-cheat](docs/guides/anti-cheat.md) |
+| Fully typed signal API across the SDK | [Signals Reference](docs/guides/signals-reference.md) |
 
 ---
 
@@ -131,18 +180,22 @@ CheddaBoards-Godot/
 ├── screenshots/
 ├── docs/                     # Full documentation (see docs/README.md)
 │   ├── README.md             # Docs index / router
+│   ├── SETUP.md
 │   ├── quickstart-dropin.md
 │   ├── quickstart-api.md
-│   ├── SETUP.md
 │   ├── CHANGELOG.md
 │   ├── TROUBLESHOOTING.md
 │   └── guides/
+│       ├── getting-started.md     # New to Godot — install to first score
+│       ├── your-own-game.md       # Replace CheddaClick with your game
+│       ├── data-model.md          # What CheddaBoards stores
 │       ├── authentication.md
 │       ├── device-code-login.md
 │       ├── achievements.md
 │       ├── anti-cheat.md
-│       ├── signals-reference.md
-│       └── timed-leaderboards.md
+│       ├── timed-leaderboards.md
+│       ├── web-export.md
+│       └── signals-reference.md
 ├── template.html             # Web export template
 ├── project.godot
 └── README.md
@@ -152,7 +205,7 @@ CheddaBoards-Godot/
 
 ## Prerequisites
 
-- **Godot 4.x** (tested on 4.3+)
+- **Godot 4.6+**
 - A free **CheddaBoards account** — [cheddaboards.com](https://cheddaboards.com) — for your Game ID & API key
 
 > **Heads up (v2.2.0):** `profile_loaded` now emits `play_count` as a 5th argument — a breaking change for 4-arg handlers. Full migration notes in the [Changelog](docs/CHANGELOG.md).
