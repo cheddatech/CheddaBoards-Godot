@@ -49,7 +49,7 @@ curl -X POST https://api.cheddaboards.com/scores \
   }'
 ```
 
-Add `"playSessionToken": "<token>"` to the body if you're using anti-cheat play sessions (see §4).
+If you started a play session for the run (see §4 — recommended), include its token in the body as `"playSessionToken": "<token>"` so the backend can time-validate the score.
 
 ## 2. Read the leaderboard
 
@@ -90,9 +90,11 @@ curl -X POST https://api.cheddaboards.com/auth/device/token \
 
 Use the returned `sessionId` as your `X-Session-Token` on subsequent requests, and stop sending `X-API-Key`.
 
-## 4. Anti-cheat play sessions (optional)
+## 4. Anti-cheat play sessions (recommended)
 
-Wrap a run in a server-tracked session so the backend can validate the score against elapsed time.
+Wrap each run in a server-tracked session so the backend can validate the score against elapsed time. The Godot SDK does this automatically; on the raw REST path you do it yourself. **If you've set anti-cheat caps on your dashboard, do this** — scores submitted without a valid session token skip time validation and may be rejected.
+
+The lifecycle is: **start** when the run begins → **pass the token** in your `POST /scores` body → **end** after submitting.
 
 ```bash
 # Start — returns a session token

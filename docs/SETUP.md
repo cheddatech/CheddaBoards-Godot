@@ -10,7 +10,7 @@
 
 ## Prerequisites
 
-- [ ] Godot 4.x installed (tested on 4.3+)
+- [ ] Godot 4.6+ installed
 - [ ] CheddaBoards account ([cheddaboards.com](https://cheddaboards.com))
 - [ ] Game registered on dashboard
 - [ ] API Key generated
@@ -77,7 +77,7 @@ func _ready():
     CheddaBoards.set_game_id("my-game")
 ```
 
-> **Tip:** Run the Setup Wizard (`File → Run → addons/cheddaboards/SetupWizard.gd`) to handle this automatically. The wizard writes the calls into your MainMenu.gd for you.
+> **Tip:** Run the Setup Wizard (`File → Run → addons/cheddaboards/SetupWizard.gd`) to handle this automatically — paste just your API key and it derives the Game ID, then writes both calls into your MainMenu.gd for you.
 
 ### 5. Use It
 
@@ -91,6 +91,8 @@ func _ready():
 func _on_game_over(score: int, streak: int):
     CheddaBoards.submit_score(score, streak)
 ```
+
+> For anti-cheat, wrap each run in a play session — a few extra calls. See [Anti-Cheat Setup](#anti-cheat-setup) below.
 
 ### API Setup Complete!
 
@@ -248,7 +250,11 @@ func _on_level_up(level: int):
 
 ## Anti-Cheat Setup
 
-Configure limits from the dashboard — no code required. CheddaBoards enforces them automatically.
+Anti-cheat has two parts: **limits** you set once in the dashboard (no code), and **play sessions** you start in code so the backend can time-validate each run.
+
+### 1. Set limits in the dashboard
+
+Configure from your game's **Security** tab. Start generous, then tighten based on real player data.
 
 | Setting | Recommended | Description |
 |---------|-------------|-------------|
@@ -257,7 +263,32 @@ Configure limits from the dashboard — no code required. CheddaBoards enforces 
 | Absolute Score Cap | `500000` | Lifetime max (or blank) |
 | Absolute Streak Cap | `10` | Matches game code |
 
-Base these on your game's mechanics. Start generous, then tighten based on real player data. See your game's Security tab on the dashboard.
+### 2. Wrap runs in a play session (code)
+
+The **Template** wrapper runs play sessions for you automatically. On the **API / Native** (and Drop-in) path you do it yourself: start a session when a run begins, then clear it after submitting. The SDK attaches the active session token to `submit_score` for you.
+
+```gdscript
+func _ready():
+    CheddaBoards.score_submitted.connect(_on_score_submitted)
+    CheddaBoards.score_error.connect(_on_score_error)
+
+# Call when the player actually starts a run
+func start_run():
+    if CheddaBoards.is_ready():
+        CheddaBoards.start_play_session()
+
+# Run ends — submit; the session token is attached automatically
+func _on_game_over(score: int, streak: int):
+    CheddaBoards.submit_score(score, streak)
+
+func _on_score_submitted(score: int, streak: int):
+    CheddaBoards.clear_play_session()
+
+func _on_score_error(reason: String):
+    CheddaBoards.clear_play_session()
+```
+
+> Without a session, scores still submit but skip server-side time validation — and may be rejected if you've set tight caps. Full detail: [guides/anti-cheat.md](guides/anti-cheat.md).
 
 ---
 
@@ -321,16 +352,17 @@ YourGame/
 - [ ] API key generated and copied
 - [ ] `addons/cheddaboards/` folder added to project
 - [ ] CheddaBoards in Autoloads
-- [ ] API key and game_id set in CheddaBoards.gd
+- [ ] API key and game_id set at runtime in `_ready()`
 
 ### Timed Scoreboards (Optional)
 - [ ] Scoreboards created in dashboard
 - [ ] Scoreboard IDs set in Leaderboard.gd
 - [ ] Leaderboard.tscn updated with period buttons
 
-### Anti-Cheat (Optional)
+### Anti-Cheat
 - [ ] Score limits set in dashboard
 - [ ] Limits match your game mechanics
+- [ ] Play session started on run begin, cleared after submit (API & Drop-in paths)
 
 ---
 
@@ -340,6 +372,7 @@ YourGame/
 |-----|-------------|
 | [quickstart-dropin.md](quickstart-dropin.md) | Fast setup + API reference |
 | [guides/web-export.md](guides/web-export.md) | Web export specifics (template.html, legacy OAuth) |
+| [guides/anti-cheat.md](guides/anti-cheat.md) | Play sessions, validation, dashboard config |
 | [guides/timed-leaderboards.md](guides/timed-leaderboards.md) | Weekly/daily competitions |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common problems & solutions |
 | [CHANGELOG.md](CHANGELOG.md) | Version history |

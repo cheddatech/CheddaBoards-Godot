@@ -9,7 +9,7 @@
 ## Two ways to start — pick the one that matches where you are
 
 - **Starting fresh, or just trying CheddaBoards out?**
-  This whole repo **is** a working Godot 4 template. Open it in Godot, run the Setup Wizard (`File → Run → addons/cheddaboards/SetupWizard.gd`), paste your Game ID + API key, and the included example game (CheddaClick) submits scores straight from the editor. To use your own game instead, set `game_scene_path` in `scenes/Game.tscn` and emit four signals — the wrapper handles HUD, game-over, and submission for you. **~3 minutes.** See the [README](../README.md).
+  This whole repo **is** a working Godot 4 template. Open it in Godot, run the Setup Wizard (`File → Run → addons/cheddaboards/SetupWizard.gd`), paste your Game ID + API key, and the included example game (CheddaClick) submits scores straight from the editor. To use your own game instead, set `game_scene_path` in `scenes/Game.tscn` and emit **one signal** — `game_over(final_score, stats)`. The wrapper handles the HUD, game-over screen, submission, and the anti-cheat play session for you. **~3 minutes.** See the [README](../README.md).
 
 - **Adding leaderboards to a game you already have?**
   Copy just the `addons/cheddaboards/` folder into your project and wire the calls yourself. That's what the steps below cover. **~10 minutes.**
@@ -18,7 +18,7 @@
 
 ## Before you start
 
-- **Godot 4.x.** This guide uses `await`, which is Godot 4 syntax. On **Godot 3.6**, replace `await CheddaBoards.wait_until_ready()` with `yield(CheddaBoards, "sdk_ready")` — see [SETUP.md](SETUP.md).
+- **Godot 4.6+.** This guide uses `await`, which is Godot 4 syntax. On **Godot 3.6**, replace `await CheddaBoards.wait_until_ready()` with `yield(CheddaBoards, "sdk_ready")` — see [SETUP.md](SETUP.md).
 - **A game that already has a score.** CheddaBoards ranks numbers, so you need a project that produces a score (and ideally a streak) and has a *game-over moment* to submit from. If you don't have that yet, build the game loop first — there's nothing to submit without it.
 - **Basic GDScript:** connecting signals, `_ready()`, and `await`.
 
@@ -26,7 +26,7 @@
 
 ## Step 1: Register & Get API Key (~3 min)
 
-1. Go to [cheddaboards.com/developers](https://cheddaboards.com/developers)
+1. Go to [cheddaboards.com/dashboard](https://cheddaboards.com/dashboard)
 2. Sign in with Google or Apple
 3. Click **"Register New Game"**
 4. Copy your **Game ID** (e.g. `my-game`) and **API Key** (e.g. `cb_my-game_xxxxxxxxx`)
@@ -62,7 +62,7 @@ Path: res://addons/cheddaboards/CheddaBoards.gd
 
 ## Step 3: Wire It Up (~4 min)
 
-Everything below goes in **one script** — wherever your game starts (e.g. `MainMenu.gd`). This is the whole integration: credentials, login, submitting a score, and reading the leaderboard.
+Everything below goes in **one script** — wherever your game starts (e.g. `MainMenu.gd`). This is the core integration: credentials, login, submitting a score, and reading the leaderboard.
 
 ```gdscript
 extends Control  # or whatever your start scene is
@@ -98,15 +98,57 @@ func _on_leaderboard(entries: Array):
         print("#%d %s - %d" % [e.rank, e.nickname, e.score])
 ```
 
-That's it. The two things you wire into your own game: call `_on_game_over(score, streak)` when a run ends, and call `show_leaderboard()` from a button.
+The two things you wire into your own game: call `_on_game_over(score, streak)` when a run ends, and call `show_leaderboard()` from a button. That alone gets you on the board — but for anti-cheat, add Step 4.
+
+---
+
+## Step 4: Anti-cheat play sessions (recommended)
+
+A **play session** tells the backend "a real run just started," so it can validate the submitted score against elapsed time and reject anything impossible. The Template wrapper runs sessions for you automatically; on the Drop-in path you do it yourself — three calls:
+
+- **Start** a session when a run *actually begins* (not in `_ready()` — at the start of gameplay).
+- **Submit** the score as normal. The SDK attaches the active session token for you; you don't pass it manually.
+- **Clear** the session once submission finishes — on both success *and* failure.
+
+```gdscript
+func _ready():
+    # …credentials + login from Step 3…
+    CheddaBoards.score_submitted.connect(_on_score_submitted)
+    CheddaBoards.score_error.connect(_on_score_error)
+    CheddaBoards.play_session_error.connect(_on_session_error)
+
+# Call this the moment the player starts a run.
+func start_run():
+    if CheddaBoards.is_ready():
+        CheddaBoards.start_play_session()
+    # …your own game-start code…
+
+# Run ends — submit. The active session token is attached automatically.
+func _on_game_over(score: int, streak: int):
+    CheddaBoards.submit_score(score, streak)
+
+func _on_score_submitted(score: int, streak: int):
+    CheddaBoards.clear_play_session()
+    print("Saved: %d" % score)
+
+func _on_score_error(reason: String):
+    CheddaBoards.clear_play_session()
+    print("Save failed: %s" % reason)
+
+# Non-fatal: the score can still submit, it just won't get time validation.
+func _on_session_error(reason: String):
+    push_warning("Play session error: %s" % reason)
+```
+
+> Set the actual limits (max score per submission, streak caps, etc.) from your dashboard's **Security** tab — see [Anti-cheat](guides/anti-cheat.md). Skip the session entirely and scores still submit; they just won't be time-validated server-side.
 
 ---
 
 ## Done!
 
-**Total time: ~10 minutes** — roughly half setup (Steps 1–2), half code (Step 3).
+**Total time: ~10 minutes** — roughly half setup (Steps 1–2), half code (Steps 3–4).
 
-You now have anonymous login, score submission, and global leaderboards on web, desktop, and mobile.
+You now have anonymous login, score submission, global leaderboards, and anti-cheat play sessions on web, desktop, and mobile.
 
 ---
 
@@ -158,6 +200,21 @@ CheddaBoards.submit_score(1000, 5)
 # Signals
 CheddaBoards.score_submitted.connect(_on_score_submitted)
 CheddaBoards.score_error.connect(_on_score_error)
+```
+
+### Play sessions (anti-cheat)
+
+```gdscript
+CheddaBoards.start_play_session()   # at the start of a run
+CheddaBoards.clear_play_session()   # after submit completes (success or error)
+CheddaBoards.has_play_session()     # true while a session is active
+
+CheddaBoards.play_session_started.connect(func(token: String):
+    print("Session started")
+)
+CheddaBoards.play_session_error.connect(func(reason: String):
+    push_warning("Session error: %s" % reason)
+)
 ```
 
 ### Leaderboards
@@ -233,7 +290,7 @@ func _on_game_over(score: int, streak: int):
 
 ## Signals Reference
 
-The most common signals you'll connect to. The full list (34 signals across 10 categories) lives in the SDK source.
+The most common signals you'll connect to. The full list lives in the SDK source — see [Signals Reference](guides/signals-reference.md).
 
 | Signal | Parameters | When |
 |--------|------------|------|
@@ -246,6 +303,8 @@ The most common signals you'll connect to. The full list (34 signals across 10 c
 | `profile_loaded` | `nickname, score, streak, achievements, play_count` | Profile loaded (v2.2.0+ adds `play_count`) |
 | `score_submitted` | `score, streak` | Score saved |
 | `score_error` | `reason: String` | Score submission failed |
+| `play_session_started` | `token: String` | Anti-cheat session started |
+| `play_session_error` | `reason: String` | Session failed to start (non-fatal) |
 | `leaderboard_loaded` | `entries: Array` | Leaderboard data |
 | `scoreboard_loaded` | `id, config, entries` | Specific scoreboard data |
 | `player_rank_loaded` | `rank, score, streak, total_players` | Rank data |
@@ -263,6 +322,7 @@ The most common signals you'll connect to. The full list (34 signals across 10 c
 | "Not authenticated" | Submit ran before login finished. `await wait_until_ready()` then `login_anonymous()` **before** any `submit_score()` |
 | `await` won't parse / "Expected end of statement" | You're on Godot 3.6 — use `yield(CheddaBoards, "sdk_ready")` instead of `await` |
 | 4-arg `_on_profile_loaded` errors | v2.2.0 added `play_count` as 5th arg — add a trailing `play_count: int` parameter |
+| Score rejected as too fast / impossible | Start a play session (`start_play_session()`) before the run so the backend can time-validate it |
 | Leaderboard shows duplicates / fires twice | You connected `leaderboard_loaded` inside a function — connect it once in `_ready()` |
 | Score not saving | Check `score_error` signal for the reason |
 | Leaderboard empty | Verify `game_id` matches the one in your dashboard |
@@ -278,6 +338,7 @@ The most common signals you'll connect to. The full list (34 signals across 10 c
 | Doc | Description |
 |-----|-------------|
 | [SETUP.md](SETUP.md) | Detailed setup, web export & OAuth specifics |
+| [guides/anti-cheat.md](guides/anti-cheat.md) | Play sessions, validation, dashboard caps |
 | [guides/timed-leaderboards.md](guides/timed-leaderboards.md) | Weekly/daily competitions & archives |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common problems & fixes |
 | [CHANGELOG.md](CHANGELOG.md) | Version history |
@@ -286,7 +347,7 @@ The most common signals you'll connect to. The full list (34 signals across 10 c
 
 ## Resources
 
-- **Developer Console:** [cheddaboards.com/developers](https://cheddaboards.com/developers)
+- **Dashboard:** [cheddaboards.com/dashboard](https://cheddaboards.com/dashboard)
 - **GitHub:** [github.com/cheddatech/CheddaBoards-Godot](https://github.com/cheddatech/CheddaBoards-Godot)
 - **Asset Library:** [godotengine.org/asset-library/asset/4574](https://godotengine.org/asset-library/asset/4574)
 - **Support:** info@cheddaboards.com
