@@ -1,4 +1,4 @@
-# GameWrapper.gd v1.0.0
+# GameWrapper.gd v1.0.1
 # Modular wrapper for CheddaBoards integration
 # Drop ANY game scene as a child - just emit the right signals!
 # https://github.com/cheddatech/CheddaBoards-Godot
@@ -7,13 +7,18 @@
 # HOW TO USE
 # ============================================================
 # 1. Create your game as a separate scene (e.g. MyGame.tscn)
-# 2. Your game script should emit these signals:
-#    - score_changed(score: int, combo: int) - when score updates
-#    - stats_changed(hits: int, misses: int, level: int) - when stats update  
-#    - time_changed(time_remaining: float, max_time: float) - for time display
+# 2. Your game script must emit:
 #    - game_over(final_score: int, stats: Dictionary) - when game ends
 #      stats = { "hits": int, "misses": int, "max_combo": int, "level": int, "accuracy": int }
-# 3. Set GAME_SCENE_PATH to your game scene
+#
+#    Optional (only needed if you're using the built-in HUD):
+#    - score_changed(score: int, combo: int) - live score/combo display + mid-game achievement pops
+#    - stats_changed(hits: int, misses: int, level: int) - level/misses display
+#    - time_changed(time_remaining: float, max_time: float) - timer display
+#
+#    Without score_changed, score/combo achievements are checked at game-over
+#    only (via check_game_over in the game_over handler), not live during play.
+# 3. Set game_scene_path to your game scene
 # 4. Optionally implement these methods in your game:
 #    - restart() - called when Play Again is pressed
 #    - pause() / unpause() - if you need pause support
@@ -103,7 +108,7 @@ func _ready():
 	# Check if Achievements autoload exists
 	has_achievements = get_node_or_null("/root/Achievements") != null
 	
-	print("[GameWrapper] Initializing v1.0.0")
+	print("[GameWrapper] Initializing v1.0.1")
 	print("[GameWrapper] Platform: %s" % ("Web" if OS.get_name() == "Web" else "Native"))
 	print("[GameWrapper] Achievements: %s" % ("enabled" if has_achievements else "disabled"))
 	
@@ -138,18 +143,17 @@ func _connect_game_signals():
 	if not game_instance:
 		return
 	
-	# Required signals
-	if game_instance.has_signal("score_changed"):
-		game_instance.score_changed.connect(_on_game_score_changed)
-	else:
-		push_warning("[GameWrapper] Game missing 'score_changed' signal")
-	
+	# Required signal — the submit + game-over flow needs this
 	if game_instance.has_signal("game_over"):
 		game_instance.game_over.connect(_on_game_over)
 	else:
 		push_warning("[GameWrapper] Game missing 'game_over' signal")
 	
-	# Optional signals
+	# Optional signals — only needed if you're using the built-in HUD
+	# (live score/combo, mid-game achievement pops, stats display, timer)
+	if game_instance.has_signal("score_changed"):
+		game_instance.score_changed.connect(_on_game_score_changed)
+	
 	if game_instance.has_signal("stats_changed"):
 		game_instance.stats_changed.connect(_on_game_stats_changed)
 	
