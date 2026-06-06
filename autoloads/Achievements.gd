@@ -1,6 +1,12 @@
-# Achievements.gd v2.1.0
+# Achievements.gd v2.1.1
 # Achievement tracking for CheddaClick - CheddaBoards Template
 # Add as Autoload: Project → Project Settings → Autoload → "Achievements"
+#
+# v2.1.1: submit_with_score() now actually pushes achievements to the
+#         backend via CheddaBoards.submit_score_with_achievements()
+#         (previously it gathered the IDs but only submitted the score,
+#         so unlocks never synced). force_sync_pending() now performs a
+#         real batch sync instead of being a no-op stub.
 #
 # Usage:
 #   - Call Achievements.start_session() at game start (optional)
@@ -251,13 +257,14 @@ func is_unlocked(achievement_id: String) -> bool:
 # ============================================================
 
 func submit_with_score(score: int, streak: int):
-	"""Submit score along with any newly unlocked achievements"""
-	var achievement_ids = unlocked_achievements.duplicate()
-	
-	# Submit via CheddaBoards
-	CheddaBoards.submit_score(score, streak)
-	
-	print("[Achievements] Submitted score %d with %d achievements" % [score, achievement_ids.size()])
+	"""Submit score along with any unlocked achievements.
+
+	Uses the SDK's combined call, which submits the score first (this
+	creates/updates the player on the backend) and then batch-syncs the
+	achievements once the score succeeds. Passing the score alone would
+	never push the achievements."""
+	CheddaBoards.submit_score_with_achievements(score, streak, unlocked_achievements)
+	print("[Achievements] Submitting score %d with %d achievements" % [score, unlocked_achievements.size()])
 
 # ============================================================
 # QUERIES
@@ -313,10 +320,16 @@ func get_unlocked_achievements() -> Array:
 # ============================================================
 
 func force_sync_pending():
-	"""Force sync any pending achievements to CheddaBoards"""
-	if unlocked_achievements.size() > 0:
-		print("[Achievements] Syncing %d achievements" % unlocked_achievements.size())
-	pass
+	"""Force-sync all unlocked achievements to CheddaBoards in one batch.
+
+	Note: the player must already exist on the backend (i.e. a score has
+	been submitted at least once), or the unlocks are ignored. The normal
+	path is submit_with_score(); use this only to re-push existing unlocks
+	(e.g. after a profile load)."""
+	if unlocked_achievements.is_empty():
+		return
+	print("[Achievements] Syncing %d achievements" % unlocked_achievements.size())
+	CheddaBoards.unlock_achievements_batch(unlocked_achievements)
 
 func sync_from_profile(profile: Dictionary):
 	"""Sync achievements from a loaded profile"""
@@ -336,7 +349,7 @@ func debug_status():
 	"""Print debug information"""
 	print("")
 	print("========================================")
-	print("       Achievements Debug v2.1.0       ")
+	print("       Achievements Debug v2.1.1       ")
 	print("========================================")
 	print(" Games Played:   %d" % total_games_played)
 	print(" Unlocked:       %d / %d" % [get_unlocked_count(), get_total_count()])
