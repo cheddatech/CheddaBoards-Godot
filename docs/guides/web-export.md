@@ -8,13 +8,13 @@ Exporting a CheddaBoards game for the web has a few platform-specific requiremen
 
 ## Web export setup
 
-**1. Set the HTML shell.** Project → Export → Add → Web. Under the **HTML** section:
+**1. Set the HTML shell (optional).** Project → Export → Add → Web. Under the **HTML** section:
 
 ```
 Custom HTML Shell:  res://template.html
 ```
 
-This is required — without it, authentication won't work on web.
+This is **optional** in v2 — it just gives you the branded loading screen. Auth, scores, and leaderboards all run from GDScript over HTTP, so they work with Godot's default shell too. If you *do* use the included `template.html`, export as `index.html` (it loads `index.js`).
 
 **2. Export as `index.html`.** Project → Export → Web → Export Project, and save it as **`index.html`** — not `MyGame.html`. Other filenames break relative paths and auth redirects, and produce the "Engine not defined" error.
 
@@ -62,13 +62,15 @@ func _on_exit_pressed():
 
 ## template.html
 
-`template.html` is your web export shell. It handles the loading screen/preloader and, for legacy projects, the OAuth button integration and JS bridge. The Setup Wizard configures it automatically; to edit by hand, look for the `CONFIG` block near the top of the file.
+In v2, `template.html` is **just** the loading screen plus the Godot engine bootstrap — no SDK, no OAuth scripts, no JavaScript bridge. Authentication and scores run from GDScript over the HTTP API, so the shell carries none of that.
+
+If your `template.html` has a large `CONFIG` block, a `cheddaboards_v1` CDN `<script>`, or `window.chedda_*` bridge functions, you're on the **old v1.x shell** — replace it with the lean v2 one.
 
 ---
 
 ## Web setup checklist
 
-- [ ] Custom HTML Shell set to `res://template.html`
+- [ ] *(Optional)* Custom HTML Shell set to `res://template.html` for the branded loader
 - [ ] Exported as `index.html`
 - [ ] Served over HTTP (not `file://`)
 - [ ] Exit button redirects instead of `quit()` on web

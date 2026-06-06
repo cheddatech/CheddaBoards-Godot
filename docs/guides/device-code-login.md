@@ -25,7 +25,7 @@ The full sequence diagram is in [Authentication → Device Code Auth](authentica
 The Template ships a reusable popup scene + script that wires every signal and cleans itself up. Instantiate it and start the flow:
 
 ```gdscript
-var popup = preload("res://scenes/DeviceCodePopup.tscn").instantiate()
+var popup = preload("res://scenes/DeviceCodeLogin.tscn").instantiate()
 add_child(popup)
 popup.start_sign_in()
 
@@ -167,7 +167,7 @@ func _close():
 
 ## Note on the one-liner helper
 
-The reference script exposes a static `show_sign_in(parent)` that instantiates, adds, and starts the flow in a single call. To use it as `DeviceCodeLogin.show_sign_in(self)`, the script needs a `class_name` and the popup scene must sit at the path the helper loads (`res://scenes/DeviceCodePopup.tscn`). If you've renamed either, update both to match. The explicit `preload(...).instantiate()` form above always works regardless.
+The reference script exposes a static `show_sign_in(parent)` that instantiates, adds, and starts the flow in a single call. To use it as `DeviceCodeLogin.show_sign_in(self)`, the script needs a `class_name` and the popup scene must sit at the path the helper loads (`res://scenes/DeviceCodeLogin.tscn`). If you've renamed either, update both to match. The explicit `preload(...).instantiate()` form above always works regardless.
 
 ---
 

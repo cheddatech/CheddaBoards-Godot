@@ -35,15 +35,11 @@ CheddaBoards supports time-based scoreboards that automatically reset and archiv
 
 ## Basic Usage
 
-### Submit to Multiple Scoreboards
+### Submitting to scoreboards
 
-Scores automatically go to the default scoreboard. For multiple:
+You don't submit to a board directly. Submit once, and the backend routes the score to every scoreboard configured for your game (all-time, weekly, daily…):
 
 ```gdscript
-# Submit to specific scoreboard
-CheddaBoards.submit_score_to_scoreboard("weekly-scoreboard", score, streak)
-
-# Or submit once, backend routes to all applicable scoreboards
 CheddaBoards.submit_score(score, streak)
 ```
 
@@ -299,23 +295,10 @@ curl "https://api.cheddaboards.com/games/my-game/scoreboards/weekly/archives/lat
 
 ---
 
-## Migration from v1.2.x
-
-If upgrading from an older version:
-
-1. **Update CheddaBoards.gd** to v1.3.0+
-2. **Update Leaderboard.gd** to v1.4.0+
-3. **Update Leaderboard.tscn** with new button containers
-4. **Set scoreboard IDs** in Leaderboard.gd constants
-
-Existing scores and scoreboards are unaffected.
-
----
-
 ## Links
 
-- **Dashboard:** [cheddaboards.com/developers](https://cheddaboards.com/developers)
-- **Quickstart:** [QUICKSTART.md](QUICKSTART.md)
+- **Dashboard:** [cheddaboards.com/dashboard](https://cheddaboards.com/dashboard)
+- **Quickstart:** [Drop-in Quickstart](../quickstart-dropin.md)
 - **GitHub:** [github.com/cheddatech/CheddaBoards-Godot](https://github.com/cheddatech/CheddaBoards-Godot)
 
 ---

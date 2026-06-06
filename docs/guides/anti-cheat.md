@@ -1,10 +1,10 @@
 # Anti-cheat
 
-Built-in, server-side protection — no code required in your game. You configure limits from your dashboard and CheddaBoards enforces them automatically on every submission.
+Built-in, server-side protection. You set the limits from your dashboard and CheddaBoards enforces them on every submission — score **caps and validation** need no game code at all. **Play sessions** (which let the server validate a score against real elapsed play time) are handled automatically on the Template, and are a few calls on the Drop-in / REST paths.
 
 | Protection | How it works |
 |------------|--------------|
-| **Play Sessions** | The server tracks real play time — scores without a valid session are rejected |
+| **Play Sessions** | The server tracks real play time — a score submitted without a valid session can't be time-validated and may be rejected |
 | **Score Validation** | The backend calculates the max possible score for the elapsed time and rejects anything above it |
 | **Rate Limiting** | Blocks rapid-fire submissions from bots or scripts |
 | **Score Caps** | Set a max score/streak per submission, plus absolute lifetime caps |
@@ -18,6 +18,19 @@ Set your limits from your game's **Security** tab on the dashboard, based on you
 There are no default caps; validation is per-game and entirely dashboard-driven, so a fast scoring game and a slow puzzle game can have completely different rules without any code changes.
 
 ---
+
+## Play sessions in code
+
+On the **Template**, the wrapper opens a session when a run starts and clears it after the score submits — nothing for you to do. On the **Drop-in** or **REST** paths you handle it yourself:
+
+```gdscript
+CheddaBoards.start_play_session()          # when the run begins
+# … play …
+CheddaBoards.submit_score(score, streak)   # the active session token is attached automatically
+CheddaBoards.clear_play_session()          # after submit, on success or error
+```
+
+Full lifecycle: [Drop-in Quickstart](../quickstart-dropin.md) · [API Quickstart](../quickstart-api.md).
 
 ## Play session signals
 

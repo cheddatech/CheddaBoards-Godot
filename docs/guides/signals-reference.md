@@ -8,7 +8,7 @@ Every signal CheddaBoards emits, grouped by category. All are typed for Godot 4.
 
 ## CheddaBoards.gd
 
-The SDK exposes 34 signals across nine categories.
+The SDK exposes 34 signals, grouped into the categories below.
 
 ### Initialization
 
@@ -114,16 +114,18 @@ signal achievements_ready()
 
 ---
 
-## Your Game (required by the Template wrapper)
+## Your Game (Template wrapper)
 
-If you use the Template's `Game.gd` wrapper, your own game scene emits these and the wrapper handles the rest:
+If you use the Template's `Game.gd` wrapper, your own game scene emits these — the wrapper listens and handles submission, the game-over screen, and achievements. **Only `game_over` is required;** the other three are optional and only feed the built-in HUD.
 
 ```gdscript
-signal score_changed(score: int, combo: int)
-signal stats_changed(hits: int, misses: int, level: int)
-signal time_changed(time_remaining: float, max_time: float)
-signal game_over(final_score: int, stats: Dictionary)
+signal game_over(final_score: int, stats: Dictionary)         # REQUIRED — wrapper can't submit without it
+signal score_changed(score: int, combo: int)                  # optional — live score/combo HUD + mid-game achievement pops
+signal stats_changed(hits: int, misses: int, level: int)      # optional — level/misses HUD
+signal time_changed(time_remaining: float, max_time: float)   # optional — countdown timer HUD
 ```
+
+→ Full breakdown of the contract and what each value does: [Build Your Own Game](your-own-game.md).
 
 ---
 
