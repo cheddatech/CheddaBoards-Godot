@@ -2,7 +2,7 @@
 
 **Detailed setup instructions for all platforms.**
 
-> **SDK Version:** 2.2.0 | [Changelog](CHANGELOG.md)
+> **SDK Version:** 2.2.1 | [Changelog](CHANGELOG.md)
 
 > Want the fast version? See [quickstart-dropin.md](quickstart-dropin.md)
 
