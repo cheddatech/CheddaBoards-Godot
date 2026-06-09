@@ -6,7 +6,7 @@
 
 **Leaderboards, achievements, and cross-platform sign-in for Godot 4 — as a drop-in SDK or a full template.**
 
-> **SDK 2.2.0** · Godot 4.6+ · Windows / Mac / Linux / Mobile / Web · MIT · [Changelog](CHANGELOG.md)
+> **SDK 2.2.1** · Godot 4.6+ · Windows / Mac / Linux / Mobile / Web · MIT · [Changelog](CHANGELOG.md)
 
 ---
 
