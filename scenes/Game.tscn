@@ -46,6 +46,7 @@ grow_horizontal = 2
 theme_override_constants/separation = 40
 
 [node name="ScorePanel" type="PanelContainer" parent="HUD/TopBar"]
+visible = false
 custom_minimum_size = Vector2(300, 0)
 layout_mode = 2
 
@@ -64,6 +65,7 @@ theme_override_font_sizes/font_size = 20
 text = "Combo: x1"
 
 [node name="TimePanel" type="PanelContainer" parent="HUD/TopBar"]
+visible = false
 custom_minimum_size = Vector2(200, 0)
 layout_mode = 2
 size_flags_horizontal = 10
@@ -76,6 +78,7 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="StatsPanel" type="PanelContainer" parent="HUD/TopBar"]
+visible = false
 custom_minimum_size = Vector2(250, 0)
 layout_mode = 2
 
