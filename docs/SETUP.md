@@ -221,8 +221,8 @@ var achievements = {
     "score_1000": {"name": "Beginner", "desc": "Score 1,000 points"},
     "score_5000": {"name": "Skilled", "desc": "Score 5,000 points"},
     
-    # Streaks
-    "streak_10": {"name": "On Fire", "desc": "10 streak"},
+    # Combos (submitted as the player's streak)
+    "combo_10": {"name": "On Fire", "desc": "Reach a x10 combo"},
     
     # Levels
     "level_2": {"name": "Level 2", "desc": "Reach Level 2"},
@@ -237,7 +237,7 @@ func _on_game_over(score: int, streak: int):
     # Track games played
     Achievements.increment_games_played()
     
-    # Check score/streak achievements
+    # Check score, combo & hits achievements
     Achievements.check_game_over(score, 0, streak)
     
     # Submit score WITH achievements
