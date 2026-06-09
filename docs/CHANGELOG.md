@@ -42,6 +42,9 @@ Legacy method names from earlier SDK versions retained so games written against 
 - `prompt_guest_name()` — deprecation stub
 - `is_logged_in()` → `is_authenticated`
 
+#### Template Wrapper (`Game.gd`)
+- `main_menu_scene` and `leaderboard_scene` export vars — the game-over **Main Menu** / **Leaderboard** buttons route through these instead of hardcoded scene paths, so a project with a different layout no longer gets dead buttons
+
 ### Changed
 
 #### Pause-Safe Processing
@@ -65,6 +68,10 @@ Legacy method names from earlier SDK versions retained so games written against 
 
 #### Non-Fatal Scoreboard 404
 - `_on_http_request_completed` now treats a 404 on `get_scoreboard`, `scoreboard_rank`, and `list_scoreboards` as non-fatal — emits `scoreboard_error` rather than `push_error`. A scoreboard that isn't configured for the game is a normal state, not an error.
+
+#### Template Wrapper (`Game.gd`)
+- HUD panels (score/combo, timer, level/misses) now render only when your game scene declares the matching optional signal (`score_changed` / `stats_changed` / `time_changed`). A game that emits none shows a clean empty bar instead of leftover placeholder text
+- Game-over stat fields (Level / Accuracy / Max Combo) now appear only for the keys present in your `game_over` stats dict — omitted keys are hidden rather than displayed as `0` / `x1`
 
 ### Breaking Changes
 
