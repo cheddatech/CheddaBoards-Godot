@@ -2,7 +2,7 @@
 
 **Add leaderboards to a game you've already built.** Works on web, desktop, and mobile.
 
-> **SDK Version:** 2.2.0 | [Changelog](CHANGELOG.md)
+> **SDK Version:** 2.2.1 | [Changelog](CHANGELOG.md)
 
 ---
 
