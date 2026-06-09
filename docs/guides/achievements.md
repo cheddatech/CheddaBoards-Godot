@@ -12,6 +12,8 @@ Backend-synced achievements that also work offline and for anonymous players.
 - Offline support with local caching
 - Works for anonymous players (local storage), syncing once they upgrade
 
+> ⚠ **The shipped achievements are CheddaClick's example set — replace them before you ship.** Making them your own means changing **two** things, not one: the definitions (below) *and* the unlock conditions in `check_score` / `check_combo` / `check_level` / `check_game_over`, which fire on CheddaClick's concepts (score, combo, hits, level, time-remaining). If your game has no combos or levels, rewrite those checks to call `_unlock("your_id")` on whatever your game actually tracks. The unlock/save/sync engine around them is generic — leave it alone.
+
 ---
 
 ## Defining your achievements
@@ -19,7 +21,7 @@ Backend-synced achievements that also work offline and for anonymous players.
 Achievements are declared in `autoloads/Achievements.gd` as a dictionary keyed by ID:
 
 ```gdscript
-const ACHIEVEMENTS = {
+var achievements = {
     # Games played
     "games_1":     {"name": "First Game", "desc": "Play your first game"},
     "games_10":    {"name": "Dedicated",  "desc": "Play 10 games"},
