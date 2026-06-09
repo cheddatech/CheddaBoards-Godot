@@ -2,6 +2,26 @@
 # Achievement tracking for CheddaClick - CheddaBoards Template
 # Add as Autoload: Project → Project Settings → Autoload → "Achievements"
 #
+# ============================================================
+# ⚠  EXAMPLE CONTENT — REPLACE BEFORE YOU SHIP
+# ============================================================
+# The achievement DEFINITIONS and the unlock CONDITIONS in this file are
+# CheddaClick's, shipped as a working example. They are NOT generic.
+#
+# Making achievements your own means changing TWO things, not one:
+#   1. The `achievements` dictionary below (ids, names, descriptions, icons)
+#   2. The unlock logic in check_score / check_combo / check_level /
+#      check_game_over — these fire on CheddaClick's concepts (score, combo,
+#      hits, level, time-remaining). If your game has no combos or levels,
+#      rewrite these to call _unlock(...) on whatever YOUR game tracks.
+#
+# If you ship this file unchanged, your players will unlock CheddaClick's
+# achievements and those ids get written to their CheddaBoards profile.
+#
+# Everything else here — the unlock/save/sync engine — is generic and safe
+# to keep as-is. Only the definitions and the check_* conditions are example.
+# ============================================================
+#
 # v2.1.1: submit_with_score() now actually pushes achievements to the
 #         backend via CheddaBoards.submit_score_with_achievements()
 #         (previously it gathered the IDs but only submitted the score,
@@ -21,8 +41,10 @@ signal achievement_unlocked(id: String, name: String)
 signal achievements_ready()
 
 # ============================================================
-# ACHIEVEMENT DEFINITIONS
+# ACHIEVEMENT DEFINITIONS  —  ⚠ EXAMPLE, REPLACE THESE
 # ============================================================
+# CheddaClick's achievements. Swap the whole dictionary for your own game's
+# (and update the check_* conditions further down to match).
 
 var achievements = {
 	# Score achievements
@@ -145,7 +167,12 @@ func _save_local_achievements():
 	file.close()
 
 # ============================================================
-# SESSION TRACKING
+# SESSION TRACKING + UNLOCK CONDITIONS  —  ⚠ EXAMPLE, REPLACE THESE
+# ============================================================
+# increment_games_played() and the check_* functions below contain
+# CheddaClick's unlock rules (score/combo/level/hits/time thresholds).
+# This is the "second thing" to replace — rewrite these to fire
+# _unlock("your_id") on whatever your own game actually tracks.
 # ============================================================
 
 func start_session():
