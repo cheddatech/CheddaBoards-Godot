@@ -1,4 +1,4 @@
-# CheddaBoards.gd v2.2.0
+# CheddaBoards.gd v2.2.1
 # CheddaBoards integration for Godot 4.x
 # https://github.com/cheddatech/CheddaBoards-Godot
 # https://cheddaboards.com
