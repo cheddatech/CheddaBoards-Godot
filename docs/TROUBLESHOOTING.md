@@ -30,10 +30,12 @@ Find your problem, get the fix.
 | Scores not saving | [Score issues](#score-issues) |
 | Leaderboard empty or stale | [Leaderboard issues](#leaderboard-issues) |
 | Game-over screen won't show | [Template issues](#template-issues) |
+| Game-over screen missing Level/Accuracy/Combo | [Template issues](#template-issues) |
+| Main Menu / Leaderboard button does nothing | [Template issues](#template-issues) |
 | My game won't load / still CheddaClick | [Template issues](#template-issues) |
 | Signals not connecting | [Template issues](#template-issues) |
 | Restart / Play Again broken | [Template issues](#template-issues) |
-| HUD not updating | [Template issues](#template-issues) |
+| HUD not updating / a panel is missing | [Template issues](#template-issues) |
 | Achievements not firing | [Achievement issues](#achievement-issues) |
 | Web blank screen | [Web issues](#web-issues) |
 | Clicks offset | [Display issues](#display-issues) |
@@ -199,14 +201,17 @@ Fix checklist:
 The wrapper connects your game's signals by name, and **only if your scene actually declares them**:
 
 - **`game_over`** is required — if it's missing you get the warning above and nothing submits.
-- **`score_changed` / `stats_changed` / `time_changed`** are optional and connected only when present. A **typo in the signal name** means it's silently skipped — no error, the HUD just never updates. Check the spelling against the contract.
+- **`score_changed` / `stats_changed` / `time_changed`** are optional and connected only when present. A **typo in the signal name** means it's silently skipped — no error; that panel just never appears (the wrapper only shows panels whose signal it found). Check the spelling against the contract.
 - **Handler signature must match** the signal's argument count and types, or Godot throws a connection error.
 - **Connect once.** Connecting a signal inside a function that runs more than once stacks the connection and the handler fires multiple times — connect in `_ready()`.
 - **`profile_loaded` gained a 5th argument** (`play_count`) in v2.2.0. A 4-argument handler errors — add a trailing `play_count: int`.
 
-### HUD not updating
+### HUD not updating — or a panel is missing
 
-The built-in HUD is driven by the optional signals: **Score/Combo** from `score_changed`, the two stat slots (**Level/Misses**) from `stats_changed`, and the **timer** from `time_changed`. If a value isn't moving, you're either not emitting that signal or it's misnamed (see above).
+The built-in HUD is driven by the optional signals: **Score/Combo** from `score_changed`, the two stat slots (**Level/Misses**) from `stats_changed`, and the **timer** from `time_changed`. Two things to know (wrapper v1.1.0+):
+
+- **A whole panel is missing → that's by design.** Each panel shows *only* if your scene declares its signal. No `time_changed` signal, no timer panel; no `stats_changed`, no Level/Misses slots. Declare and emit the signal to bring the panel back. A game that declares none gets a clean empty bar instead of leftover placeholders.
+- **A panel is there but a value isn't moving** → you're either not emitting that signal during play or it's misnamed (see above).
 
 ### Restart / Play Again not working
 
@@ -220,6 +225,22 @@ So:
 - **Old state carries over after Play Again** → your `restart()` exists but isn't resetting *your* variables. The wrapper can't reach inside your game; make `restart()` return your game to a clean start.
 - **Method named something else** (`reset()`, `restart_game()`) → the wrapper won't find it and falls back to a full scene reload. Works, but slower and re-runs `_ready()`. Name it exactly `restart()` and take no arguments.
 - **Nothing happens** → an error thrown inside your `restart()`. Check the Output panel.
+
+### Game-over screen is missing Level / Accuracy / Max Combo
+
+**Not a bug — by design (wrapper v1.1.0+).** The game-over screen shows a stat field *only* if your `game_over` stats dict includes its key. Omit `accuracy` and the Accuracy line doesn't render (it no longer falls back to `0%`). To show a field, send its key:
+
+```gdscript
+game_over.emit(score, {
+    "level": level,         # shows "Level: N"
+    "accuracy": accuracy,   # shows "Accuracy: N%"
+    "max_combo": max_combo,  # shows "Max Combo: xN"
+})
+```
+
+### Main Menu or Leaderboard button does nothing
+
+The game-over **Main Menu** / **Leaderboard** buttons route to scenes set on the **Game** node. They default to `res://scenes/MainMenu.tscn` and `res://scenes/Leaderboard.tscn`; if you've moved those scenes, point the **Main Menu Scene** / **Leaderboard Scene** export vars at the new paths. A wrong or empty path fails silently — check the Output for a scene-load error.
 
 ---
 
@@ -239,7 +260,7 @@ If it says **disabled**, the `Achievements` autoload isn't registered — and th
 
 - **Score & combo** achievements fire live from `score_changed` (the wrapper calls `check_score` / `check_combo` as values change) and again at game-over (`check_game_over`). If you don't emit `score_changed`, they're only evaluated at game-over.
 - **Level achievements are your job.** The wrapper does *not* check them — call `Achievements.check_level(level)` yourself when the player levels up.
-- **IDs must match.** The achievement IDs you check against must match the keys in the `ACHIEVEMENTS` dict in `autoloads/Achievements.gd`.
+- **IDs must match.** The achievement IDs you check against must match the keys in the `achievements` dict in `autoloads/Achievements.gd` (the shipped keys are CheddaClick's examples — yours will differ once you swap them).
 
 ### Achievements unlock but don't save to my account
 
