@@ -13,7 +13,7 @@ The template ships running **CheddaClick**, the example game. This guide swaps i
 ```
 scenes/Game.tscn  (the "wrapper" — scripts/Game.gd)
    ├── loads your game scene as a child
-   ├── draws the HUD (score, combo, timer, two stat slots)
+   ├── draws the HUD (only the panels your game feeds — score/combo, timer, two stat slots)
    ├── shows the game-over screen
    └── talks to CheddaBoards (login, submit, achievements, play session)
 
@@ -49,8 +49,8 @@ signal game_over(final_score: int, stats: Dictionary)
 
 func _end_run():
     game_over.emit(score, {
-        "hits": hits,          # every key is optional — the wrapper fills defaults
-        "misses": misses,
+        "hits": hits,          # all keys optional — include a key to show its
+        "misses": misses,      # game-over field; omit it and the field is hidden
         "max_combo": max_combo,
         "level": level,
         "accuracy": accuracy,  # 0–100
@@ -75,6 +75,8 @@ This is the part that trips people up: the dict *looks* like it all gets saved, 
 
 So `level`, `accuracy`, `hits`, and `misses` are there for the game-over screen and achievement logic — they never reach the server. (Unlocked achievements and your play count *do* sync, but separately; they aren't part of the leaderboard row.) For the full picture of what is and isn't persisted, see [What CheddaBoards Stores](data-model.md).
 
+> **The game-over screen shows only the fields you send (wrapper v1.1.0+).** Omit `accuracy` and the Accuracy line doesn't appear at all — it no longer falls back to `0%`. Same for `level` and `max_combo`. So a game that tracks none of them gets a clean game-over screen (title, final score, buttons) instead of rows of zeros.
+
 Two takeaways:
 
 - **"Streak" is whatever you put in `max_combo`.** If your game's streak isn't a combo — days-in-a-row, kills-in-a-row, anything — put that number in `max_combo` and it ranks as the streak. (Or use the [Drop-in path](../quickstart-dropin.md) and call `submit_score(score, your_streak)` directly.)
@@ -84,7 +86,7 @@ Two takeaways:
 
 ## Step 3 — Feed the built-in HUD (optional)
 
-If you're using the template's HUD, add any of these three. Each is wired up **only if your scene declares it**, so include only the ones you want:
+If you're using the template's HUD, add any of these three. Each panel appears **only if your scene declares its signal**, so include the ones you want and the rest stay hidden — no empty placeholders left over:
 
 ```gdscript
 signal score_changed(score: int, combo: int)                # live score + combo
@@ -105,9 +107,9 @@ What the wrapper does with them:
 | `stats_changed` | Fills the two stat slots — labelled **Level** and **Misses** |
 | `time_changed` | Updates the **timer** (turns yellow ≤30s, red ≤10s) |
 
-The game-over screen shows **Level**, **Accuracy**, and **Max Combo** (pulled from your `game_over` stats dict).
+The game-over screen shows **Level**, **Accuracy**, and **Max Combo** — but only for the keys you include in your `game_over` stats dict. Send all three and all three show; send only `level` and that's the only one that appears.
 
-> The two stat slots are hard-labelled "Level" and "Misses" by the wrapper. If your game's concepts don't map onto those, either pass your nearest equivalent or skip `stats_changed` and leave them blank — the game still works.
+> The two stat slots are hard-labelled "Level" and "Misses" by the wrapper. If your game's concepts don't map onto those, either pass your nearest equivalent or skip `stats_changed` entirely — the panel then doesn't render at all, rather than sitting there empty.
 >
 > Skipping `score_changed` doesn't lose you achievements; score/combo achievements just get checked once at game-over instead of live.
 
@@ -125,6 +127,8 @@ Two ways:
 ```
 
 Run the project. The wrapper now loads your game instead of CheddaClick.
+
+> **If you've moved MainMenu or Leaderboard:** the game-over **Main Menu** and **Leaderboard** buttons default to `res://scenes/MainMenu.tscn` and `res://scenes/Leaderboard.tscn`. If your project keeps them elsewhere, set the **Main Menu Scene** and **Leaderboard Scene** export vars on the **Game** node to match — otherwise those buttons fail silently. Stock template layout works as-is.
 
 ---
 
