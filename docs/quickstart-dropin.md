@@ -284,6 +284,8 @@ func _on_game_over(score: int, streak: int):
     Achievements.submit_with_score(score, streak)
 ```
 
+> The `Achievements` autoload ships with CheddaClick's example achievements and check logic — replace the definitions *and* the `check_*` conditions for your own game. See [Achievements](guides/achievements.md).
+>
 > Full achievement sync requires login (Google/Apple). Anonymous users have achievements stored locally and synced once they upgrade their account.
 
 ---
