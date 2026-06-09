@@ -2,7 +2,7 @@
 
 Use CheddaBoards from **any** engine or language by calling the HTTP API directly — no Godot, no SDK. This is the same API the Godot SDK uses under the hood.
 
-> The endpoints and request bodies below were taken from the v2.2.0 SDK. Response field names are described where confirmed; check live responses for the exact shape of any field your code depends on.
+> The endpoints and request bodies below were taken from the v2.2.1 SDK. Response field names are described where confirmed; check live responses for the exact shape of any field your code depends on.
 
 ---
 
