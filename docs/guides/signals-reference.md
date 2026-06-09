@@ -116,7 +116,7 @@ signal achievements_ready()
 
 ## Your Game (Template wrapper)
 
-If you use the Template's `Game.gd` wrapper, your own game scene emits these — the wrapper listens and handles submission, the game-over screen, and achievements. **Only `game_over` is required;** the other three are optional and only feed the built-in HUD.
+If you use the Template's `Game.gd` wrapper, your own game scene emits these — the wrapper listens and handles submission, the game-over screen, and achievements. **Only `game_over` is required;** the other three are optional — each reveals its HUD panel only when your scene declares it, so omit the ones you don't need and those panels stay hidden.
 
 ```gdscript
 signal game_over(final_score: int, stats: Dictionary)         # REQUIRED — wrapper can't submit without it
