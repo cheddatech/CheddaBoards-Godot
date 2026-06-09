@@ -30,14 +30,16 @@ var achievements = {
     "score_1000":  {"name": "Beginner",   "desc": "Score 1,000 points"},
     "score_5000":  {"name": "Skilled",    "desc": "Score 5,000 points"},
 
-    # Streaks
-    "streak_10":   {"name": "On Fire",    "desc": "10 streak"},
+    # Combos (max_combo is submitted as the player's streak)
+    "combo_10":    {"name": "On Fire",    "desc": "Reach a x10 combo"},
 
     # Levels
     "level_2":     {"name": "Level 2",    "desc": "Reach Level 2"},
     "level_5":     {"name": "Master",     "desc": "Reach Level 5"},
 }
 ```
+
+> The dictionary above shows the structure with generic examples. The shipped `Achievements.gd` carries CheddaClick's actual set — cheese / combo / level achievements — which is the example you replace.
 
 ## Quick usage
 
@@ -46,7 +48,7 @@ Call these from your game-over handler, alongside your score submission:
 ```gdscript
 func _on_game_over(score: int, streak: int):
     Achievements.increment_games_played()
-    Achievements.check_game_over(score, 0, streak)   # checks score & streak achievements
+    Achievements.check_game_over(score, 0, streak)   # evaluates score, combo & hits achievements
     Achievements.submit_with_score(score, streak)
 
 func _on_level_up(level: int):
