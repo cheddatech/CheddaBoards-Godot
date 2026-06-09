@@ -207,10 +207,12 @@ The Achievements.gd autoload handles unlocking and syncing.
 
 ### Define Your Achievements
 
+> ⚠ The shipped achievements are CheddaClick's example set. Replace them before you ship — and it's **two** changes, not one: the definitions below *and* the unlock conditions in `check_score` / `check_combo` / `check_level` / `check_game_over`, which fire on CheddaClick's concepts (score, combo, hits, level, time). See [Achievements](guides/achievements.md).
+
 Edit `autoloads/Achievements.gd`:
 
 ```gdscript
-const ACHIEVEMENTS = {
+var achievements = {
     # Games played
     "games_1": {"name": "First Game", "desc": "Play your first game"},
     "games_10": {"name": "Dedicated", "desc": "Play 10 games"},
