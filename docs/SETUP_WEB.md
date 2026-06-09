@@ -2,7 +2,7 @@
 
 **Full web integration with login UI, achievements, OAuth, and account upgrade.**
 
-> **SDK Version:** 2.2.0 | [Changelog](CHANGELOG.md)
+> **SDK Version:** 2.2.1 | [Changelog](CHANGELOG.md)
 
 > Looking for the native/API setup? See [SETUP.md](SETUP.md)
 
