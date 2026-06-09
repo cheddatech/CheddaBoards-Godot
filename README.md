@@ -102,8 +102,8 @@ signal game_over(final_score: int, stats: Dictionary)
 
 func end_run():
     game_over.emit(score, {
-        "hits": hits,          # every key is optional — sensible defaults if omitted
-        "misses": misses,
+        "hits": hits,          # every key is optional — include a key to show its
+        "misses": misses,      # game-over field, omit it to hide it
         "max_combo": max_combo,
         "level": level,
         "accuracy": accuracy,  # 0–100
@@ -112,7 +112,7 @@ func end_run():
 
 The wrapper takes it from there: shows the game-over screen, submits the score, checks achievements, and closes the anti-cheat session.
 
-**Optional — feed the built-in HUD live.** Add these *only* if you're using the template's HUD. Each one is picked up automatically if (and only if) your scene declares it:
+**Optional — feed the built-in HUD live.** Add these *only* if you're using the template's HUD. Each panel appears only if your scene declares its signal — the ones you don't feed simply don't show:
 
 ```gdscript
 signal score_changed(score: int, combo: int)               # live score/combo + mid-game achievement pops
