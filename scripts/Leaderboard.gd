@@ -41,6 +41,14 @@ const TAB_DAILY: int = 2
 ## Which tab to show by default
 @export var default_tab: int = TAB_WEEKLY
 
+## Auto-refresh: silently reloads the live board on a timer so new scores
+## appear without anyone pressing Refresh. Perfect for demos / recording.
+## Set to false for normal play if you don't want background polling.
+@export var auto_refresh_enabled: bool = true
+
+## How often the silent refresh runs, in seconds (min 1.0)
+@export var auto_refresh_interval: float = 4.0
+
 # ============================================================
 # COLORS — CheddaBoards brand palette
 # ============================================================
@@ -120,6 +128,14 @@ var is_loading: bool = false
 ## Load timeout timer
 var load_timeout_timer: Timer = null
 
+## Auto-refresh polling timer
+var auto_refresh_timer: Timer = null
+
+## True while a silent auto-refresh poll is in flight.
+## Lets us suppress the "Loading..." spinner and transient error text
+## so the board updates invisibly during a recording.
+var is_silent_refresh: bool = false
+
 ## Current player nickname for highlighting
 var current_player_nickname: String = ""
 
@@ -178,6 +194,8 @@ func _ready():
 	_update_ui()
 	_load_leaderboard()
 	_load_archive_list()
+	
+	_setup_auto_refresh()
 	
 	print("[Leaderboard] v2.0.0 initialized (Mobile: %s, Scale: %.2f)" % [MobileUI.is_mobile, MobileUI.ui_scale])
 
@@ -404,6 +422,51 @@ func _clear_leaderboard():
 		child.queue_free()
 
 # ============================================================
+# AUTO-REFRESH (live polling for demos / recording)
+# ============================================================
+
+func _setup_auto_refresh():
+	if not auto_refresh_enabled:
+		return
+	auto_refresh_timer = Timer.new()
+	auto_refresh_timer.wait_time = max(1.0, auto_refresh_interval)
+	auto_refresh_timer.one_shot = false
+	auto_refresh_timer.timeout.connect(_on_auto_refresh_tick)
+	add_child(auto_refresh_timer)
+	auto_refresh_timer.start()
+	print("[Leaderboard] Auto-refresh ON (every %.1fs)" % auto_refresh_timer.wait_time)
+
+func _on_auto_refresh_tick():
+	# Skip if a manual/initial load is already mid-flight, or if we're looking
+	# at a static archived period (no point re-polling history), or if this
+	# screen isn't currently visible.
+	if is_loading or viewing_archive or not is_visible_in_tree():
+		return
+	_silent_refresh()
+
+## Re-request the live board WITHOUT clearing the list or showing "Loading...".
+## When the data comes back, _display_entries() rebuilds every row in a single
+## frame, so new/changed scores simply appear — no flicker, no spinner.
+func _silent_refresh():
+	if not CheddaBoards.is_ready():
+		return
+	is_silent_refresh = true
+	CheddaBoards.get_scoreboard(scoreboard_id, LEADERBOARD_LIMIT)
+	if CheddaBoards.has_account():
+		CheddaBoards.get_scoreboard_rank(scoreboard_id)
+
+## Toggle polling at runtime (e.g. bind to a debug key while recording).
+func set_auto_refresh(enabled: bool):
+	auto_refresh_enabled = enabled
+	if enabled:
+		if auto_refresh_timer == null:
+			_setup_auto_refresh()
+		else:
+			auto_refresh_timer.start()
+	elif auto_refresh_timer:
+		auto_refresh_timer.stop()
+
+# ============================================================
 # SIGNAL HANDLERS — SCOREBOARDS
 # ============================================================
 
@@ -420,6 +483,11 @@ func _on_scoreboard_rank_loaded(sb_id: String, rank: int, score: int, streak: in
 
 func _on_scoreboard_error(reason: String):
 	print("[Leaderboard] Error: %s" % reason)
+	if is_silent_refresh:
+		# Transient blip during a background poll — keep the current board on
+		# screen and just try again on the next tick. No red error text.
+		is_silent_refresh = false
+		return
 	_clear_load_timeout()
 	_set_loading(false)
 	status_label.text = "Error loading leaderboard"
@@ -481,6 +549,7 @@ func _format_timestamp(timestamp_ns: int) -> String:
 # ============================================================
 
 func _display_entries(entries: Array):
+	is_silent_refresh = false
 	_clear_load_timeout()
 	_set_loading(false)
 	
@@ -778,3 +847,7 @@ func show_current():
 
 func _exit_tree():
 	_clear_load_timeout()
+	if auto_refresh_timer:
+		auto_refresh_timer.stop()
+		auto_refresh_timer.queue_free()
+		auto_refresh_timer = null
