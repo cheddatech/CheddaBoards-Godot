@@ -160,7 +160,7 @@ Players get leaderboards, achievements, and anti-cheat — no further wiring.
 |---------|------------|
 | Cross-platform auth — anonymous, Google / Apple via device code, account linking | [Authentication](docs/guides/authentication.md) · [Device Code Login](docs/guides/device-code-login.md) |
 | Global leaderboards (sort by score or streak, player rank highlighted) | [Drop-in Quickstart](docs/quickstart-dropin.md) |
-| Timed scoreboards — weekly / daily / monthly, auto-reset & archive | [Timed Leaderboards](docs/guides/timed-leaderboards.md) |
+| Timed scoreboards — weekly / daily / monthly / custom, auto-reset & archive | [Timed Leaderboards](docs/guides/timed-leaderboards.md) |
 | Achievements — auto-unlock, offline cache, deferred sync, popups | [Achievements](docs/guides/achievements.md) |
 | Anti-cheat — server-side play sessions, score validation, configurable caps | [Anti-cheat](docs/guides/anti-cheat.md) |
 | Fully typed signal API across the SDK | [Signals Reference](docs/guides/signals-reference.md) |
@@ -194,6 +194,7 @@ CheddaBoards-Godot/
 │       ├── achievements.md
 │       ├── anti-cheat.md
 │       ├── timed-leaderboards.md
+│       ├── category-scoreboards.md  # Per-level / per-mode targeted boards
 │       ├── web-export.md
 │       └── signals-reference.md
 ├── template.html             # Web export template
