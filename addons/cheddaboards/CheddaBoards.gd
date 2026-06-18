@@ -9,6 +9,12 @@
 #   Player authenticates on their phone at cheddaboards.com/link
 # - Score submissions, play sessions, achievements: all via HTTP API
 #
+# v2.2.1:
+#   - Added submit_score_to_board(scoreboard_id, score, streak) for targeted
+#     "category" scoreboards (per-level / per-mode boards). Writes to one
+#     board only; does not fan out or touch the player's profile total.
+#     Emits score_submitted_to_board on success. The board must be configured
+#     as targeted in the dashboard. See docs/guides/category-scoreboards.md
 # v2.2.0:
 #   - profile_loaded signal now emits play_count as the 5th argument.
 #     Existing handlers with a 4-arg signature must add a trailing
@@ -109,6 +115,7 @@ signal nickname_error(reason: String)
 
 # --- Scores & Leaderboards (Legacy) ---
 signal score_submitted(score: int, streak: int)
+signal score_submitted_to_board(scoreboard_id: String, score: int, streak: int)
 signal score_error(reason: String)
 signal leaderboard_loaded(entries: Array)
 signal player_rank_loaded(rank: int, score: int, streak: int, total_players: int)
@@ -382,6 +389,13 @@ func _emit_http_success(data) -> void:
 			score_submitted.emit(_pending_score, _pending_streak)
 			_flush_deferred_achievements()
 		
+		"submit_score_to_board":
+			var sb_id = _current_meta.get("scoreboard_id", "")
+			var sb_score = _safe_int(_current_meta.get("score", 0))
+			var sb_streak = _safe_int(_current_meta.get("streak", 0))
+			_log("Targeted submit to '%s' successful: %d points, %d streak" % [sb_id, sb_score, sb_streak])
+			score_submitted_to_board.emit(sb_id, sb_score, sb_streak)
+		
 		"leaderboard":
 			var entries = data.get("leaderboard", [])
 			leaderboard_loaded.emit(entries)
@@ -556,6 +570,10 @@ func _emit_http_failure(error: String) -> void:
 		"submit_score":
 			_is_submitting_score = false
 			score_error.emit(error)
+		"submit_score_to_board":
+			var sb_id = _current_meta.get("scoreboard_id", "")
+			_log("Targeted submit to '%s' failed: %s" % [sb_id, error])
+			score_error.emit(error)
 		"leaderboard":
 			leaderboard_loaded.emit([])
 		"player_rank":
@@ -618,7 +636,7 @@ func _make_http_request(endpoint: String, method: int, body: Dictionary, request
 	if api_key.is_empty() and _session_token.is_empty():
 		_log("No credentials set - skipping HTTP request to %s" % endpoint)
 		match request_type:
-			"submit_score":
+			"submit_score", "submit_score_to_board":
 				score_error.emit("No credentials set")
 			"player_profile":
 				no_profile.emit()
@@ -1338,6 +1356,53 @@ func submit_score_with_achievements(score: int, streak: int, achievements: Array
 		score_body["playSessionToken"] = _play_session_token
 	_log("Submitting: score=%d, streak=%d, nickname=%s, gameId=%s, playerId=%s, session=%s" % [score, streak, score_body.nickname, game_id, score_body.playerId, _play_session_token.left(20)])
 	_make_http_request("/scores", HTTPClient.METHOD_POST, score_body, "submit_score")
+
+## Submit a score to ONE specific (targeted) scoreboard, by ID.
+##
+## Unlike submit_score(), this does NOT fan out to your all-time / weekly /
+## daily boards and does NOT update the player's overall profile total. It
+## writes to the named board only. The board must exist AND be configured as
+## a "targeted" board in the dashboard, otherwise the backend returns an error.
+##
+## Use it for per-level, per-mode, or category leaderboards:
+##     CheddaBoards.submit_score_to_board("level-14", score, streak)
+##
+## If the game has time validation enabled, start a play session first
+## (start_play_session) exactly as you would for submit_score — the active
+## play-session token is attached automatically when present.
+##
+## Emits score_submitted_to_board(scoreboard_id, score, streak) on success,
+## or score_error(reason) on failure. Safe to call several times in a row for
+## different boards; each call queues with its own values (it carries score /
+## streak / board id in request meta rather than the shared _pending_* fields,
+## so queued submits don't clobber each other).
+func submit_score_to_board(scoreboard_id: String, score: int, streak: int = 0) -> void:
+	if not is_authenticated():
+		_log("Not authenticated, cannot submit to board")
+		score_error.emit("Not authenticated")
+		return
+	
+	if scoreboard_id.is_empty():
+		score_error.emit("scoreboard_id is required")
+		return
+	
+	var body = {
+		"playerId": get_player_id(),
+		"gameId": game_id,
+		"score": score,
+		"streak": streak,
+		"nickname": _nickname if _nickname != "" else _get_default_nickname(),
+		"scoreboardId": scoreboard_id
+	}
+	if _play_session_token != "":
+		body["playSessionToken"] = _play_session_token
+	
+	_log("Submitting to board '%s': score=%d, streak=%d, player=%s" % [scoreboard_id, score, streak, body.playerId])
+	_make_http_request("/scores", HTTPClient.METHOD_POST, body, "submit_score_to_board", {
+		"scoreboard_id": scoreboard_id,
+		"score": score,
+		"streak": streak
+	})
 
 # ============================================================
 # PUBLIC API - PLAY SESSIONS (Time Validation)
