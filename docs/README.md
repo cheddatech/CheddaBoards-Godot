@@ -37,7 +37,8 @@ Three ways in. The difference is really *how much UI we hand you* versus *how mu
 | Feature | The short version | Learn more |
 |---------|-------------------|------------|
 | **Global leaderboards** | Submit a score + streak, read the top 100, highlight the player's own rank | Quickstarts |
-| **Timed scoreboards** | Weekly / daily / monthly boards that reset and archive automatically | [Guide](guides/timed-leaderboards.md) |
+| **Timed scoreboards** | Weekly / daily / monthly / custom-interval boards that reset and archive automatically | [Guide](guides/timed-leaderboards.md) |
+| **Category scoreboards** | Per-level / per-mode targeted boards under one game — submit to one board by ID | [Guide](guides/category-scoreboards.md) |
 | **Achievements** | Auto-unlock on score/streak/level, offline cache, deferred sync, popups | [Guide](guides/achievements.md) |
 | **Device Code Auth** | Google / Apple sign-in on *any* platform via QR + code — no OAuth SDKs | [Guide](guides/device-code-login.md) |
 | **Account linking** | Anonymous players upgrade to Google / Apple later, keeping all progress | [Guide](guides/authentication.md) |
@@ -68,7 +69,8 @@ Anonymous play works everywhere with zero setup — no account required to start
 | [API Quickstart](quickstart-api.md) | Raw REST integration from any engine |
 | [Setup & Platforms](SETUP.md) | Detailed setup, autoloads, achievements, anti-cheat |
 | [Web Export](guides/web-export.md) | Browser export: HTML shell, index.html, local serving |
-| [Timed Leaderboards](guides/timed-leaderboards.md) | Weekly / daily / monthly competitions & archives |
+| [Timed Leaderboards](guides/timed-leaderboards.md) | Weekly / daily / monthly / custom-interval competitions & archives |
+| [Category Scoreboards](guides/category-scoreboards.md) | Per-level / per-mode targeted leaderboards under one game |
 | [Authentication](guides/authentication.md) | Device code auth, QR, account linking |
 | [Device Code Login](guides/device-code-login.md) | Build the social sign-in screen (QR rendering, signals) |
 | [Achievements](guides/achievements.md) | Definitions, sync, notifications |
