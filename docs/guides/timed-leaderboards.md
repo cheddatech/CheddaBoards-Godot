@@ -14,12 +14,15 @@ CheddaBoards supports time-based scoreboards that automatically reset and archiv
 | **Weekly** | Every Monday | 52 | Weekly competitions |
 | **Daily** | Every midnight | 90 | Daily challenges |
 | **Monthly** | 1st of month | 12 | Monthly tournaments |
+| **Custom interval** | Every N days | 52 | Sprints, bi-weekly events, custom cadences |
+
+> **Timed vs targeted:** the *reset cadence* above is independent of a board's *write mode*. By default a board is **fan-out** (it receives every score submit). You can instead make a board **targeted** so it only receives scores sent to it by ID — for per-level or per-category leaderboards. Any reset cadence here works with either mode. See [Category & Targeted Scoreboards](category-scoreboards.md).
 
 ---
 
 ## Setup in Dashboard
 
-1. Go to [cheddaboards.com/dashboard](https://cheddaboards.com/dashboard)
+1. Go to [cheddaboards.com/developers](https://cheddaboards.com/developers)
 2. Select your game → **Scoreboards**
 3. Click **Add Scoreboard**
 4. Configure:
@@ -31,17 +34,21 @@ CheddaBoards supports time-based scoreboards that automatically reset and archiv
 | Reset Period | `Weekly` | When to archive & reset |
 | Sort By | `Score (High to Low)` | Ranking method |
 
+> **Custom interval:** choose **Custom interval (every N days)** as the Reset Period and set **Reset Every (days)** to reset on your own cadence — e.g. every `3` days for a short sprint, or every `14` for a fortnightly event. Leave the days blank and the board never auto-resets (same as All-Time).
+
 ---
 
 ## Basic Usage
 
 ### Submitting to scoreboards
 
-You don't submit to a board directly. Submit once, and the backend routes the score to every scoreboard configured for your game (all-time, weekly, daily…):
+For standard (fan-out) boards you don't submit to a board directly. Submit once, and the backend routes the score to every fan-out scoreboard configured for your game (all-time, weekly, daily…):
 
 ```gdscript
 CheddaBoards.submit_score(score, streak)
 ```
+
+> This fan-out reaches your standard boards only. A **targeted** board (per-level / category) is *not* in the fan-out — you submit to it explicitly by ID. See [Category & Targeted Scoreboards](category-scoreboards.md).
 
 ### Get Current Standings
 
@@ -203,7 +210,7 @@ When loading scoreboards/archives, the `config` dictionary contains:
 {
     "name": "Weekly Challenge",       # Display name
     "scoreboardId": "weekly-scoreboard",
-    "resetPeriod": "weekly",          # daily, weekly, monthly, never
+    "resetPeriod": "weekly",          # daily, weekly, monthly, custom, never
     "sortBy": "score",                # score or streak
     "sortDirection": "desc",          # desc (high first) or asc
     "periodStart": 1703548800000000000,  # Nanosecond timestamp
@@ -290,6 +297,7 @@ curl "https://api.cheddaboards.com/games/my-game/scoreboards/weekly/archives/lat
 | Max archives (weekly) | 52 |
 | Max archives (daily) | 90 |
 | Max archives (monthly) | 12 |
+| Max archives (custom interval) | 52 |
 | Archive ID format | `gameId:scoreboardId:timestamp` |
 | Timestamp format | Nanoseconds (ICP standard) |
 
@@ -297,7 +305,8 @@ curl "https://api.cheddaboards.com/games/my-game/scoreboards/weekly/archives/lat
 
 ## Links
 
-- **Dashboard:** [cheddaboards.com/dashboard](https://cheddaboards.com/dashboard)
+- **Dashboard:** [cheddaboards.com/developers](https://cheddaboards.com/developers)
+- **Category boards:** [Category & Targeted Scoreboards](category-scoreboards.md)
 - **Quickstart:** [Drop-in Quickstart](../quickstart-dropin.md)
 - **GitHub:** [github.com/cheddatech/CheddaBoards-Godot](https://github.com/cheddatech/CheddaBoards-Godot)
 
