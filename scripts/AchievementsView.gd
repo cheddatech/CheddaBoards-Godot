@@ -202,7 +202,17 @@ func _create_achievement_item(achievement: Dictionary) -> PanelContainer:
 	status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	status_container.add_child(status_label)
 	
+	_make_passthrough(panel)
 	return panel
+
+func _make_passthrough(node: Node) -> void:
+	# Let touch-drags fall through to the ScrollContainer so it scrolls on
+	# mobile/web. Otherwise each panel (mouse_filter STOP by default) eats the
+	# gesture and the list won't scroll by finger. PASS keeps panels tappable.
+	if node is Control:
+		node.mouse_filter = Control.MOUSE_FILTER_PASS
+	for child in node.get_children():
+		_make_passthrough(child)
 
 func _create_icon(achievement: Dictionary) -> Control:
 	"""Create icon or placeholder for achievement"""
