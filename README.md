@@ -7,7 +7,7 @@
 **A complete game template with leaderboards, achievements, and cross-platform auth built in.**
 **Download → Add your game → Export. That's it.**
 
-> **SDK 2.2.1** · Godot 4.6+ · Windows / Mac / Linux / Mobile / Web · MIT · Free tier · [Changelog](docs/CHANGELOG.md)
+> **SDK 2.2.2** · Godot 4.6+ · Windows / Mac / Linux / Mobile / Web · MIT · Free tier · [Changelog](docs/CHANGELOG.md)
 
 <p align="center">
   <img src="screenshots/screenshot1.png" alt="In-game" width="45%"/>
