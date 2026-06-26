@@ -1,14 +1,29 @@
-# MainMenu.gd v2.1.5
+# MainMenu.gd v2.1.6
 # Main menu with authentication flow and profile display
 # - Login panel: PLAY NOW (with name entry), Leaderboard, and Sign In (device code)
 # - Name entry panel: For new anonymous players to set their display name
 # - Anonymous panel: Dashboard for returning anonymous players (after first game)
 # - Main panel: Profile stats when logged in via device code (Google/Apple/II)
 # - Account upgrade: Anonymous players can link accounts via device code
-# - Shows weekly score and games played
+# - Shows all-time score and games played
 # - MobileUI integration for responsive scaling
 # https://github.com/cheddatech/CheddaBoards-Godot
 #
+# v2.1.6: Web name input fix (mobile browsers).
+#          Godot's in-engine LineEdit can't receive typed characters on
+#          mobile web browsers (backspace registers, typing doesn't), so
+#          name entry was effectively broken in the HTML5 export. On web,
+#          _show_name_entry_panel() now hands off to a real browser HTML
+#          input via JavaScriptBridge instead of the in-engine panel, then
+#          feeds the result back through the normal confirm flow unchanged.
+#          Native builds are untouched (gated behind OS.has_feature("web")).
+#          REQUIRES two JS helpers in your web export shell/head:
+#            - chedda_prompt_name(default, mode, minLen, maxLen): opens the
+#              HTML input. mode is "first_play" or "rename".
+#            - chedda_poll_name(): returns null while open, otherwise a JSON
+#              string {"cancelled": bool, "name": string}. Cleared after read.
+#          Also: default SCOREBOARD_ID is now "all-time" (was "weekly"), and
+#          stat labels read "All-Time:" — change the const if you want weekly.
 # v2.1.5: Clear local anonymous state when it's no longer valid.
 #          After linking/upgrading an anonymous account into a real one, the
 #          stale on-disk anon markers (nickname + has_played) used to route a
@@ -77,7 +92,7 @@ const SCENE_ACHIEVEMENTS: String = "res://scenes/AchievementsView.tscn"
 const DEVICE_ID_FILE: String = "user://device_id.txt"
 
 # CheddaBoards configuration for rank fetching
-const SCOREBOARD_ID: String = "weekly"  # Scoreboard to fetch rank from
+const SCOREBOARD_ID: String = "all-time"  # Scoreboard to fetch rank from
 
 const UI_TIMEOUT_DURATION: float = 40.0
 const PROFILE_TIMEOUT_DURATION: float = 10.0
@@ -184,6 +199,9 @@ var _is_upgrading: bool = false
 
 # Name entry context: "first_play" = start game after, "rename" = return to dashboard after
 var _name_entry_mode: String = "first_play"
+
+# Web name modal: true while waiting for the browser HTML input to return a name
+var _awaiting_web_name: bool = false
 
 # ============================================================
 # TIMERS
@@ -761,6 +779,20 @@ func _show_login_panel():
 func _show_name_entry_panel(mode: String = "first_play"):
 	"""Show name entry panel. Mode: 'first_play' = start game after, 'rename' = return to dashboard"""
 	_name_entry_mode = mode
+
+	# WEB: Godot's in-engine LineEdit can't receive typed characters on mobile
+	# browsers (backspace works, typing doesn't). Collect the name with a real
+	# browser HTML input instead, then run the normal confirm flow with it.
+	if OS.has_feature("web"):
+		var web_default := ""
+		if mode == "rename":
+			var cur := CheddaBoards.get_nickname()
+			web_default = cur if cur != "" else anonymous_nickname
+		else:
+			web_default = anonymous_nickname if not anonymous_nickname.is_empty() else _generate_default_name()
+		_open_web_name_modal(web_default, mode)
+		return
+
 	login_panel.visible = false
 	main_panel.visible = false
 	name_entry_panel.visible = true
@@ -803,6 +835,32 @@ func _show_name_entry_panel(mode: String = "first_play"):
 	name_line_edit.grab_focus()
 	_update_confirm_button_state()
 
+func _open_web_name_modal(default_text: String, mode: String) -> void:
+	"""Open the browser HTML name input (web only) and start polling for its result."""
+	var safe_default := default_text.replace("\\", "").replace("\"", "")
+	var js := "chedda_prompt_name(\"%s\", \"%s\", %d, %d)" % [safe_default, mode, MIN_NAME_LENGTH, MAX_NAME_LENGTH]
+	JavaScriptBridge.eval(js, true)
+	_awaiting_web_name = true
+
+func _process(_delta):
+	# Only active briefly while the browser name modal is open (web only)
+	if not _awaiting_web_name:
+		return
+	var res = JavaScriptBridge.eval("chedda_poll_name()", true)
+	if res == null:
+		return
+	_awaiting_web_name = false
+	var parsed = JSON.parse_string(str(res))
+	if typeof(parsed) != TYPE_DICTIONARY:
+		_on_cancel_name_pressed()
+		return
+	if parsed.get("cancelled", false):
+		_on_cancel_name_pressed()
+	else:
+		# Feed the typed name into the existing confirm flow unchanged
+		name_line_edit.text = str(parsed.get("name", ""))
+		_on_confirm_name_pressed()
+
 func _show_anonymous_panel():
 	"""Show anonymous player dashboard (returning anonymous player)"""
 	login_panel.visible = false
@@ -822,7 +880,7 @@ func _show_anonymous_panel():
 	
 	# Loading state while we fetch stats
 	if anon_weekly_score_label:
-		anon_weekly_score_label.text = "This Week: --"
+		anon_weekly_score_label.text = "All-Time: --"
 	if anon_rank_label:
 		anon_rank_label.text = "Rank: --"
 	if anon_plays_label:
@@ -915,7 +973,7 @@ func _load_anonymous_stats():
 	else:
 		_log("No cached profile, showing placeholders")
 		if anon_weekly_score_label:
-			anon_weekly_score_label.text = "This Week: --"
+			anon_weekly_score_label.text = "All-Time: --"
 		if anon_rank_label:
 			anon_rank_label.text = "Rank: --"
 		if anon_plays_label:
@@ -937,26 +995,26 @@ func _update_anonymous_panel_stats(profile: Dictionary):
 		if anon_welcome_label:
 			anon_welcome_label.text = "Welcome back, %s!" % profile_nickname
 	
-	var weekly_score = int(profile.get("score", 0))
+	var all_time_score = int(profile.get("score", 0))
 	var play_count = int(profile.get("playCount", profile.get("plays", 0)))
 	var rank = int(profile.get("rank", profile.get("position", 0)))
 	
-	if weekly_score == 0:
-		weekly_score = CheddaBoards.get_high_score()
+	if all_time_score == 0:
+		all_time_score = CheddaBoards.get_high_score()
 	if play_count == 0:
 		play_count = CheddaBoards.get_play_count()
 	
-	_update_anonymous_panel_stats_direct(weekly_score, play_count, rank)
+	_update_anonymous_panel_stats_direct(all_time_score, play_count, rank)
 	
 	if rank == 0:
 		_fetch_player_rank()
 
-func _update_anonymous_panel_stats_direct(weekly_score: int, play_count: int, rank: int = 0):
+func _update_anonymous_panel_stats_direct(all_time_score: int, play_count: int, rank: int = 0):
 	"""Update the anonymous panel with stats values directly"""
-	_log("Updating anon panel stats: weekly=%d, rank=%d, plays=%d" % [weekly_score, rank, play_count])
+	_log("Updating anon panel stats: all_time=%d, rank=%d, plays=%d" % [all_time_score, rank, play_count])
 	
 	if anon_weekly_score_label:
-		anon_weekly_score_label.text = "This Week: %d" % weekly_score
+		anon_weekly_score_label.text = "All-Time: %d" % all_time_score
 	_set_rank_label(anon_rank_label, rank)
 	if anon_plays_label:
 		anon_plays_label.text = "Games Played: %d" % play_count
@@ -1006,7 +1064,7 @@ func _show_main_panel_loading():
 	
 	welcome_label.text = "Loading..."
 	if weekly_score_label:
-		weekly_score_label.text = "This Week: --"
+		weekly_score_label.text = "All-Time: --"
 	if rank_label:
 		rank_label.text = "Rank: --"
 	if plays_label:
@@ -1034,13 +1092,13 @@ func _show_main_panel(profile: Dictionary):
 	# an empty nickname from the SDK's new "" for unnamed anonymous players.
 	if nickname.is_empty():
 		nickname = "Player"
-	var weekly = int(profile.get("score", 0))
+	var all_time_score = int(profile.get("score", 0))
 	var play_count = int(profile.get("playCount", profile.get("plays", 0)))
 	var rank = int(profile.get("rank", 0))
 	
 	welcome_label.text = "Welcome, %s!" % nickname
 	if weekly_score_label:
-		weekly_score_label.text = "This Week: %d" % weekly
+		weekly_score_label.text = "All-Time: %d" % all_time_score
 	_set_rank_label(rank_label, rank)
 	if plays_label:
 		plays_label.text = "Games Played: %d" % play_count
@@ -1056,13 +1114,13 @@ func _update_main_panel_stats(profile: Dictionary):
 	var nickname = str(profile.get("nickname", "Player"))
 	if nickname.is_empty():
 		nickname = "Player"
-	var weekly = int(profile.get("score", 0))
+	var all_time_score = int(profile.get("score", 0))
 	var play_count = int(profile.get("playCount", profile.get("plays", 0)))
 	var rank = int(profile.get("rank", 0))
 	
 	welcome_label.text = "Welcome, %s!" % nickname
 	if weekly_score_label:
-		weekly_score_label.text = "This Week: %d" % weekly
+		weekly_score_label.text = "All-Time: %d" % all_time_score
 	_set_rank_label(rank_label, rank)
 	if plays_label:
 		plays_label.text = "Games Played: %d" % play_count
@@ -1390,7 +1448,7 @@ func _on_profile_loaded(nickname: String, score: int, _streak: int, achievements
 	SDK v2.2.0+ emits play_count as 5th arg — prefer it over digging into
 	the cached profile dict, which can be stale or inconsistently shaped
 	between session-auth and API-key paths."""
-	_log("Profile loaded: %s (weekly score: %d, plays: %d)" % [nickname, score, play_count])
+	_log("Profile loaded: %s (all-time score: %d, plays: %d)" % [nickname, score, play_count])
 	
 	# If backend has different nickname (e.g. auto-suffixed), update local storage
 	if CheddaBoards.is_anonymous() and not nickname.is_empty():
