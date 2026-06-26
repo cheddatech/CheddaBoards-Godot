@@ -2,29 +2,32 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
   <!-- Change this to your game's name -->
   <title>My CheddaBoards Game</title>
-
   <!-- ============================================================
-       CheddaBoards web export shell — v2
+       CheddaBoards web export shell — v2.2.2
        ------------------------------------------------------------
-       This file is ONLY a loading screen + the Godot engine
-       bootstrap. Nothing else.
+       A loading screen, the Godot engine bootstrap, and one small
+       mobile helper. The game talks to CheddaBoards from GDScript
+       over the HTTP API and signs players in with Device Code Auth,
+       so the old v1 JavaScript SDK, OAuth scripts, and CONFIG block
+       are NOT needed here.
 
-       In v2 the game talks to CheddaBoards from GDScript over the
-       HTTP API, and signs players in with Device Code Auth — so the
-       SDK, OAuth scripts, and the old JavaScript bridge are NOT
-       needed here. If you find a big CONFIG block, a
-       `cheddaboards_v1` CDN script, or `window.chedda_*` functions
-       in a template.html, that's the legacy v1.x shell — this
-       replaces it.
+       The ONE piece of JS the game relies on is the mobile-safe
+       name input (window.chedda_prompt_name / window.chedda_poll_name)
+       further down. Godot's in-engine LineEdit can't receive typed
+       characters on mobile browsers, so on web MainMenu.gd opens this
+       HTML input instead and polls it for the result. Remove it and
+       desktop web still works, but mobile players can't type a name.
+
+       NOTE: these chedda_* helpers are a tiny, self-contained name
+       prompt — NOT the legacy v1 `cheddaboards_v1` CDN bridge. If you
+       find that script, a large CONFIG block, or per-player OAuth in a
+       template.html, that's the old v1 shell and this file replaces it.
        ============================================================ -->
-
   <!-- Godot engine loader -->
   <script src="index.js"></script>
-
   <style>
     html, body {
       margin: 0;
@@ -32,8 +35,9 @@
       overflow: hidden;
       background: #000;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      touch-action: none;          /* stop browser pan/zoom gestures over the game */
+      overscroll-behavior: none;   /* no rubber-band / pull-to-refresh on mobile  */
     }
-
     #preload {
       position: absolute;
       inset: 0;
@@ -42,44 +46,39 @@
       align-items: center;
       justify-content: center;
       background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
-      color: #FFD700;
+      color: #E0B03F;
       z-index: 9999;
       transition: opacity 0.5s ease-out;
     }
-
     #preload.fade {
       opacity: 0;
       pointer-events: none;
     }
-
     .loading-text {
       font-size: 1.2rem;
       margin-bottom: 1rem;
       animation: pulse 1.5s ease-in-out infinite;
     }
-
     #spin {
       width: 40px;
       height: 40px;
-      border: 3px solid rgba(255, 215, 0, 0.2);
-      border-top: 3px solid #FFD700;
+      border: 3px solid rgba(224, 176, 63, 0.2);
+      border-top: 3px solid #E0B03F;
       border-radius: 50%;
       animation: spin 1s linear infinite;
     }
-
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
-
     @keyframes pulse {
       0%, 100% { opacity: 1; }
       50% { opacity: 0.7; }
     }
-
     canvas {
       width: 100vw;
       height: 100vh;
       object-fit: contain;
+      touch-action: none;
     }
   </style>
 </head>
@@ -89,14 +88,131 @@
     <div class="loading-text">Loading...</div>
     <div id="spin"></div>
   </div>
-
   <!-- Godot canvas -->
   <canvas id="canvas">Your browser doesn't support HTML5 canvas.</canvas>
 
+  <!-- ============================================================
+       Mobile-safe name input (required by MainMenu.gd on web)
+       ------------------------------------------------------------
+       Godot opens it:  JavaScriptBridge.eval('chedda_prompt_name("Bob","rename",2,16)')
+       Godot polls it:  JavaScriptBridge.eval("chedda_poll_name()")  -> JSON string or null
+       Poll result JSON: {"ready":true,"name":"Bob","cancelled":false}
+       Self-contained: injects its own styles on first use, cleans up on close.
+       ============================================================ -->
+  <script>
+    window.chedda_prompt_name = function(defaultValue, mode, minLen, maxLen) {
+      minLen = minLen || 2;
+      maxLen = maxLen || 16;
+      window._cheddaNameResult = null;
+
+      const existing = document.getElementById('chedda-name-modal');
+      if (existing) existing.remove();
+
+      const isRename = mode === 'rename';
+      const modal = document.createElement('div');
+      modal.id = 'chedda-name-modal';
+      modal.innerHTML = `
+        <div class="cnm-backdrop"></div>
+        <div class="cnm-container">
+          <div class="cnm-title">${isRename ? 'Change Name' : 'Enter Your Name'}</div>
+          <input type="text" class="cnm-input" value="${String(defaultValue || '').replace(/"/g, '&quot;')}" maxlength="${maxLen}" placeholder="Your name..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+          <div class="cnm-status"></div>
+          <div class="cnm-buttons">
+            <button class="cnm-btn cnm-cancel">Cancel</button>
+            <button class="cnm-btn cnm-confirm">${isRename ? 'Save' : "Let's Go!"}</button>
+          </div>
+        </div>`;
+
+      // Inject the shared cnm-* styles once
+      if (!document.getElementById('cnm-style')) {
+        const style = document.createElement('style');
+        style.id = 'cnm-style';
+        style.textContent = `
+          #chedda-name-modal { position: fixed; inset: 0; z-index: 999999; display: flex; align-items: center; justify-content: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+          .cnm-backdrop { position: absolute; inset: 0; background: rgba(8,6,3,0.82); backdrop-filter: blur(3px); }
+          .cnm-container { position: relative; background: linear-gradient(160deg, #211a0f 0%, #15110a 100%); border: 1px solid rgba(224,176,63,0.35); border-radius: 16px; padding: 24px; width: 90%; max-width: 320px; box-shadow: 0 12px 40px rgba(0,0,0,0.6); }
+          .cnm-title { color: #F7D774; font-size: 20px; font-weight: 800; text-align: center; margin-bottom: 16px; text-shadow: 0 2px 0 #9A6B1E; }
+          .cnm-input { width: 100%; padding: 14px; font-size: 18px; border: 2px solid #3a2f17; border-radius: 8px; background: #0f0c06; color: #fff; text-align: center; box-sizing: border-box; }
+          .cnm-input:focus { outline: none; border-color: #E0B03F; box-shadow: 0 0 0 3px rgba(224,176,63,0.18); }
+          .cnm-input.valid { border-color: #6FCF6B; }
+          .cnm-input.invalid { border-color: #f44336; }
+          .cnm-status { height: 24px; margin: 12px 0; text-align: center; font-size: 14px; }
+          .cnm-status.available { color: #6FCF6B; }
+          .cnm-status.taken { color: #f44336; }
+          .cnm-buttons { display: flex; gap: 12px; }
+          .cnm-btn { flex: 1; padding: 14px; font-size: 16px; font-weight: 700; border: none; border-radius: 8px; cursor: pointer; }
+          .cnm-btn:active { transform: translateY(1px); }
+          .cnm-cancel { background: #2a2114; color: #d8c69a; }
+          .cnm-confirm { background: linear-gradient(180deg, #F7D774, #E0B03F); color: #15110a; box-shadow: 0 2px 0 #9A6B1E; }
+          .cnm-confirm:disabled { background: #4a3f29; color: #8a7c5c; box-shadow: none; cursor: not-allowed; }
+        `;
+        document.head.appendChild(style);
+      }
+      document.body.appendChild(modal);
+
+      const input = modal.querySelector('.cnm-input');
+      const status = modal.querySelector('.cnm-status');
+      const confirmBtn = modal.querySelector('.cnm-confirm');
+      const cancelBtn = modal.querySelector('.cnm-cancel');
+      const backdrop = modal.querySelector('.cnm-backdrop');
+
+      // Keyboard guard: stop the Godot canvas from eating keystrokes
+      const canvas = document.getElementById('canvas');
+      if (canvas) { try { canvas.blur(); } catch (e) {} }
+      ['keydown', 'keyup', 'keypress', 'input', 'textInput'].forEach(evt => {
+        input.addEventListener(evt, (e) => e.stopPropagation());
+      });
+
+      const validate = () => {
+        const v = input.value.trim();
+        if (v.length < minLen) {
+          status.textContent = v.length ? ('Min ' + minLen + ' characters') : '';
+          status.className = 'cnm-status'; input.className = 'cnm-input' + (v.length ? ' invalid' : '');
+          confirmBtn.disabled = true; return;
+        }
+        if (v.length > maxLen) {
+          status.textContent = 'Max ' + maxLen + ' characters';
+          status.className = 'cnm-status taken'; input.className = 'cnm-input invalid';
+          confirmBtn.disabled = true; return;
+        }
+        status.textContent = '✓ Looks good';
+        status.className = 'cnm-status available'; input.className = 'cnm-input valid';
+        confirmBtn.disabled = false;
+      };
+      input.addEventListener('input', validate);
+      validate();
+
+      setTimeout(() => { input.focus(); try { input.select(); } catch (e) {} }, 100);
+
+      const finish = (name, cancelled) => {
+        modal.remove();
+        window._cheddaNameResult = { ready: true, name: name, cancelled: !!cancelled };
+        if (canvas) setTimeout(() => { try { canvas.focus(); } catch (e) {} }, 50);
+      };
+      confirmBtn.addEventListener('click', () => { if (!confirmBtn.disabled) finish(input.value.trim(), false); });
+      cancelBtn.addEventListener('click', () => finish(null, true));
+      backdrop.addEventListener('click', () => finish(null, true));
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !confirmBtn.disabled) finish(input.value.trim(), false); });
+    };
+
+    window.chedda_poll_name = function() {
+      if (window._cheddaNameResult && window._cheddaNameResult.ready) {
+        const r = JSON.stringify(window._cheddaNameResult);
+        window._cheddaNameResult = null;
+        return r;
+      }
+      return null;
+    };
+  </script>
+
+  <!-- ============================================================
+       Godot engine bootstrap
+       ------------------------------------------------------------
+       Start the engine once the page has loaded, then fade out the
+       loading screen. `executable: 'index'` means the export must be
+       named index.html (it loads index.js / index.pck / index.wasm).
+       ============================================================ -->
   <script type="module">
-    // Start the Godot engine once the page has loaded, then fade out
-    // the loading screen. `executable: 'index'` means the export must
-    // be named index.html (it loads index.js / index.pck / index.wasm).
     window.addEventListener('load', async () => {
       try {
         const engine = new Engine({
@@ -106,9 +222,7 @@
           focusCanvas: true,
           canvas: document.getElementById('canvas')
         });
-
         await engine.startGame();
-
         setTimeout(() => {
           const preload = document.getElementById('preload');
           preload?.classList.add('fade');
