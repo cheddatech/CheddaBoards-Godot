@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.2.2] - 2026-06-26
+
+### Mobile Web Fixes & Category Boards
+
+Backwards-compatible release. Two mobile HTML5-export fixes (name entry and touch scrolling) plus a new scoreboard type — **category boards** — for running per-level / per-mode leaderboards under a single game. No breaking changes, no migration required.
+
+### Added
+
+#### Category Boards (targeted scoreboards)
+- New **category board** scoreboard type for per-level, per-mode, or per-category leaderboards under one game — no separate game registration per board
+- A category board is a scoreboard with a `Custom` reset period: it never resets or archives, and is written **only** by targeted submissions
+- `submit_score_to_board(scoreboard_id, score, streak)` — submit a score to one specific board by ID
+- Plain `submit_score()` fans out to your timed boards (all-time / daily / weekly / monthly) and now **skips** category boards, so a normal submission never lands on a per-level board
+- Category submissions are independent of the player's all-time / total score, so per-level scores don't inflate the game-wide leaderboard
+- Submitting to a board that doesn't exist (or targeting a timed board) returns a clear error rather than silently creating or mis-routing the score
+- Display uses the existing `get_scoreboard(id)` / `list_scoreboards()` — no new fetch API to learn
+
+> Category boards are created in the dashboard: **Game → Scoreboards → Add Scoreboard → Reset Period = `Custom`**. Create one ID per thing you want to rank (e.g. `level-01` … `level-28`, `time-trial`, `boss-rush`), then point `submit_score_to_board()` at it.
+
+### Fixed
+
+#### Mobile Web — Name Entry (`MainMenu.gd`)
+- Godot's in-engine `LineEdit` can't receive typed characters on mobile browsers — backspace registered but typing didn't — which left name entry effectively broken in the HTML5 export. On web, `_show_name_entry_panel()` now hands off to a real browser HTML input via `JavaScriptBridge` and feeds the result back through the normal confirm flow unchanged. Native builds are untouched (gated behind `OS.has_feature("web")`).
+- **Requires two helpers in your web export shell:**
+  - `chedda_prompt_name(default, mode, minLen, maxLen)` — opens the HTML input. `mode` is `"first_play"` or `"rename"`.
+  - `chedda_poll_name()` — returns `null` while open, otherwise a JSON string `{"cancelled": bool, "name": string}`, cleared after read.
+
+#### Mobile Web — Touch Scrolling
+- Touch-drag scrolling now works in `ScrollContainer`-based UIs (the leaderboard and other scrollable lists) in the HTML5 export on mobile. Previously these lists couldn't be dragged on touch devices.
+
+### Migration from v2.2.1
+
+No code changes required. Category boards are additive — opt in by creating a `Custom`-period scoreboard and calling `submit_score_to_board()`; existing games keep working unchanged. For the mobile-web name fix, make sure the two `chedda_*` helpers are present in your web export shell (the repo's template shell ships with them).
+
+---
+
 ## [2.2.1] - 2026-06-09
 
 ### Clean Slate
