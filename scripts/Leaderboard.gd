@@ -39,7 +39,7 @@ const TAB_WEEKLY: int = 1
 const TAB_DAILY: int = 2
 
 ## Which tab to show by default
-@export var default_tab: int = TAB_WEEKLY
+@export var default_tab: int = TAB_ALL_TIME
 
 ## Auto-refresh: silently reloads the live board on a timer so new scores
 ## appear without anyone pressing Refresh. Perfect for demos / recording.
@@ -138,6 +138,10 @@ var is_silent_refresh: bool = false
 
 ## Current player nickname for highlighting
 var current_player_nickname: String = ""
+
+## The row node for the current player, captured while the list is built.
+## Used to auto-scroll the board to where the player sits on load.
+var _player_entry: Control = null
 
 ## Archive mode: false = current period, true = viewing an archive
 var viewing_archive: bool = false
@@ -549,6 +553,7 @@ func _format_timestamp(timestamp_ns: int) -> String:
 # ============================================================
 
 func _display_entries(entries: Array):
+	var was_silent: bool = is_silent_refresh
 	is_silent_refresh = false
 	_clear_load_timeout()
 	_set_loading(false)
@@ -562,11 +567,19 @@ func _display_entries(entries: Array):
 	status_label.add_theme_color_override("font_color", COLOR_TEXT_DIM)
 	
 	_clear_leaderboard()
+	_player_entry = null
 	
 	var sorted_entries = _sort_entries(entries)
 	
 	for i in range(sorted_entries.size()):
 		_add_leaderboard_entry(i + 1, sorted_entries[i])
+	
+	# On a real (non-silent) load, bring the player's own row into view so they
+	# see where they stand instead of always starting at #1. Skipped during a
+	# silent auto-refresh so background polls don't yank the view back to the
+	# player while someone is scrolling around the board.
+	if not was_silent:
+		_scroll_to_player()
 
 func _sort_entries(entries: Array) -> Array:
 	var sorted = entries.duplicate()
@@ -615,6 +628,7 @@ func _add_leaderboard_entry(rank: int, entry) -> void:
 	
 	if is_current_player:
 		stylebox.bg_color = COLOR_HIGHLIGHT_PLAYER
+		_player_entry = entry_container
 	elif rank == 1:
 		stylebox.bg_color = COLOR_HIGHLIGHT_GOLD
 	elif rank == 2:
@@ -686,6 +700,17 @@ func _add_leaderboard_entry(rank: int, entry) -> void:
 	hbox.add_child(value_label)
 	
 	leaderboard_list.add_child(entry_container)
+	_make_passthrough(entry_container)
+
+func _make_passthrough(node: Node) -> void:
+	# Let touch-drags fall through to the ScrollContainer so it scrolls on
+	# mobile/web. Otherwise each row (PanelContainer defaults to mouse_filter
+	# STOP) swallows the gesture and the board won't scroll by finger.
+	# PASS (not IGNORE) keeps the rows tappable for future use.
+	if node is Control:
+		node.mouse_filter = Control.MOUSE_FILTER_PASS
+	for child in node.get_children():
+		_make_passthrough(child)
 
 func _format_score(value: int) -> String:
 	"""Format score with commas for readability"""
@@ -728,8 +753,33 @@ func _display_player_rank(rank: int, score: int, streak: int, total_players: int
 	your_rank_label.add_theme_color_override("font_color", Color.WHITE)
 
 # ============================================================
-# SORT
+# SCROLL TO PLAYER
 # ============================================================
+
+func _scroll_to_player() -> void:
+	"""Centre the current player's row in the scroll view.
+
+	No-op if the player isn't on this board (e.g. unranked or signed out),
+	leaving the list at the top as before."""
+	if not _player_entry or not is_instance_valid(_player_entry):
+		return
+	
+	# Wait for the VBox to lay out the freshly added rows — before that the
+	# row's position/size read back as 0 and we'd scroll to the wrong spot.
+	await get_tree().process_frame
+	await get_tree().process_frame
+	
+	if not is_instance_valid(_player_entry) or not is_instance_valid(leaderboard_scroll):
+		return
+	
+	var view_h: float = leaderboard_scroll.size.y
+	var row_y: float = _player_entry.position.y
+	var row_h: float = _player_entry.size.y
+	
+	# Centre the row in the viewport, clamped to the valid scroll range.
+	var target: int = int(row_y + row_h * 0.5 - view_h * 0.5)
+	var max_scroll: int = int(max(0.0, leaderboard_list.size.y - view_h))
+	leaderboard_scroll.scroll_vertical = clampi(target, 0, max_scroll)
 
 func _on_sort_pressed(sort_by: String):
 	if current_sort_by == sort_by:
