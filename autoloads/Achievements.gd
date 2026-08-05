@@ -1,6 +1,7 @@
-# Achievements.gd v2.1.1
+# Achievements.gd v2.2.0
 # Achievement tracking for CheddaClick - CheddaBoards Template
 # Add as Autoload: Project → Project Settings → Autoload → "Achievements"
+# (AFTER the CheddaBoards autoload, so the SDK exists when this wires up)
 #
 # ============================================================
 # ⚠  EXAMPLE CONTENT — REPLACE BEFORE YOU SHIP
@@ -22,6 +23,21 @@
 # to keep as-is. Only the definitions and the check_* conditions are example.
 # ============================================================
 #
+# v2.2.0: Identity-scoped save slots + automatic backend sync.
+#         - Unlocks are now saved per identity ("anon" vs "account"), so
+#           guest progress no longer leaks into whoever signs in next on
+#           the same device, and logging out hands the device to a clean
+#           guest. An existing user://achievements.save from older
+#           versions is migrated into the anon slot automatically.
+#         - The SDK's signals are wired up automatically: unlocks push to
+#           the backend AFTER login settles (pushing at menu load ran
+#           before the player identity was set and could store unlocks
+#           against the wrong player), remote unlocks merge in whenever a
+#           profile loads, and linking an anonymous account folds guest
+#           progress into it.
+#         You no longer need to call force_sync_pending() or
+#         sync_from_profile() yourself — both still exist for manual use.
+#
 # v2.1.1: submit_with_score() now actually pushes achievements to the
 #         backend via CheddaBoards.submit_score_with_achievements()
 #         (previously it gathered the IDs but only submitted the score,
@@ -34,6 +50,7 @@
 #   - Call Achievements.check_game_over(score, hits, max_combo) at end
 #   - Call Achievements.check_level(level, time_remaining) on level up
 #   - Call Achievements.submit_with_score(score, streak) to submit
+#   Backend sync on login/logout/account-link is automatic.
 
 extends Node
 
@@ -139,32 +156,165 @@ var session_hits: int = 0
 var session_max_combo: int = 0
 var session_max_level: int = 1
 
+# Identity-scoped save slots. Guest progress lives in the "anon" slot,
+# signed-in progress in the "account" slot. Keeping them separate means
+# a shared device never leaks one player's unlocks into another's
+# profile - the #1 support headache with a single shared save file.
+const SLOT_ANON := "anon"
+const SLOT_ACCOUNT := "account"
+const LEGACY_SAVE_PATH := "user://achievements.save"
+var _slot: String = SLOT_ANON
+
 # ============================================================
 # INITIALIZATION
 # ============================================================
 
 func _ready():
-	_load_local_achievements()
+	_migrate_legacy_save()
+	_load_slot(SLOT_ANON)
 	is_ready = true
-	print("[Achievements] Loaded %d unlocked achievements" % unlocked_achievements.size())
+	print("[Achievements] Loaded slot '%s': %d unlocked" % [_slot, unlocked_achievements.size()])
 	achievements_ready.emit()
+	# Wire up the SDK once the autoload order has settled. If the
+	# CheddaBoards autoload isn't present, everything still works
+	# offline - sync just never fires.
+	_connect_sdk.call_deferred()
 
-func _load_local_achievements():
-	if FileAccess.file_exists("user://achievements.save"):
-		var file = FileAccess.open("user://achievements.save", FileAccess.READ)
-		var data = file.get_var()
-		file.close()
-		if data is Dictionary:
-			unlocked_achievements = data.get("unlocked", [])
-			total_games_played = data.get("games_played", 0)
+func _save_path(slot: String) -> String:
+	return "user://achievements_%s.save" % slot
+
+func _migrate_legacy_save():
+	# Pre-v2.2.0 saved everything (guest or signed-in) to one shared
+	# file. Adopt it as the anon slot once, so nobody loses progress
+	# on upgrade.
+	if FileAccess.file_exists(LEGACY_SAVE_PATH) and not FileAccess.file_exists(_save_path(SLOT_ANON)):
+		var dir = DirAccess.open("user://")
+		if dir:
+			dir.rename(LEGACY_SAVE_PATH.get_file(), _save_path(SLOT_ANON).get_file())
+			print("[Achievements] Migrated legacy save into '%s' slot" % SLOT_ANON)
+
+func _read_slot_file(slot: String) -> Dictionary:
+	if not FileAccess.file_exists(_save_path(slot)):
+		return {}
+	var file = FileAccess.open(_save_path(slot), FileAccess.READ)
+	var data = file.get_var()
+	file.close()
+	return data if data is Dictionary else {}
+
+func _load_slot(slot: String):
+	_slot = slot
+	var data = _read_slot_file(slot)
+	unlocked_achievements = data.get("unlocked", [])
+	total_games_played = data.get("games_played", 0)
 
 func _save_local_achievements():
-	var file = FileAccess.open("user://achievements.save", FileAccess.WRITE)
+	var file = FileAccess.open(_save_path(_slot), FileAccess.WRITE)
 	file.store_var({
 		"unlocked": unlocked_achievements,
 		"games_played": total_games_played
 	})
 	file.close()
+
+func _switch_slot(slot: String):
+	if slot == _slot:
+		return
+	_save_local_achievements()  # persist the slot we're leaving
+	_load_slot(slot)
+	print("[Achievements] Switched to slot '%s' (%d unlocked)" % [_slot, unlocked_achievements.size()])
+
+# ============================================================
+# SDK WIRING (automatic backend sync)
+# ============================================================
+# All connections are optional and defensive: the template works with any
+# CheddaBoards SDK version, and offline, without modification.
+
+func _connect_sdk():
+	var sdk = get_node_or_null("/root/CheddaBoards")
+	if sdk == null:
+		return
+	_connect_if_present(sdk, "login_success", _on_sdk_login)
+	_connect_if_present(sdk, "logout_success", _on_sdk_logout)
+	_connect_if_present(sdk, "profile_loaded", _on_sdk_profile_loaded)
+	_connect_if_present(sdk, "account_upgraded", _on_sdk_account_upgraded)
+
+func _connect_if_present(sdk: Node, sig: String, callable: Callable):
+	if sdk.has_signal(sig) and not sdk.is_connected(sig, callable):
+		sdk.connect(sig, callable)
+
+func _on_sdk_login(_nickname: String):
+	var sdk = get_node_or_null("/root/CheddaBoards")
+	if sdk and sdk.has_method("has_account") and sdk.has_account():
+		_switch_slot(SLOT_ACCOUNT)
+		# Identity is settled and authenticated NOW - this is the reliable
+		# moment to reconcile local unlocks up to the backend. Do NOT push
+		# at menu load instead: that runs before login completes and can
+		# go out under a fallback/device ID, storing unlocks against the
+		# wrong player.
+		force_sync_pending()
+	else:
+		_switch_slot(SLOT_ANON)
+
+func _on_sdk_logout():
+	# Persist the account's progress, then hand the device to a genuinely
+	# fresh guest: wipe the anon slot so nothing leaks between players.
+	if _slot == SLOT_ACCOUNT:
+		_save_local_achievements()
+	if FileAccess.file_exists(_save_path(SLOT_ANON)):
+		DirAccess.remove_absolute(_save_path(SLOT_ANON))
+	_load_slot(SLOT_ANON)
+	print("[Achievements] Logout: anon slot wiped, fresh start")
+
+func _on_sdk_profile_loaded(_nickname: String, _score: int, _streak: int,
+		remote_achievements: Array, play_count: int):
+	# The server is the reconciliation point: merge its unlocks in and
+	# adopt its play count when it's ahead (e.g. same account played
+	# from another device).
+	var changed := false
+	for ach_id in remote_achievements:
+		var id := str(ach_id)
+		if id not in unlocked_achievements and achievements.has(id):
+			unlocked_achievements.append(id)
+			changed = true
+	if play_count > total_games_played:
+		total_games_played = play_count
+		changed = true
+	if changed:
+		_save_local_achievements()
+		print("[Achievements] Merged remote progress: %d unlocked" % unlocked_achievements.size())
+
+func _on_sdk_account_upgraded(_profile: Dictionary, _migration: Dictionary):
+	# The player just linked their anonymous identity to a real account.
+	# The server migrated their backend data; fold their local anon
+	# progress into the account slot too.
+	#
+	# SIGNAL ORDER: login_success fires before account_upgraded, so
+	# _on_sdk_login has usually already switched us to the account slot -
+	# the anon progress is sitting in its file on disk, saved by that
+	# switch. If the upgrade somehow arrives first, memory IS the anon
+	# progress; switching slots saves it to disk before we read it back.
+	if _slot == SLOT_ANON:
+		_switch_slot(SLOT_ACCOUNT)
+	var anon_snapshot := _read_slot_file(SLOT_ANON)
+	
+	var grew := false
+	for ach_id in anon_snapshot.get("unlocked", []):
+		var id := str(ach_id)
+		if id not in unlocked_achievements and achievements.has(id):
+			unlocked_achievements.append(id)
+			grew = true
+	total_games_played = max(total_games_played, int(anon_snapshot.get("games_played", 0)))
+	_save_local_achievements()
+	print("[Achievements] Folded anon progress into account: %d unlocked" % unlocked_achievements.size())
+	
+	# The anon slot's contents belong to this account now - wipe it so
+	# the next guest on this device starts clean.
+	if FileAccess.file_exists(_save_path(SLOT_ANON)):
+		DirAccess.remove_absolute(_save_path(SLOT_ANON))
+	
+	# The fold may have grown the set beyond what either side had -
+	# push the reconciled set to the backend under the new session.
+	if grew:
+		force_sync_pending()
 
 # ============================================================
 # SESSION TRACKING + UNLOCK CONDITIONS  —  ⚠ EXAMPLE, REPLACE THESE
@@ -343,23 +493,26 @@ func get_unlocked_achievements() -> Array:
 	return unlocked_achievements
 
 # ============================================================
-# SYNC FUNCTIONS (Called by MainMenu/other scenes)
+# SYNC FUNCTIONS (automatic since v2.2.0 - kept for manual use)
 # ============================================================
 
 func force_sync_pending():
 	"""Force-sync all unlocked achievements to CheddaBoards in one batch.
 
-	Note: the player must already exist on the backend (i.e. a score has
-	been submitted at least once), or the unlocks are ignored. The normal
-	path is submit_with_score(); use this only to re-push existing unlocks
-	(e.g. after a profile load)."""
+	Called automatically after login and after account linking. The player
+	must already exist on the backend (i.e. a score has been submitted at
+	least once), or the unlocks are ignored. The normal in-game path is
+	submit_with_score()."""
 	if unlocked_achievements.is_empty():
 		return
 	print("[Achievements] Syncing %d achievements" % unlocked_achievements.size())
 	CheddaBoards.unlock_achievements_batch(unlocked_achievements)
 
 func sync_from_profile(profile: Dictionary):
-	"""Sync achievements from a loaded profile"""
+	"""Merge achievements from a loaded profile dictionary.
+
+	Since v2.2.0 this happens automatically via the SDK's profile_loaded
+	signal - kept for projects that fetch profiles manually."""
 	var remote_achievements = profile.get("achievements", [])
 	if remote_achievements is Array:
 		for ach_id in remote_achievements:
@@ -376,8 +529,9 @@ func debug_status():
 	"""Print debug information"""
 	print("")
 	print("========================================")
-	print("       Achievements Debug v2.1.1       ")
+	print("       Achievements Debug v2.2.0       ")
 	print("========================================")
+	print(" Slot:           %s" % _slot)
 	print(" Games Played:   %d" % total_games_played)
 	print(" Unlocked:       %d / %d" % [get_unlocked_count(), get_total_count()])
 	print(" Percentage:     %.1f%%" % get_unlocked_percentage())
