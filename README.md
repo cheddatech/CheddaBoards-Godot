@@ -10,8 +10,8 @@
 > **SDK 2.2.3** · Godot 4.6+ · Windows / Mac / Linux / Mobile / Web · MIT · Free tier · [Changelog](docs/CHANGELOG.md)
 
 <p align="center">
-  <img src="screenshots/screenshot-anonymous.png" alt="In-game" width="45%"/>
-  <img src="screenshots/screenshot-all-time-leaderboard.png" alt="Leaderboard" width="45%"/>
+  <img src="screenshots/screenshot-anonymous.png" alt="Anonymous dashboard" width="45%"/>
+  <img src="screenshots/screenshot-all-time-leaderboard.png" alt="All-time leaderboard" width="45%"/>
 </p>
 
 Free tier. No per-player fees, no surprise bills. Battle-tested in production by the studio's own arcade games.
@@ -70,7 +70,6 @@ Point the wrapper at your scene and that's the whole game-side integration — t
 
 **Status:** Native, Mobile, and Web are all ✅ stable. Every platform supports Google / Apple sign-in via Device Code Auth — no OAuth SDKs in your game — and since **v2.2.3** sessions persist, so players sign in **once** and stay signed in across restarts. → [Device Code Login](docs/guides/device-code-login.md)
 
-SCREENSHOT: device code login screen with QR code — screenshots/screenshot_device_code.png
 <p align="center">
   <img src="screenshots/screenshot-device-code-auth.png" alt="Device Code Login — scan the QR on your phone, no OAuth SDKs in the game" width="45%"/>
 </p>
