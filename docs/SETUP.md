@@ -382,6 +382,9 @@ YourGame/
 - [ ] Limits match your game mechanics
 - [ ] Play session started on run begin, cleared after submit (API & Drop-in paths)
 
+### Web (Template)
+- [ ] `web_exit_url` set on MainMenu — or deliberately left empty to hide Exit on web ([Web Export](guides/web-export.md))
+
 ---
 
 ## More Documentation
