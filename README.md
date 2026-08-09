@@ -10,8 +10,8 @@
 > **SDK 2.2.3** · Godot 4.6+ · Windows / Mac / Linux / Mobile / Web · MIT · Free tier · [Changelog](docs/CHANGELOG.md)
 
 <p align="center">
-  <img src="screenshots/screenshot1.png" alt="In-game" width="45%"/>
-  <img src="screenshots/screenshot_leaderboard_alltime.png" alt="Leaderboard" width="45%"/>
+  <img src="screenshots/screenshot-anonymous.png" alt="In-game" width="45%"/>
+  <img src="screenshots/screenshot-all-time-leaderboard.png" alt="Leaderboard" width="45%"/>
 </p>
 
 Free tier. No per-player fees, no surprise bills. Battle-tested in production by the studio's own arcade games.
@@ -72,7 +72,7 @@ Point the wrapper at your scene and that's the whole game-side integration — t
 
 SCREENSHOT: device code login screen with QR code — screenshots/screenshot_device_code.png
 <p align="center">
-  <img src="screenshots/screenshot_device_code.png" alt="Device Code Login — scan the QR on your phone, no OAuth SDKs in the game" width="45%"/>
+  <img src="screenshots/screenshot-device-code-auth.png" alt="Device Code Login — scan the QR on your phone, no OAuth SDKs in the game" width="45%"/>
 </p>
 
 
