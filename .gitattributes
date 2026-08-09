@@ -29,5 +29,5 @@
 *.woff2 binary
 
 # Exclude from ZIP downloads
-screenshots/ export-ignore
-docs/ export-ignore
+#/ export-ignore
+#/ export-ignore
