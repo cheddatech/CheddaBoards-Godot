@@ -44,18 +44,35 @@ Web builds support every auth method the rest of the SDK does:
 
 Device Code Auth is the recommended path on web exactly as on every other platform — see [Device Code Login](device-code-login.md). No OAuth credentials, no browser popups, no platform branching.
 
+**Sessions persist on web too (SDK v2.2.3+):** the session is saved to `user://`, which the browser keeps in IndexedDB, so players sign in once per site. Two environments can't hold it: Safari blocks storage inside third-party iframes, and itch.io serves each new upload from a new path, orphaning the previous upload's storage — so itch players re-auth once per build you push. Details: [Troubleshooting](../TROUBLESHOOTING.md).
+
 ---
 
 ## The exit button on web
 
-`get_tree().quit()` does nothing in a browser. Redirect instead:
+`get_tree().quit()` does nothing useful in a browser — it just freezes the canvas. The right move is to navigate somewhere, and *how* depends on whether your game is embedded in an iframe (itch.io serves web games inside one).
+
+**Template (v2.1.7+): it's a setting, not code.** Select the `MainMenu` node and set **Web Exit Url** in the Inspector to your game's website or itch page:
+
+- **Empty (the default):** all Exit buttons are hidden on web builds — no dead-end button
+- **Set, running full-window:** Exit does a same-tab redirect to the URL
+- **Set, running in an iframe (itch.io):** Exit opens the URL in a **new tab**, leaving the host page intact — a same-tab redirect would load your whole website inside the game embed. If a popup blocker eats the new tab, the button shows the URL instead
+
+Native builds always show Exit and quit normally, whatever the setting.
+
+**Drop-in SDK: roll the same logic yourself.** The iframe check matters — don't blind-redirect:
 
 ```gdscript
 func _on_exit_pressed():
-    if OS.get_name() == "Web":
-        JavaScriptBridge.eval("window.location.href = 'https://yourdomain.com'")
-    else:
-        get_tree().quit()
+    if OS.has_feature("web"):
+        var in_iframe = JavaScriptBridge.eval("window.self !== window.top", true)
+        if in_iframe:
+            # itch.io etc. - new tab keeps the host page intact
+            JavaScriptBridge.eval("window.open('https://yourdomain.com', '_blank')", true)
+        else:
+            JavaScriptBridge.eval("window.location.href = 'https://yourdomain.com'", true)
+        return
+    get_tree().quit()
 ```
 
 ---
@@ -73,7 +90,7 @@ If your `template.html` has a large `CONFIG` block, a `cheddaboards_v1` CDN `<sc
 - [ ] *(Optional)* Custom HTML Shell set to `res://template.html` for the branded loader
 - [ ] Exported as `index.html`
 - [ ] Served over HTTP (not `file://`)
-- [ ] Exit button redirects instead of `quit()` on web
+- [ ] `web_exit_url` set on MainMenu (or deliberately left empty to hide Exit on web); drop-in projects use the iframe-aware redirect above
 - [ ] Login + leaderboards tested in the browser
 
 ---
