@@ -510,3 +510,11 @@ size_flags_horizontal = 4
 theme_override_colors/font_color = Color(0.6, 0.6, 0.6, 1)
 theme_override_font_sizes/font_size = 16
 text = "Logout"
+
+[node name="ExitButton" type="Button" parent="MainPanel/MarginContainer/VBoxContainer" unique_id=1893402765]
+custom_minimum_size = Vector2(300, 50)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_colors/font_color = Color(0.6, 0.6, 0.6, 1)
+theme_override_font_sizes/font_size = 16
+text = "Exit"
