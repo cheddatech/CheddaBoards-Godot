@@ -31,6 +31,10 @@ MobileUI="*res://autoloads/MobileUI.gd"
 
 window/size/viewport_width=1920
 window/size/viewport_height=1080
-window/size/mode=3
+window/size/mode=0
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
+
+[rendering]
+
+textures/vram_compression/import_etc2_astc=true
