@@ -191,9 +191,25 @@ CheddaBoards.device_code_expired.connect(func():
 
 The `DeviceCodeLogin` scene (`scenes/DeviceCodeLogin.tscn`) provides a ready-made UI for this flow, including QR rendering and a clickable LinkButton fallback.
 
+### Sessions Persist (v2.2.3)
+
+Players sign in **once**. The session token is saved to `user://cheddaboards_session.cfg` and restored on startup (before `sdk_ready` fires), so a returning player lands straight in their logged-in state — no repeat device code auth per visit. `logout()` clears the saved session.
+
+If the server rejects a stored token (expired or revoked, `401`/`403`), the SDK clears the saved session and emits `session_expired` **plus** `logout_success` — so a menu that already handles `logout_success` falls back to its login screen with no extra code. Connect to `session_expired` only if you want to show something specific:
+
+```gdscript
+CheddaBoards.session_expired.connect(func():
+    status_label.text = "Session expired — please sign in again"
+)
+```
+
+> On some web environments sessions still can't persist (Safari inside iframes, fresh itch.io uploads). Details: [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+
 ### Account Upgrade
 
 Players can start anonymous and upgrade their account to Google or Apple later via Device Code Auth. This preserves all scores and achievements while enabling cross-device sync.
+
+> On SDK < 2.2.3, achievements unlocked **before** linking could be lost during the upgrade. Fixed in v2.2.3 — update if players report achievements vanishing after they link an account.
 
 > Legacy v1.x direct OAuth (in-browser Google/Apple buttons) was removed in v2.0.0. If you have an older project that needs the legacy web setup, see [guides/web-export.md](guides/web-export.md) — but new projects should use device code auth throughout.
 
@@ -203,7 +219,7 @@ Players can start anonymous and upgrade their account to Google or Apple later v
 
 The Achievements.gd autoload handles unlocking and syncing.
 
-> **Note:** Full achievement sync requires login (Google/Apple). Anonymous users have achievements stored locally.
+> **Note:** Full achievement sync requires login (Google/Apple). Anonymous users have achievements stored locally — they carry over to the account when the player links (see [Account Upgrade](#account-upgrade)).
 
 ### Define Your Achievements
 
