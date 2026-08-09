@@ -44,6 +44,10 @@ The game shows a QR code, a URL, and a short code. The player signs in on their 
 └──────────────┘                    └──────────────────────┘
 ```
 
+<p align="center">
+  <img src="../../screenshots/screenshot-link-page.png" alt="cheddaboards.com/link on the player's phone — code pre-filled, one tap on Google or Apple" width="45%"/>
+</p>
+
 ```gdscript
 # In your game — no OAuth SDKs needed
 CheddaBoards.login_with_device_code()
@@ -67,12 +71,19 @@ When the player finishes signing in on their phone and returns to the game, focu
 
 `device_code_received` emits a `qr_data_url` — a base64 PNG encoding the full verification URL with the code pre-filled. The player scans once and taps a single button instead of typing the 6-digit code. Falls back to the raw code if the API returns null.
 
+### Staying signed in (v2.2.3+)
+
+Players go through this flow **once**. The session token is saved to `user://cheddaboards_session.cfg` and restored on startup before `sdk_ready` fires, so returning players land straight in their signed-in state. `logout()` clears the saved session.
+
+If the server rejects a stored token (`401`/`403` — expired or revoked), the SDK clears it and emits `session_expired` **plus** `logout_success`, so a menu that already handles `logout_success` falls back to its login screen automatically. Web caveats (Safari in iframes, itch.io re-uploads): [Web Export](web-export.md).
+
 ---
 
 ## Account linking (Anonymous → Verified)
 
 - Anonymous players can upgrade to Google / Apple via the same device code flow.
 - All scores, achievements, and progress are preserved through migration.
+  > On SDK < 2.2.3, achievements unlocked **before** linking could be lost during the upgrade — fixed in v2.2.3.
 - Available from both the in-game **Sign In** button and the **Anonymous Dashboard**.
 
 ```gdscript
@@ -107,6 +118,7 @@ If you're on the Drop-in path, you build your own equivalents and drive them wit
 signal login_success(nickname: String)
 signal login_failed(reason: String)
 signal logout_success()
+signal session_expired()  # v2.2.3 - stored session rejected; logout_success also fires
 signal auth_error(reason: String)
 
 signal device_code_received(user_code: String, verification_url: String, qr_data_url: String)
