@@ -7,6 +7,10 @@ This is the hands-on companion to [Authentication](authentication.md), which cov
 - On the **Template**, the screen is already built — skip to [Fastest path](#fastest-path).
 - On the **Drop-in** path, [Build your own](#build-your-own-screen) shows the pattern.
 
+<p align="center">
+  <img src="../../screenshots/screenshot-device-code-auth.png" alt="The in-game login screen — QR code, short code, and verification link" width="45%"/>
+</p>
+
 ---
 
 ## How it works (30 seconds)
@@ -15,6 +19,8 @@ This is the hands-on companion to [Authentication](authentication.md), which cov
 2. The SDK emits `device_code_received` with a short code, a verification URL, and a QR image.
 3. You show those to the player. They scan the QR (or open the link) on their phone and sign in with Google or Apple.
 4. The SDK polls in the background and emits `device_code_approved(nickname)` when they're done — or `device_code_expired` after 5 minutes.
+
+Players do this **once** (SDK v2.2.3+): the session persists to `user://` and is restored on startup, so this screen only appears again after a logout or a server-side session expiry — see [Authentication → Staying signed in](authentication.md#staying-signed-in-v223).
 
 The full sequence diagram is in [Authentication → Device Code Auth](authentication.md#device-code-auth-google--apple).
 
