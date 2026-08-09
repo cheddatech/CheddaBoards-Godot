@@ -1,4 +1,4 @@
-# CheddaBoards.gd v2.2.1
+# CheddaBoards.gd v2.2.3
 # CheddaBoards integration for Godot 4.x
 # https://github.com/cheddatech/CheddaBoards-Godot
 # https://cheddaboards.com
@@ -9,6 +9,16 @@
 #   Player authenticates on their phone at cheddaboards.com/link
 # - Score submissions, play sessions, achievements: all via HTTP API
 #
+# v2.2.3:
+#   - Session persistence: the session token from device code auth is
+#     saved to user://cheddaboards_session.cfg and restored on startup,
+#     so logged-in players stay logged in across page reloads / app
+#     restarts instead of repeating device code auth every visit.
+#   - New session_expired signal: fired when the server rejects the
+#     stored token (401/403). The saved session is cleared and
+#     logout_success also fires so existing menus fall back to their
+#     login screen with no changes.
+#   - logout() now clears the saved session file.
 # v2.2.1:
 #   - Added submit_score_to_board(scoreboard_id, score, streak) for targeted
 #     "category" scoreboards (per-level / per-mode boards). Writes to one
@@ -103,6 +113,7 @@ signal init_error(reason: String)
 signal login_success(nickname: String)
 signal login_failed(reason: String)
 signal logout_success()
+signal session_expired()
 signal auth_error(reason: String)
 
 # --- Profile ---
@@ -239,6 +250,7 @@ var _deferred_achievements_synced: Array = []
 # ============================================================
 
 const DEVICE_ID_PATH = "user://cheddaboards_device.cfg"
+const SESSION_PATH = "user://cheddaboards_session.cfg"
 
 # ============================================================
 # INITIALIZATION
@@ -251,7 +263,8 @@ func _ready() -> void:
 	# to hang indefinitely.
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_setup_http_client()
-	_log("Initializing CheddaBoards v2.2.0 (HTTP API Mode)...")
+	_log("Initializing CheddaBoards v2.2.3 (HTTP API Mode)...")
+	_load_saved_session()
 	_init_complete = true
 	call_deferred("_emit_sdk_ready")
 
@@ -339,6 +352,15 @@ func _on_http_request_completed(result: int, response_code: int, headers: Packed
 	
 	if response_code != 200:
 		var error_msg = response.get("error", "Unknown error")
+		# Server rejected our session token - expire it so the game
+		# falls back to the login screen instead of erroring forever
+		if response_code in [401, 403] and not _session_token.is_empty():
+			_expire_session()
+			_emit_http_failure(error_msg)
+			_current_meta = {}
+			_http_busy = false
+			_process_next_request()
+			return
 		# 404 on profile lookup is expected for new players
 		if response_code == 404 and _current_endpoint == "player_profile":
 			_log("Player profile not found (new player) - normal for first-time players")
@@ -870,6 +892,7 @@ func set_game_id(id: String) -> void:
 func set_session_token(token: String) -> void:
 	_session_token = token
 	_log("Session token set")
+	_save_session()
 
 func set_player_id(player_id: String) -> void:
 	_player_id = _sanitize_player_id(player_id)
@@ -911,6 +934,61 @@ func _load_device_id() -> String:
 	if err == OK:
 		return config.get_value("device", "id", "")
 	return ""
+
+# ============================================================
+# PERSISTENT SESSION (v2.2.3)
+# Mirrors the device ID pattern: session token survives page
+# reloads / app restarts so logged-in players don't repeat
+# device code auth every visit. Cleared on logout or when the
+# server rejects the token (401/403 -> session_expired).
+# ============================================================
+
+func _save_session() -> void:
+	if _session_token.is_empty():
+		return
+	var config = ConfigFile.new()
+	config.set_value("session", "token", _session_token)
+	config.set_value("session", "nickname", _nickname)
+	config.set_value("session", "auth_type", _auth_type)
+	config.set_value("session", "saved_at", Time.get_unix_time_from_system())
+	var err = config.save(SESSION_PATH)
+	if err == OK:
+		_log("Session saved to %s" % SESSION_PATH)
+	else:
+		_log("WARNING: Failed to save session (error %d)" % err)
+
+func _load_saved_session() -> void:
+	var config = ConfigFile.new()
+	var err = config.load(SESSION_PATH)
+	if err != OK:
+		return
+	var token = str(config.get_value("session", "token", ""))
+	if token.is_empty():
+		return
+	_session_token = token
+	_nickname = str(config.get_value("session", "nickname", ""))
+	_auth_type = str(config.get_value("session", "auth_type", "google"))
+	_cached_profile = {"nickname": _nickname}
+	_log("Restored saved session for %s (validated on first request)" % _nickname)
+
+func _clear_saved_session() -> void:
+	if FileAccess.file_exists(SESSION_PATH):
+		var dir = DirAccess.open("user://")
+		if dir:
+			dir.remove(SESSION_PATH.trim_prefix("user://"))
+			_log("Saved session cleared")
+
+func _expire_session() -> void:
+	"""Server rejected the stored session token - clear everything
+	and tell the game so it can return to its login screen."""
+	_log("Session expired or rejected by server - clearing")
+	_session_token = ""
+	_auth_type = ""
+	_nickname = ""
+	_cached_profile = {}
+	_clear_saved_session()
+	session_expired.emit()
+	logout_success.emit()
 
 func _sanitize_player_id(raw_id: String) -> String:
 	if raw_id.is_empty():
@@ -978,6 +1056,7 @@ func logout() -> void:
 	_nickname = ""
 	_session_token = ""
 	_play_session_token = ""
+	_clear_saved_session()
 	logout_success.emit()
 	_log("Logged out")
 
@@ -1222,6 +1301,7 @@ func _handle_device_code_poll_response(result: int, response_code: int, body: Pa
 		_session_token = session_id
 		_nickname = nickname
 		_auth_type = "google"  # Provider determined by what they chose on the page
+		_save_session()
 		
 		# Clear stale anonymous play session
 		if _play_session_token != "":
