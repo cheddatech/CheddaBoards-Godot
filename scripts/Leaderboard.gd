@@ -1,7 +1,22 @@
-# Leaderboard.gd v2.0.0
+# Leaderboard.gd v2.0.1
 # Redesigned leaderboard showcasing CheddaBoards features
 # Tabs: All Time | Weekly | Daily with archive dropdown for timed scoreboards
 # https://github.com/cheddatech/CheddaBoards-Godot
+#
+# v2.0.1: Mobile fixes.
+#         - Layout rule on phones: the chrome (title, tabs, archive/sort,
+#           rank panel, buttons) must FIT the screen; the entries list -
+#           the only flexible element - takes whatever height remains.
+#           Chrome is compacted hard on mobile: the sort buttons merge
+#           into the archive row (saves a full row), the "Period:" label
+#           hides, every fixed-height element slims down, and section
+#           gaps tighten. Entry rows are display-only so they drop from
+#           touch-target height (44) to 32 with smaller fonts - more
+#           scores visible in less space.
+#         - Safe-area insets: Godot renders INTO the Android/iOS display
+#           cutout / status bar and insets nothing, so the header sat
+#           under the notch - visible but unreachable. Margins now grow
+#           by the reported safe-area inset (re-applied on rotation).
 #
 # ============================================================
 # SETUP
@@ -159,6 +174,9 @@ var selected_archive_index: int = -1
 
 func _ready():
 	_scale_ui()
+	_apply_safe_area()
+	# Rotation / resize moves the cutout - re-apply
+	get_tree().root.size_changed.connect(_apply_safe_area)
 	
 	# Wait for CheddaBoards
 	if not CheddaBoards.is_ready():
@@ -201,7 +219,7 @@ func _ready():
 	
 	_setup_auto_refresh()
 	
-	print("[Leaderboard] v2.0.0 initialized (Mobile: %s, Scale: %.2f)" % [MobileUI.is_mobile, MobileUI.ui_scale])
+	print("[Leaderboard] v2.0.1 initialized (Mobile: %s, Scale: %.2f)" % [MobileUI.is_mobile, MobileUI.ui_scale])
 
 # ============================================================
 # UI SCALING
@@ -237,6 +255,72 @@ func _scale_ui():
 	# Nav buttons
 	MobileUI.scale_button(back_button, 16, 44)
 	MobileUI.scale_button(play_again_button, 18, 48)
+	
+	# --- Mobile: chrome must fit the screen, entries take the rest ---
+	# Everything around LeaderboardScroll is fixed-height, so it has to
+	# fit inside the screen (incl. safe area) or the top/bottom become
+	# unreachable. Compact it hard; the entries area (the only flexible
+	# element) gets whatever height remains, with a small guard minimum.
+	if MobileUI.is_mobile:
+		# Merge the sort buttons into the archive row - saves a full row.
+		# Guarded so a repeat _scale_ui call can't re-reparent.
+		if sort_row and archive_row and sort_score_btn.get_parent() != archive_row:
+			for btn in [sort_score_btn, sort_streak_btn]:
+				btn.get_parent().remove_child(btn)
+				archive_row.add_child(btn)
+			sort_row.visible = false
+			if archive_label:
+				archive_label.visible = false  # dropdown is self-evident
+		# Slim every fixed-height element
+		MobileUI.scale_label(title_label, 20)
+		MobileUI.scale_button(refresh_button, 12, 32)
+		for tab_btn in [tab_all_time, tab_weekly, tab_daily]:
+			MobileUI.scale_button(tab_btn, 14, 40)
+		archive_dropdown.custom_minimum_size = Vector2(MobileUI.get_size(120), MobileUI.get_touch_size(40))
+		MobileUI.scale_button(sort_score_btn, 12, 40)
+		MobileUI.scale_button(sort_streak_btn, 12, 40)
+		MobileUI.scale_label(your_rank_label, 15)
+		if your_rank_panel:
+			your_rank_panel.custom_minimum_size.y = MobileUI.get_size(38)
+		MobileUI.scale_button(back_button, 14, 42)
+		MobileUI.scale_button(play_again_button, 15, 44)
+		if powered_label:
+			powered_label.add_theme_font_size_override("font_size", MobileUI.get_font_size(9))
+		# Tighten vertical gaps between sections
+		var vbox = margin_container.get_node_or_null("VBox")
+		if vbox:
+			vbox.add_theme_constant_override("separation", 6)
+			var header = vbox.get_node_or_null("HeaderContainer")
+			if header:
+				header.add_theme_constant_override("separation", 5)
+		# Small guard so the list never fully vanishes; otherwise it
+		# simply takes all remaining height
+		leaderboard_scroll.custom_minimum_size.y = MobileUI.get_size(100)
+
+func _apply_safe_area():
+	"""Keep the header (and footer) out of the phone's display cutout,
+	status bar, and gesture areas. Godot renders fullscreen INTO the
+	cutout on Android/iOS and insets nothing automatically, so the top
+	of the UI can sit under the notch - visible but unreachable.
+	Adds the safe-area inset on top of the scaled base margins;
+	safe to call repeatedly (margins are set, not accumulated)."""
+	if not (OS.has_feature("android") or OS.has_feature("ios")):
+		return
+	if not margin_container:
+		return
+	var safe: Rect2i = DisplayServer.get_display_safe_area()
+	var win: Vector2i = DisplayServer.window_get_size()
+	if win.x <= 0 or win.y <= 0:
+		return
+	# Screen px -> canvas units (accounts for viewport stretch scaling)
+	var canvas: Vector2 = get_viewport().get_visible_rect().size
+	var kx: float = canvas.x / float(win.x)
+	var ky: float = canvas.y / float(win.y)
+	var base: int = MobileUI.get_size(16)  # same base _scale_ui uses
+	margin_container.add_theme_constant_override("margin_top", base + int(round(safe.position.y * ky)))
+	margin_container.add_theme_constant_override("margin_left", base + int(round(safe.position.x * kx)))
+	margin_container.add_theme_constant_override("margin_right", base + int(round((win.x - safe.end.x) * kx)))
+	margin_container.add_theme_constant_override("margin_bottom", base + int(round((win.y - safe.end.y) * ky)))
 	
 	# Powered by
 	MobileUI.scale_label(powered_label, 11)
@@ -618,9 +702,12 @@ func _add_leaderboard_entry(rank: int, entry) -> void:
 	
 	var is_current_player = (nickname == current_player_nickname) and current_player_nickname != "" and not viewing_archive
 	
-	# Entry container
+	# Entry container. Rows are display-only (not tappable), so on
+	# mobile they don't need touch-target height - smaller rows mean
+	# more scores visible in the reduced list area.
 	var entry_container = PanelContainer.new()
-	entry_container.custom_minimum_size = Vector2(0, MobileUI.get_touch_size(44))
+	var row_height = MobileUI.get_size(32) if MobileUI.is_mobile else MobileUI.get_touch_size(44)
+	entry_container.custom_minimum_size = Vector2(0, row_height)
 	
 	# Row styling
 	var stylebox = StyleBoxFlat.new()
@@ -657,9 +744,10 @@ func _add_leaderboard_entry(rank: int, entry) -> void:
 	margin.add_child(hbox)
 	
 	# Rank
+	var row_font = MobileUI.get_font_size(14) if MobileUI.is_mobile else MobileUI.get_font_size(18)
 	var rank_label = Label.new()
-	rank_label.custom_minimum_size = Vector2(MobileUI.get_size(44), 0)
-	rank_label.add_theme_font_size_override("font_size", MobileUI.get_font_size(18))
+	rank_label.custom_minimum_size = Vector2(MobileUI.get_size(36 if MobileUI.is_mobile else 44), 0)
+	rank_label.add_theme_font_size_override("font_size", row_font)
 	rank_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	
 	match rank:
@@ -682,7 +770,7 @@ func _add_leaderboard_entry(rank: int, entry) -> void:
 	var name_label = Label.new()
 	name_label.text = nickname
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	name_label.add_theme_font_size_override("font_size", MobileUI.get_font_size(18))
+	name_label.add_theme_font_size_override("font_size", row_font)
 	name_label.add_theme_color_override("font_color", Color.WHITE if is_current_player else COLOR_TEXT)
 	name_label.clip_text = true
 	hbox.add_child(name_label)
@@ -694,8 +782,8 @@ func _add_leaderboard_entry(rank: int, entry) -> void:
 	else:
 		value_label.text = _format_score(score)
 	value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	value_label.custom_minimum_size = Vector2(MobileUI.get_size(90), 0)
-	value_label.add_theme_font_size_override("font_size", MobileUI.get_font_size(18))
+	value_label.custom_minimum_size = Vector2(MobileUI.get_size(72 if MobileUI.is_mobile else 90), 0)
+	value_label.add_theme_font_size_override("font_size", row_font)
 	value_label.add_theme_color_override("font_color", COLOR_ACCENT if rank <= 3 else COLOR_TEXT)
 	hbox.add_child(value_label)
 	
