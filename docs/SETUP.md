@@ -43,6 +43,10 @@
 6. Click **"Generate API Key"**
 7. Copy the key: `cb_my-game_xxxxxxxxx`
 
+<p align="center">
+  <img src="../screenshots/screenshot-developer-dashboard-register-game.png" alt="Developer Console — Register tab with game ID, name, and available slots" width="60%"/>
+</p>
+
 ### 2. Add CheddaBoards.gd
 
 **Recommended:** install the addon-only package from the [Godot Asset Store](https://store.godotengine.org/asset/cheddatech/cheddaboards) — it includes the editor plugin files, so enabling **CheddaBoards** under **Project → Project Settings → Plugins** registers the autoload for you (skip step 3).
