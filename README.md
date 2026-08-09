@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="addons/cheddaboards/cheddaboards_logo.png" alt="CheddaBoards" width="160"/>
+  <img src="addons/cheddaboards/cheddaboards_logo_transparent.png" alt="CheddaBoards" width="160"/>
 </p>
 
 # CheddaBoards — Godot 4 Template
