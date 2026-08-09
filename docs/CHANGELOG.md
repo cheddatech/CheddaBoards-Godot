@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.2.3] - 2026-08-09
+
+### Stay Signed In
+
+Backwards-compatible release. Logged-in players now stay logged in across page reloads and app restarts — previously the session token from device code auth lived only in memory, so every fresh launch of a web build meant repeating device code auth. Also fixes achievements not being saved when linking an account. No breaking changes, no migration required.
+
+### Added
+
+#### Session Persistence (`CheddaBoards.gd`)
+- The session token from device code auth is now saved to `user://cheddaboards_session.cfg` (token, nickname, auth type) and restored in `_ready()` **before** `sdk_ready` fires — so a menu that checks `has_account()` on startup routes returning players straight to its logged-in state with no code changes
+- Anonymous players were already persistent via the device ID; this brings signed-in accounts to parity
+- The restore is optimistic — no validation round-trip blocks startup. The token is validated naturally by the first authenticated request
+- New `session_expired()` signal — fired when the server rejects the stored session token (`401`/`403`). The saved session is cleared and `logout_success` also fires, so existing menus fall back to their login screen unchanged; one failed request, then a clean sign-in prompt rather than an error loop
+
+### Fixed
+
+#### Achievements Lost on Account Linking
+- Achievements unlocked before linking an account via device code auth weren't being saved to the linked account. Linking now carries achievements over correctly, so nothing earned as an anonymous player is lost when upgrading
+
+### Changed
+
+- `logout()` now also deletes the saved session file, so logging out on a shared device genuinely forgets the account
+- `set_session_token()` persists the token it's given, keeping custom login flows covered
+
+### Migration from v2.2.2
+
+No code changes required. Session persistence is automatic on update — players sign in once via device code auth and stay signed in until they log out or the server expires the session. `session_expired` is additive; connect to it only if you want to react to expiry separately from a normal logout.
+
+---
+
 ## [2.2.2] - 2026-06-26
 
 ### Mobile Web Fixes & Category Boards
