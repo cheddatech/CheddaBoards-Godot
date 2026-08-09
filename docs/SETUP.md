@@ -45,9 +45,9 @@
 
 ### 2. Add CheddaBoards.gd
 
-Download from [GitHub](https://github.com/cheddatech/CheddaBoards-Godot).
+**Recommended:** install the addon-only package from the [Godot Asset Store](https://store.godotengine.org/asset/cheddatech/cheddaboards) — it includes the editor plugin files, so enabling **CheddaBoards** under **Project → Project Settings → Plugins** registers the autoload for you (skip step 3).
 
-Copy `addons/cheddaboards/` folder to your project:
+**Or** download the full template from [GitHub](https://github.com/cheddatech/CheddaBoards-Godot) and copy the `addons/cheddaboards/` folder to your project (no plugin files — register the autoload in step 3):
 
 ```
 YourGame/
