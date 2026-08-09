@@ -8,7 +8,7 @@ Every signal CheddaBoards emits, grouped by category. All are typed for Godot 4.
 
 ## CheddaBoards.gd
 
-The SDK exposes 34 signals, grouped into the categories below.
+The SDK exposes 36 signals, grouped into the categories below.
 
 ### Initialization
 
@@ -23,6 +23,11 @@ signal init_error(reason: String)
 signal login_success(nickname: String)
 signal login_failed(reason: String)
 signal logout_success()
+# v2.2.3: fired when the server rejects the stored session token (401/403).
+# The saved session is cleared and logout_success ALSO fires, so menus that
+# already handle logout_success need no changes - connect this only to show
+# something specific ("Session expired - please sign in again").
+signal session_expired()
 signal auth_error(reason: String)
 ```
 
@@ -41,6 +46,9 @@ signal nickname_error(reason: String)
 
 ```gdscript
 signal score_submitted(score: int, streak: int)
+# v2.2.2: emitted on successful submit_score_to_board() - targeted category
+# boards only. See guides/category-scoreboards.md.
+signal score_submitted_to_board(scoreboard_id: String, score: int, streak: int)
 signal score_error(reason: String)
 signal leaderboard_loaded(entries: Array)
 signal player_rank_loaded(rank: int, score: int, streak: int, total_players: int)
