@@ -1,8 +1,14 @@
-
-# GameWrapper.gd v1.1.0
+# Game.gd v1.1.1
 # Modular wrapper for CheddaBoards integration
 # Drop ANY game scene as a child - just emit the right signals!
 # https://github.com/cheddatech/CheddaBoards-Godot
+#
+# v1.1.1: Marks has_played in user://player_data.save when a score
+#         actually submits (read-modify-write, preserves the nickname
+#         MainMenu saved). MainMenu v2.1.7 routes its "returning
+#         anonymous player" startup off this flag - together they make
+#         the anonymous dashboard mean "has a recorded score", not
+#         "typed a name once".
 #
 # ============================================================
 # HOW TO USE
@@ -108,6 +114,11 @@ var current_combo: int = 1
 var max_combo: int = 1
 var is_game_over: bool = false
 var score_submitted: bool = false
+
+# Shared with MainMenu.gd - the wrapper marks has_played here when a
+# score actually submits, so "returning player" means a recorded score,
+# not just a typed name. MainMenu routes startup off this flag.
+const PLAYER_SAVE_PATH = "user://player_data.save"
 
 # Achievements (check if available)
 var has_achievements: bool = false
@@ -386,6 +397,7 @@ func _on_score_submitted(score: int, streak: int):
 	print("[GameWrapper] ✓ Score submitted: %d points" % score)
 	score_submitted = true
 	CheddaBoards.clear_play_session()
+	_mark_has_played()
 	
 	var profile = CheddaBoards.get_cached_profile()
 	var previous_high = 0
@@ -401,6 +413,27 @@ func _on_score_submitted(score: int, streak: int):
 		status_label.add_theme_color_override("font_color", Color.GREEN)
 	
 	_set_buttons_disabled(false)
+
+func _mark_has_played():
+	"""First successful score submission: set has_played in the shared
+	save file. Read-modify-write with store_var/get_var so the nickname
+	and player_id MainMenu saved are preserved."""
+	var data = {}
+	if FileAccess.file_exists(PLAYER_SAVE_PATH):
+		var f = FileAccess.open(PLAYER_SAVE_PATH, FileAccess.READ)
+		if f:
+			var loaded = f.get_var()
+			if loaded is Dictionary:
+				data = loaded
+			f.close()
+	if data.get("has_played", false):
+		return  # already marked
+	data["has_played"] = true
+	var w = FileAccess.open(PLAYER_SAVE_PATH, FileAccess.WRITE)
+	if w:
+		w.store_var(data)
+		w.close()
+		print("[GameWrapper] First score recorded - marked has_played")
 
 func _on_score_error(reason: String):
 	"""Called when score submission fails"""
