@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="../addons/cheddaboards/cheddaboards_logo.png" alt="CheddaBoards" width="160"/>
+  <img src="../addons/cheddaboards/cheddaboards_logo_transparent.png" alt="CheddaBoards" width="160"/>
 </p>
 
 # CheddaBoards Documentation
 
 **Leaderboards, achievements, and cross-platform sign-in for Godot 4 — as a drop-in SDK or a full template.**
 
-> **SDK 2.2.1** · Godot 4.6+ · Windows / Mac / Linux / Mobile / Web · MIT · [Changelog](CHANGELOG.md)
+> **SDK 2.2.3** · Godot 4.6+ · Windows / Mac / Linux / Mobile / Web · MIT · [Changelog](CHANGELOG.md)
 
 ---
 
