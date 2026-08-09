@@ -180,6 +180,8 @@ if CheddaBoards.is_authenticated():
     print("Logged in as: ", CheddaBoards.get_nickname())
 ```
 
+> **Sessions persist (v2.2.3+):** device code sign-in is a one-time flow — the session is saved to `user://` and restored on startup, so returning players are already signed in. If the server rejects a stored session (`401`/`403`), the SDK clears it and emits `session_expired` + `logout_success`. → [Authentication](guides/authentication.md#staying-signed-in-v223)
+
 ### Profile
 
 ```gdscript
@@ -351,5 +353,6 @@ The most common signals you'll connect to. The full list lives in the SDK source
 
 - **Dashboard:** [cheddaboards.com/dashboard](https://cheddaboards.com/dashboard)
 - **GitHub:** [github.com/cheddatech/CheddaBoards-Godot](https://github.com/cheddatech/CheddaBoards-Godot)
-- **Asset Library:** [godotengine.org/asset-library/asset/4574](https://godotengine.org/asset-library/asset/4574)
+- **Godot Asset Store:** [store.godotengine.org/asset/cheddatech/cheddaboards](https://store.godotengine.org/asset/cheddatech/cheddaboards)
+- **Legacy Asset Library:** [godotengine.org/asset-library/asset/4574](https://godotengine.org/asset-library/asset/4574)
 - **Support:** info@cheddaboards.com
