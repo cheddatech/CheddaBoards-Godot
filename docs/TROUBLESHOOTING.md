@@ -27,6 +27,8 @@ Find your problem, get the fix.
 |----------------|---------|
 | API key errors | [API key issues](#api-key-issues) |
 | Login not working | [Login issues](#login-issues) |
+| Asked to sign in every visit | [Login issues](#login-issues) |
+| Logged out unexpectedly / `session_expired` | [Login issues](#login-issues) |
 | Scores not saving | [Score issues](#score-issues) |
 | Leaderboard empty or stale | [Leaderboard issues](#leaderboard-issues) |
 | Game-over screen won't show | [Template issues](#template-issues) |
@@ -126,6 +128,32 @@ Codes expire after 5 minutes. Call `login_with_device_code()` again for a fresh 
 ### Login button does nothing (Web)
 
 Check you're on `http://localhost` (not `file://`) and that pop-ups are allowed.
+
+### Asked to sign in every visit
+
+**On SDK < 2.2.3 this is expected** — the session token only lived in memory, so every fresh launch meant device code auth again. Update to **v2.2.3+**: the session is saved to `user://cheddaboards_session.cfg` and restored on startup automatically.
+
+**On 2.2.3+ and still happening?** It's the browser, not the SDK — `user://` on web is IndexedDB, and some environments don't keep it:
+
+- **itch.io after you upload a new build** — itch serves each upload from a new path, and Godot keys its storage off that path, so saved sessions (and saves) from the previous upload are orphaned. Players sign in once per build you push. Nothing to fix in code.
+- **Safari / iOS inside an embed (itch, your own iframe)** — Safari blocks third-party storage in iframes, so nothing persists between visits. Device code auth each visit is the expected experience there.
+- **Private/incognito windows** — storage is wiped when the window closes.
+
+Native builds persist normally in all cases.
+
+### Logged out unexpectedly / what is `session_expired`?
+
+**Cause:** the server rejected the stored session token (expired or revoked). The SDK clears the saved session, emits `session_expired` **and** `logout_success`, and the player is back to the login screen.
+
+**This is the designed fallback, not a bug** — one failed request, then a clean sign-in prompt. You don't need to handle `session_expired` at all if your menu already reacts to `logout_success`; connect to it only if you want to show something specific like "Session expired — please sign in again":
+
+```gdscript
+CheddaBoards.session_expired.connect(func():
+    status_label.text = "Session expired — please sign in again"
+)
+```
+
+**Testing tip:** to reset a device to a signed-out state, call `CheddaBoards.logout()` or delete `user://cheddaboards_session.cfg`.
 
 ---
 
@@ -265,6 +293,8 @@ If it says **disabled**, the `Achievements` autoload isn't registered — and th
 ### Achievements unlock but don't save to my account
 
 Anonymous players' achievements are stored **locally** and only sync to the backend once they sign in with Google/Apple. So "unlocked but not on my account" for an anonymous player is expected — it syncs on upgrade. To sync as part of score submission, use `Achievements.submit_with_score(score, streak)`. → [Achievements](guides/achievements.md)
+
+> **On SDK < 2.2.3**, achievements unlocked before linking an account via device code auth could be lost during the upgrade instead of syncing. Fixed in **v2.2.3** — if players report achievements vanishing after they link an account, update.
 
 ---
 
