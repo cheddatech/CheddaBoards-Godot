@@ -35,7 +35,9 @@
 
 ## Step 2: Add CheddaBoards.gd (~2 min)
 
-Download from [GitHub](https://github.com/cheddatech/CheddaBoards-Godot) and copy the `addons/cheddaboards/` folder to your project:
+**Recommended — the [Godot Asset Store](https://store.godotengine.org/asset/cheddatech/cheddaboards) package.** It's the addon-only build and, unlike the full template repo, it ships the editor plugin files: drop `addons/cheddaboards/` into your project, enable **CheddaBoards** under **Project → Project Settings → Plugins**, and the autoload registers itself. Done.
+
+**Alternatively — from [GitHub](https://github.com/cheddatech/CheddaBoards-Godot).** The repo is the full template; copy just the `addons/cheddaboards/` folder out of it:
 
 ```
 YourGame/
@@ -45,13 +47,13 @@ YourGame/
         └── SetupWizard.gd
 ```
 
-**Fastest path —** run the wizard, which registers the autoload for you:
+This copy has no plugin files, so register the autoload yourself — either run the wizard:
 
 ```
 File → Run → addons/cheddaboards/SetupWizard.gd
 ```
 
-**Or do it manually —** Project → Project Settings → Autoload → Add:
+or add it manually — Project → Project Settings → Autoload → Add:
 
 ```
 Name: CheddaBoards
@@ -330,7 +332,7 @@ The most common signals you'll connect to. The full list lives in the SDK source
 | Leaderboard shows duplicates / fires twice | You connected `leaderboard_loaded` inside a function — connect it once in `_ready()` |
 | Score not saving | Check `score_error` signal for the reason |
 | Leaderboard empty | Verify `game_id` matches the one in your dashboard |
-| "CheddaBoards not found" | Add to Autoloads or run Setup Wizard |
+| "CheddaBoards not found" | Enable the plugin (Asset Store install), add to Autoloads manually, or run the Setup Wizard |
 | Blank screen (web) | Use `python3 -m http.server`, not `file://` |
 | "Engine not defined" (web) | Export must be named `index.html`, not `MyGame.html` |
 | Clicks offset | Project Settings → Display → DPI → Allow Hidpi: On |
