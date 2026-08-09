@@ -8,6 +8,11 @@
 
 > **SDK 2.2.3** · Godot 4.6+ · Windows / Mac / Linux / Mobile / Web · MIT · [Changelog](CHANGELOG.md)
 
+<p align="center">
+  <img src="../screenshots/screenshot-anonymous.png" alt="Anonymous dashboard" width="45%"/>
+  <img src="../screenshots/screenshot-all-time-leaderboard.png" alt="All-time leaderboard" width="45%"/>
+</p>
+
 ---
 
 ## Choose your path
@@ -36,15 +41,19 @@ Three ways in. The difference is really *how much UI we hand you* versus *how mu
 
 | Feature | The short version | Learn more |
 |---------|-------------------|------------|
-| **Global leaderboards** | Submit a score + streak, read the top 100, highlight the player's own rank | Quickstarts |
+| **Global leaderboards** | Submit a score + streak, read back the board, highlight the player's own rank | Quickstarts |
 | **Timed scoreboards** | Weekly / daily / monthly / custom-interval boards that reset and archive automatically | [Guide](guides/timed-leaderboards.md) |
 | **Category scoreboards** | Per-level / per-mode targeted boards under one game — submit to one board by ID | [Guide](guides/category-scoreboards.md) |
 | **Achievements** | Auto-unlock on score/streak/level, offline cache, deferred sync, popups | [Guide](guides/achievements.md) |
-| **Device Code Auth** | Google / Apple sign-in on *any* platform via QR + code — no OAuth SDKs | [Guide](guides/device-code-login.md) |
+| **Device Code Auth** | Google / Apple sign-in on *any* platform via QR + code — no OAuth SDKs. Sessions persist (v2.2.3): players sign in once and stay signed in | [Guide](guides/device-code-login.md) |
 | **Account linking** | Anonymous players upgrade to Google / Apple later, keeping all progress | [Guide](guides/authentication.md) |
 | **Anti-cheat** | Server-side play sessions, score validation, rate limiting, configurable caps | [Guide](guides/anti-cheat.md) |
 
 Anonymous play works everywhere with zero setup — no account required to start submitting scores.
+
+<p align="center">
+  <img src="../screenshots/screenshot-device-code-auth.png" alt="Device Code Login — scan the QR on your phone, no OAuth SDKs in the game" width="45%"/>
+</p>
 
 ---
 
