@@ -45,7 +45,8 @@ The game shows a QR code, a URL, and a short code. The player signs in on their 
 ```
 
 <p align="center">
-  <img src="../../screenshots/screenshot-link-page.png" alt="cheddaboards.com/link on the player's phone — code pre-filled, one tap on Google or Apple" width="45%"/>
+  <img src="../../screenshots/screenshot-link-page.png" alt="cheddaboards.com/link — code verified, one tap on Google or Apple" width="45%"/>
+  <img src="../../screenshots/screenshot-linking-page-success.png" alt="Linked! The game picks the session up automatically" width="45%"/>
 </p>
 
 ```gdscript
@@ -100,6 +101,11 @@ CheddaBoards.account_upgrade_failed.connect(func(reason):
 ## Four-panel MainMenu flow (Template)
 
 The Template's MainMenu handles the whole identity lifecycle for you:
+
+<p align="center">
+  <img src="../../screenshots/screenshot-first-time-screen.png" alt="Login Panel — what a first-time player sees" width="45%"/>
+  <img src="../../screenshots/screenshot-anonymous.png" alt="Anonymous Dashboard — returning player with upgrade path" width="45%"/>
+</p>
 
 | Panel | When shown | Features |
 |-------|------------|----------|
