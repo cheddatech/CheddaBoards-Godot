@@ -2,7 +2,9 @@
 
 Use CheddaBoards from **any** engine or language by calling the HTTP API directly — no Godot, no SDK. This is the same API the Godot SDK uses under the hood.
 
-> The endpoints and request bodies below were taken from the v2.2.1 SDK. Response field names are described where confirmed; check live responses for the exact shape of any field your code depends on.
+> **Working in C or C++?** There's a community-built C library wrapping this API — [charlie-makes-things/C_cheddaboards](https://github.com/charlie-makes-things/C_cheddaboards) — with static and dynamic builds (Linux / Mac / MinGW-linkable Windows, via libcurl) covering score submission (global and targeted) and user handling. It hands you raw JSON responses to parse yourself, so this page still applies.
+
+> The endpoints and request bodies below were verified against the v2.2.3 SDK source. Response field names are described where confirmed; check live responses for the exact shape of any field your code depends on.
 
 ---
 
@@ -145,6 +147,8 @@ curl -X POST https://api.cheddaboards.com/auth/device/token \
 
 Use the returned `sessionId` as your `X-Session-Token` on subsequent requests, and stop sending `X-API-Key`.
 
+**Persist the session.** Store the `sessionId` client-side so the player stays signed in across launches instead of repeating device code auth every visit (the Godot SDK does this automatically since v2.2.3). The token stays valid until logout or server-side expiry — a `401`/`403` on a session-authenticated request means it's stale: discard the stored token and fall back to the sign-in flow.
+
 ---
 
 ## 4. Anti-cheat play sessions (recommended)
@@ -182,7 +186,8 @@ Pass the same `playSessionToken` in your `POST /scores` body (plain *or* targete
 | `GET`  | `/players/{playerId}/rank?sort={score\|streak}` | A player's rank |
 | `GET`  | `/players/{playerId}/profile` | Anonymous player profile |
 | `GET`  | `/auth/profile` | Signed-in player profile (uses `X-Session-Token`) |
-| `PUT`  | `/profile/nickname` | Change nickname (`{ nickname }`) |
+| `PUT`  | `/profile/nickname` | Change nickname, signed-in (`X-Session-Token`, `{ nickname }`) |
+| `PUT`  | `/players/{playerId}/nickname` | Change nickname, anonymous (`{ nickname }`) |
 | `GET`  | `/games/{gameId}/scoreboards` | List the game's scoreboards (timed and targeted) |
 | `GET`  | `/games/{gameId}/scoreboards/{scoreboardId}?limit={n}` | A single scoreboard's entries (timed or targeted) |
 | `POST` | `/auth/device/code` | Start Device Code auth (`{ gameId }`) |
@@ -190,7 +195,8 @@ Pass the same `playSessionToken` in your `POST /scores` body (plain *or* targete
 | `POST` | `/migrate-account` | Upgrade an anonymous account to a verified one |
 | `POST` | `/play-sessions/start` | Begin an anti-cheat session (`{ gameId, playerId }`) |
 | `POST` | `/play-sessions/end` | End a session (`{ playSessionToken }`) |
-| `GET`/`POST` | `/achievements` | List / sync achievements |
+| `POST` | `/achievements` | Unlock / sync achievements |
+| `GET`  | `/players/{playerId}/achievements` | List a player's achievements |
 | `GET`  | `/game`, `/game/stats` | Game metadata & stats |
 | `GET`  | `/health` | Service health check |
 
@@ -207,4 +213,4 @@ Pass the same `playSessionToken` in your `POST /scores` body (plain *or* targete
 
 ---
 
-**See also:** [Drop-in (Godot) Quickstart](quickstart-dropin.md) · [Authentication](guides/authentication.md) · [Anti-cheat](guides/anti-cheat.md) · [docs index](README.md)
+**See also:** [Drop-in (Godot) Quickstart](quickstart-dropin.md) · [Authentication](guides/authentication.md) · [Anti-cheat](guides/anti-cheat.md) · [Community C library](https://github.com/charlie-makes-things/C_cheddaboards) · [docs index](README.md)
