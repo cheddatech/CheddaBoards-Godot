@@ -68,7 +68,13 @@ Point the wrapper at your scene and that's the whole game-side integration — t
 | **Achievements** | Backend-synced, with popup notifications & offline cache |
 | **CheddaBoards SDK** | Core backend integration (also usable standalone) |
 
-**Status:** Native, Mobile, and Web are all ✅ stable. Every platform supports Google / Apple sign-in via Device Code Auth — no OAuth SDKs in your game. → [Device Code Login](docs/guides/device-code-login.md)
+**Status:** Native, Mobile, and Web are all ✅ stable. Every platform supports Google / Apple sign-in via Device Code Auth — no OAuth SDKs in your game — and since **v2.2.3** sessions persist, so players sign in **once** and stay signed in across restarts. → [Device Code Login](docs/guides/device-code-login.md)
+
+SCREENSHOT: device code login screen with QR code — screenshots/screenshot_device_code.png
+<p align="center">
+  <img src="screenshots/screenshot_device_code.png" alt="Device Code Login — scan the QR on your phone, no OAuth SDKs in the game" width="45%"/>
+</p>
+
 
 ---
 
@@ -78,7 +84,7 @@ Point the wrapper at your scene and that's the whole game-side integration — t
 
 ### 1. Setup
 
-Download from the [Asset Library](https://godotengine.org/asset-library/asset/4574) or GitHub, open in **Godot 4.6+**, then run the Setup Wizard:
+Download from the [Godot Asset Store](https://store.godotengine.org/asset/cheddatech/cheddaboards) (or the [legacy Asset Library](https://godotengine.org/asset-library/asset/4574) / GitHub), open in **Godot 4.6+**, then run the Setup Wizard:
 
 ```
 File → Run → addons/cheddaboards/SetupWizard.gd
@@ -158,7 +164,7 @@ Players get leaderboards, achievements, and anti-cheat — no further wiring.
 
 | Feature | Learn more |
 |---------|------------|
-| Cross-platform auth — anonymous, Google / Apple via device code, account linking | [Authentication](docs/guides/authentication.md) · [Device Code Login](docs/guides/device-code-login.md) |
+| Cross-platform auth — anonymous, Google / Apple via device code, account linking, persistent sessions (sign in once) | [Authentication](docs/guides/authentication.md) · [Device Code Login](docs/guides/device-code-login.md) |
 | Global leaderboards (sort by score or streak, player rank highlighted) | [Drop-in Quickstart](docs/quickstart-dropin.md) |
 | Timed scoreboards — weekly / daily / monthly / custom, auto-reset & archive | [Timed Leaderboards](docs/guides/timed-leaderboards.md) |
 | Achievements — auto-unlock, offline cache, deferred sync, popups | [Achievements](docs/guides/achievements.md) |
@@ -209,14 +215,16 @@ CheddaBoards-Godot/
 - **Godot 4.6+**
 - A free **CheddaBoards account** — [cheddaboards.com](https://cheddaboards.com) — for your Game ID & API key
 
-> **Heads up (v2.2.0):** `profile_loaded` now emits `play_count` as a 5th argument — a breaking change for 4-arg handlers. Full migration notes in the [Changelog](docs/CHANGELOG.md).
+> **Upgrading from v2.1 or earlier?** `profile_loaded` emits `play_count` as a 5th argument since v2.2.0 — a breaking change for 4-arg handlers. Full migration notes in the [Changelog](docs/CHANGELOG.md).
 
 ---
 
 ## Roadmap
 
-- [ ] Godot 3.6 SDK release
-- [ ] Unity SDK (in progress)
+- [x] Godot 3.6 SDK release — shipped ([CheddaBoards 3.x backport](https://github.com/cheddatech/CheddaBoards-Godot))
+- [x] Unity SDK — shipped with full API parity ([CheddaBoards-Unity](https://github.com/cheddatech/CheddaBoards-Unity))
+- [ ] More game slots per account
+- [ ] Self-serve score entry deletion in the developer dashboard
 - [ ] Expanded analytics dashboard
 
 ---
