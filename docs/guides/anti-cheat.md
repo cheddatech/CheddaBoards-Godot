@@ -17,6 +17,11 @@ Set your limits from your game's **Security** tab on the dashboard, based on you
 
 There are no default caps; validation is per-game and entirely dashboard-driven, so a fast scoring game and a slow puzzle game can have completely different rules without any code changes.
 
+<p align="center">
+  <img src="../../screenshots/screenshot-anticheat-dashboard-1.png" alt="Dashboard Security tab — per-submission score and streak caps" width="45%"/>
+  <img src="../../screenshots/screenshot-anticheat-dashboard-2.png" alt="Dashboard Security tab — validation and rate limiting settings" width="45%"/>
+</p>
+
 ---
 
 ## Play sessions in code
