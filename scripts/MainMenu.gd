@@ -1,4 +1,4 @@
-# MainMenu.gd v2.1.6
+# MainMenu.gd v2.1.7
 # Main menu with authentication flow and profile display
 # - Login panel: PLAY NOW (with name entry), Leaderboard, and Sign In (device code)
 # - Name entry panel: For new anonymous players to set their display name
@@ -9,6 +9,34 @@
 # - MobileUI integration for responsive scaling
 # https://github.com/cheddatech/CheddaBoards-Godot
 #
+# v2.1.7: Exit button rework + has_played now means a real score
+#          + mobile panel scrolling.
+#          - Panels are now scrollable on phones: each panel's VBox is
+#            wrapped in a runtime ScrollContainer (vertical only,
+#            scroll_deadzone so drags over buttons scroll but taps still
+#            press). Scene file unchanged; desktop looks identical when
+#            content fits.
+#          - has_played was set at name entry, BEFORE the game even
+#            launched, so a player who typed a name and quit was routed
+#            to the "welcome back" anonymous dashboard forever - with
+#            zero plays. Name confirm now saves only the nickname/ID;
+#            the Game wrapper marks has_played when a score actually
+#            submits (see Game.gd v1.1.1). Matches the v2.1.4 spec:
+#            "a score was submitted in any prior session".
+#            Self-heal: if the server profile shows plays/score but the
+#            local flag is unset, it's marked on profile load.
+#          - New ExitButton on the logged-in MainPanel: players can leave
+#            without logging out first (logout wipes the session, so
+#            forcing it just to exit meant re-auth on every return).
+#          - New @export web_exit_url replaces a hardcoded studio URL.
+#            On web, Exit navigates there: same-tab when full-window,
+#            NEW TAB when running inside an iframe (itch.io embeds), so
+#            the host page stays intact. If a popup blocker eats the new
+#            tab, the button shows the URL instead.
+#          - web_exit_url empty (the default): all Exit buttons are
+#            hidden on web builds - get_tree().quit() just freezes the
+#            canvas in a browser. Native builds always show Exit and
+#            quit normally.
 # v2.1.6: Web name input fix (mobile browsers).
 #          Godot's in-engine LineEdit can't receive typed characters on
 #          mobile web browsers (backspace registers, typing doesn't), so
@@ -104,6 +132,16 @@ const SAVE_FILE_PATH: String = "user://player_data.save"
 const MIN_NAME_LENGTH: int = 2
 const MAX_NAME_LENGTH: int = 16
 
+## Where the Exit button sends players in web builds (e.g. your game's
+## website or itch page). On web, get_tree().quit() just freezes the
+## canvas, so Exit navigates instead:
+##   - running full-window: same-tab redirect to this URL
+##   - running inside an iframe (itch.io embeds): opens it in a new tab,
+##     leaving the host page intact
+## Leave EMPTY to hide the Exit buttons entirely on web (native builds
+## always show Exit and quit normally).
+@export var web_exit_url: String = ""
+
 # ============================================================
 # NODE REFERENCES - LOGIN PANEL
 # ============================================================
@@ -170,6 +208,7 @@ const MAX_NAME_LENGTH: int = 16
 @onready var achievement_button = $MainPanel/MarginContainer/VBoxContainer/AchievementsButton
 @onready var leaderboard_button = $MainPanel/MarginContainer/VBoxContainer/LeaderboardButton
 @onready var logout_button = $MainPanel/MarginContainer/VBoxContainer/LogoutButton
+@onready var main_exit_button = $MainPanel/MarginContainer/VBoxContainer/ExitButton
 
 # ============================================================
 # STATE
@@ -223,12 +262,14 @@ var state_history: Array = []
 # ============================================================
 
 func _ready():
+	# --- CheddaBoards credentials (managed by Setup Wizard) ---
+	CheddaBoards.set_api_key("")
+	CheddaBoards.set_game_id("")
+	# --- end CheddaBoards credentials ---
 	# CheddaBoards credentials.
 	# Replace with your own from the developer dashboard at cheddaboards.com.
 	# SDK v2.2.0+ ships with empty defaults — set them here before any
 	# other CheddaBoards call (login, profile fetch, score submit).
-	CheddaBoards.set_api_key("")
-	CheddaBoards.set_game_id("")
 	
 	# Generate anonymous player ID
 	_setup_anonymous_player()
@@ -312,6 +353,15 @@ func _ready():
 		achievement_button.pressed.connect(_on_achievements_pressed)
 	if logout_button:
 		logout_button.pressed.connect(_on_logout_pressed)
+	if main_exit_button:
+		main_exit_button.pressed.connect(_on_exit_button_pressed)
+	
+	# On web with no exit URL configured, hide Exit everywhere -
+	# quit() just freezes the canvas in a browser
+	_apply_web_exit_visibility()
+	
+	# Phones: wrap each panel's content in a ScrollContainer
+	_make_panels_scrollable()
 	
 	# Apply MobileUI scaling
 	_scale_ui()
@@ -428,6 +478,7 @@ func _scale_main_panel():
 	MobileUI.scale_button(achievement_button, 16, 44)
 	MobileUI.scale_button(leaderboard_button, 16, 44)
 	MobileUI.scale_button(logout_button, 16, 40)
+	MobileUI.scale_button(main_exit_button, 16, 40)
 	
 	var margin = main_panel.get_node_or_null("MarginContainer")
 	if margin is MarginContainer:
@@ -799,9 +850,11 @@ func _show_name_entry_panel(mode: String = "first_play"):
 	if anonymous_panel:
 		anonymous_panel.visible = false
 	
-	var title_label = name_entry_panel.get_node_or_null("MarginContainer/VBoxContainer/TitleLabel")
-	var subtitle_label = name_entry_panel.get_node_or_null("MarginContainer/VBoxContainer/SubtitleLabel")
-	var confirm_btn = name_entry_panel.get_node_or_null("MarginContainer/VBoxContainer/ConfirmNameButton")
+	# find_child (not fixed paths): the VBox may be wrapped in a runtime
+	# ScrollContainer by _make_panels_scrollable()
+	var title_label = name_entry_panel.find_child("TitleLabel", true, false)
+	var subtitle_label = name_entry_panel.find_child("SubtitleLabel", true, false)
+	var confirm_btn = name_entry_panel.find_child("ConfirmNameButton", true, false)
 	
 	if mode == "rename":
 		if title_label:
@@ -833,6 +886,9 @@ func _show_name_entry_panel(mode: String = "first_play"):
 	name_status_label.text = ""
 	
 	name_line_edit.grab_focus()
+	# Pre-select the prefilled name: typing replaces it immediately,
+	# but it's still accepted as-is with one press of the confirm button
+	name_line_edit.select_all()
 	_update_confirm_button_state()
 
 func _open_web_name_modal(default_text: String, mode: String) -> void:
@@ -999,6 +1055,11 @@ func _update_anonymous_panel_stats(profile: Dictionary):
 	var play_count = int(profile.get("playCount", profile.get("plays", 0)))
 	var rank = int(profile.get("rank", profile.get("position", 0)))
 	
+	# Self-heal: server shows real activity but the local flag is unset
+	# (older install, cleared save, or the wrapper's write failed)
+	if not anonymous_has_played and (play_count > 0 or all_time_score > 0):
+		_mark_anonymous_has_played()
+	
 	if all_time_score == 0:
 		all_time_score = CheddaBoards.get_high_score()
 	if play_count == 0:
@@ -1163,6 +1224,8 @@ func _set_main_buttons_disabled(disabled: bool):
 		leaderboard_button.disabled = disabled
 	if logout_button:
 		logout_button.disabled = false  # Always allow logout
+	if main_exit_button:
+		main_exit_button.disabled = false  # Always allow exit
 
 func _set_status(message: String, is_error: bool = false):
 	"""Set status label"""
@@ -1182,12 +1245,67 @@ func _on_direct_play_pressed():
 	_show_name_entry_panel()
 
 func _on_exit_button_pressed():
-	"""Exit game - redirect to chedda.games in HTML5, quit otherwise"""
+	"""Exit game. Native: quit. Web: navigate to web_exit_url -
+	same-tab when full-window, new tab when iframed (itch.io embeds)
+	so the host page stays intact. quit() is never called on web
+	(it just freezes the canvas)."""
 	_log("Exit pressed")
 	if OS.has_feature("web"):
-		JavaScriptBridge.eval("window.location.href = 'https://chedda.games'")
-	else:
-		get_tree().quit()
+		if web_exit_url.is_empty():
+			return  # buttons are hidden in this state; nothing to do
+		var in_iframe = JavaScriptBridge.eval("window.self !== window.top", true)
+		if in_iframe:
+			var js_open = "window.open('%s', '_blank') !== null" % web_exit_url
+			var opened = JavaScriptBridge.eval(js_open, true)
+			if not opened:
+				# Popup blocked - show the URL on whichever exit button was pressed
+				for btn in [main_exit_button, exit_button, anon_exit_button]:
+					if btn and btn.is_visible_in_tree():
+						btn.text = web_exit_url.trim_prefix("https://").trim_prefix("http://")
+		else:
+			JavaScriptBridge.eval("window.location.href = '%s'" % web_exit_url, true)
+		return
+	get_tree().quit()
+
+func _apply_web_exit_visibility():
+	"""Hide all Exit buttons on web builds when no exit URL is configured."""
+	if OS.has_feature("web") and web_exit_url.is_empty():
+		for btn in [exit_button, anon_exit_button, main_exit_button]:
+			if btn:
+				btn.visible = false
+
+func _make_panels_scrollable():
+	"""Phones: panel content can be taller than the screen, leaving the
+	lower buttons unreachable. Wrap each panel's VBox in a ScrollContainer
+	at runtime - the scene file stays untouched and existing node
+	references survive reparenting. When content fits, the scrollbar
+	never appears, so desktop looks identical."""
+	for panel in [login_panel, name_entry_panel, anonymous_panel, main_panel]:
+		if not panel:
+			continue
+		var margin = panel.get_node_or_null("MarginContainer")
+		if not margin:
+			continue
+		var vbox = margin.get_node_or_null("VBoxContainer")
+		if not vbox:
+			continue
+		var scroll = ScrollContainer.new()
+		scroll.name = "Scroll"
+		scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+		# A drag that starts on a button scrolls once it moves this far;
+		# a clean tap still presses the button
+		scroll.scroll_deadzone = 24
+		scroll.follow_focus = true
+		margin.remove_child(vbox)
+		margin.add_child(scroll)
+		scroll.add_child(vbox)
+		vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		# Fill the scroll's height when content fits, so VBoxes with
+		# alignment=center stay vertically centred on desktop exactly as
+		# before the wrap; when content overflows, min size wins and it
+		# scrolls as normal
+		vbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
 
 # ============================================================
 # DEVICE CODE AUTH HANDLERS
@@ -1381,9 +1499,12 @@ func _on_confirm_name_pressed():
 			main_panel.visible = true
 			welcome_label.text = "Welcome, %s!" % name_text
 	else:
-		# First play: set up anonymous identity and start the game
+		# First play: set up anonymous identity and start the game.
+		# Save the nickname/ID but NOT has_played - the Game wrapper marks
+		# that when a score actually submits, so a player who types a name
+		# and bails still gets the fresh start screen next launch.
 		anonymous_nickname = name_text
-		_mark_anonymous_has_played()
+		_save_player_data()
 		
 		CheddaBoards.set_player_id(anonymous_player_id)
 		CheddaBoards.change_nickname(name_text)
