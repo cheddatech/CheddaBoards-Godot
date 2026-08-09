@@ -27,6 +27,8 @@ Three ways in. The difference is really *how much UI we hand you* versus *how mu
 
 ➡️ **[Template Quickstart](../README.md)**  ·  **[Drop-in Quickstart](quickstart-dropin.md)**  ·  **[API Quickstart](quickstart-api.md)**
 
+> On the REST path from **C or C++**? There's a [community-built C library](https://github.com/charlie-makes-things/C_cheddaboards) wrapping the API.
+
 ### Template vs Drop-in — the real difference
 
 **Template** wraps your game in a ready-made shell: a `GameWrapper` plus finished MainMenu / Leaderboard / Achievements screens. Your game scene only has to **emit `game_over(final_score, stats)`** when a run ends — the wrapper then shows the game-over screen, submits the score, runs the anti-cheat play session, and fires achievements for you. That's **one required signal.** If you also use the built-in HUD, you can *optionally* emit three more to feed it live (score/combo, stats, timer) — but they're not required to get scores on the board.
