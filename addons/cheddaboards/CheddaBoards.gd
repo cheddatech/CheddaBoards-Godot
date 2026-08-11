@@ -1086,9 +1086,17 @@ func refresh_profile() -> void:
 	_log("Profile refresh requested")
 
 func change_nickname(new_nickname: String = "") -> void:
-	if new_nickname.is_empty() or new_nickname.length() < 2:
-		nickname_error.emit("Nickname must be at least 2 characters")
+	# Canonical rule (matches proxy + canister): 3-16 chars, letters/numbers/underscores.
+	if new_nickname.is_empty() or new_nickname.length() < 3:
+		nickname_error.emit("Nickname must be at least 3 characters")
 		return
+	if new_nickname.length() > 16:
+		nickname_error.emit("Nickname must be 16 characters or less")
+		return
+	for c in new_nickname:
+		if not "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_".contains(c):
+			nickname_error.emit("Nickname can only contain letters, numbers, and underscores")
+			return
 	
 	# Anonymous players who haven't submitted a score yet don't exist on backend
 	if is_anonymous() and _cached_profile.is_empty():
