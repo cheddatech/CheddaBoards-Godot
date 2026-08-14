@@ -99,7 +99,7 @@ Anonymous play works everywhere with zero setup — no account required to start
 
 - **Bugs & feature requests:** [GitHub Issues](https://github.com/cheddatech/CheddaBoards-Godot/issues)
 - **Player & developer info:** [cheddaboards.com](https://cheddaboards.com)
-- **Developer dashboard:** [cheddaboards.com](https://cheddaboards.com/developers) — register games, manage boards, moderation
+- **Developer dashboard:** [cheddaboards.com/developers](https://cheddaboards.com/developers) — register games, manage boards, moderation
 - **Studio:** [cheddatech.com](https://cheddatech.com)
 - **Support development:** [Buy me a coffee](https://buymeacoffee.com/CheddaTech) — no VC, no investors
 
