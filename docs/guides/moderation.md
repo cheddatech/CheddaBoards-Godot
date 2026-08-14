@@ -1,3 +1,4 @@
+
 # Score Moderation
 
 Remove unwanted entries from your leaderboards — test accounts, junk scores, or anything that shouldn't be there. Available to game owners from the developer dashboard.
@@ -9,18 +10,18 @@ Remove unwanted entries from your leaderboards — test accounts, junk scores, o
 | Action | Scope | Where |
 |---|---|---|
 | Delete a single entry | One score on one board | ✕ button on any row |
-| Wipe a player | All of that player's scores across every board in your game | ✕ button → "Remove from all boards" |
-| Purge archives | Also removes the player's entries from archived weekly/daily boards | Checkbox in the confirm dialog |
-| View deletion log | Audit trail of every deletion on your game | Deletion Log view |
+| Wipe a player | All of that player's scores across every board in your game | ✕ button → "All boards in this game" |
+| Purge archives | Also removes the player's entries from archived daily/weekly boards | Checkbox in the confirm dialog |
+| View deletion log | Audit trail of every deletion on your game | Deletion Log button on the board view |
 
 ## Deleting an entry
 
 1. Open your game's scoreboard in the dashboard. As the owner you'll see the admin view — same board, plus a ✕ column.
 2. Click ✕ on the entry you want gone.
-3. In the dialog, choose the scope:
-   - **This entry only** — removes that one score from that one board.
-   - **Remove player from all boards** — wipes every score the player has on every board in this game. This also resets their game profile (score, streak and play count go to zero). Achievements are kept.
-4. Optionally tick **Also purge archives** to remove them from archived boards too.
+3. In the **Remove Player Entry** dialog, choose the scope:
+   - **Just this board** — removes that one score from that one board.
+   - **All boards in this game** — wipes every score the player has on every board in this game. This also resets their profile stats (score, streak and play count go to zero). Achievements are kept.
+4. Optionally tick **Also purge from daily/weekly archives** to remove them from archived boards too.
 5. Confirm.
 
 Changes are live immediately. Board caches are refreshed and entry counts update.
