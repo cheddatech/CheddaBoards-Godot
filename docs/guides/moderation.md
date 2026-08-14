@@ -1,4 +1,3 @@
-
 # Score Moderation
 
 Remove unwanted entries from your leaderboards — test accounts, junk scores, or anything that shouldn't be there. Available to game owners from the developer dashboard.
