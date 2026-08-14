@@ -2,7 +2,7 @@
 
 Remove unwanted entries from your leaderboards — test accounts, junk scores, or anything that shouldn't be there. Available to game owners from the developer dashboard.
 
-![Scoreboard admin view](../screenshots/screenshot-moderation-admin-view.png)
+![Scoreboard admin view](../../screenshots/screenshot-moderation-admin-view.png)
 
 ## What you can do
 
@@ -25,7 +25,7 @@ Remove unwanted entries from your leaderboards — test accounts, junk scores, o
 
 Changes are live immediately. Board caches are refreshed and entry counts update.
 
-![Moderation confirm dialog](../screenshots/screenshot-moderation-dialog.png)
+![Moderation confirm dialog](../../screenshots/screenshot-moderation-dialog.png)
 
 ## Deletion is not a ban
 
