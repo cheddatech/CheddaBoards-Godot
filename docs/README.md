@@ -50,6 +50,7 @@ Three ways in. The difference is really *how much UI we hand you* versus *how mu
 | **Device Code Auth** | Google / Apple sign-in on *any* platform via QR + code — no OAuth SDKs. Sessions persist (v2.2.3): players sign in once and stay signed in | [Guide](guides/device-code-login.md) |
 | **Account linking** | Anonymous players upgrade to Google / Apple later, keeping all progress | [Guide](guides/authentication.md) |
 | **Anti-cheat** | Server-side play sessions, score validation, rate limiting, configurable caps | [Guide](guides/anti-cheat.md) |
+| **Score moderation** | Delete junk entries or wipe a player from all boards, with a full deletion log | [Guide](guides/moderation.md) |
 
 Anonymous play works everywhere with zero setup — no account required to start submitting scores.
 
@@ -63,7 +64,7 @@ Anonymous play works everywhere with zero setup — no account required to start
 
 - **Godot 4.6 or newer**
 - A free **CheddaBoards account** — [cheddaboards.com](https://cheddaboards.com)
-- A **Game ID** and **API Key** from the developer dashboard
+- A **Game ID** and **API Key** from the [developer dashboard](https://cheddaboards.com)
 
 > Building for **Godot 3.6**? See the notes in the [Drop-in Quickstart](quickstart-dropin.md) — the syntax differs (`yield` instead of `await`).
 
@@ -86,6 +87,7 @@ Anonymous play works everywhere with zero setup — no account required to start
 | [Device Code Login](guides/device-code-login.md) | Build the social sign-in screen (QR rendering, signals) |
 | [Achievements](guides/achievements.md) | Definitions, sync, notifications |
 | [Anti-cheat](guides/anti-cheat.md) | Play sessions, validation, dashboard config |
+| [Score Moderation](guides/moderation.md) | Removing scores, wiping players, the deletion log |
 | [Signals Reference](guides/signals-reference.md) | Every SDK signal, grouped by category |
 | [What CheddaBoards Stores](guides/data-model.md) | The data model — score, streak, profile, achievements (and what isn't stored) |
 | [Troubleshooting](TROUBLESHOOTING.md) | Common problems & fixes |
@@ -97,6 +99,7 @@ Anonymous play works everywhere with zero setup — no account required to start
 
 - **Bugs & feature requests:** [GitHub Issues](https://github.com/cheddatech/CheddaBoards-Godot/issues)
 - **Player & developer info:** [cheddaboards.com](https://cheddaboards.com)
+- **Developer dashboard:** [cheddaboards.com](https://cheddaboards.com/developers) — register games, manage boards, moderation
 - **Studio:** [cheddatech.com](https://cheddatech.com)
 - **Support development:** [Buy me a coffee](https://buymeacoffee.com/CheddaTech) — no VC, no investors
 
