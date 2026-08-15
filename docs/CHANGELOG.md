@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.2.4] - 2026-08-15
+
+### Account Linking, Hardened
+
+Backwards-compatible release. A full hardening pass on account linking, driven by the first external adoption of device code auth: the upgrade signals now behave exactly as documented, leaderboards show the right sign-in provider, and players keep the names they chose when linking creates their account. Nickname validation is also unified onto one canonical rule across the SDK, proxy, and canister. No breaking changes, no migration required.
+
+### Added
+
+#### Nickname Seeding (`CheddaBoards.gd`)
+- `login_with_device_code()` now sends the player's current in-game nickname with the device code request, so an account **created** at link time is born with the name they chose instead of a generated `Player_N`
+- If the player's anonymous profile still holds that name at creation (they played before linking), the account is briefly suffixed and the SDK reclaims the exact name right after migration, emitting `nickname_changed` — connect `nickname_changed` rather than caching the name from `device_code_approved` if you display it persistently
+- Existing accounts are never renamed by linking — seeding only affects accounts born at link time
+- Requires the current API (falls back gracefully to previous behavior against older deployments)
+
+### Fixed
+
+#### `account_upgrade_failed` Never Fired
+- The signal was declared but never emitted — failed migrations were logged internally and silently dropped, so games listening for upgrade failures never heard about them. Emits added on every failure path (HTTP errors, rejected responses, and the missing-prerequisites early return)
+- Every migration attempt now ends in **exactly one** of `account_upgraded(profile, migration)` or `account_upgrade_failed(reason)`
+- One `reason` to know: `"Anonymous account not found"` means the player linked before ever submitting a score — there was nothing to migrate, and it's safe to ignore in your UX
+
+#### Wrong Provider on Linked Accounts
+- `_auth_type` was hardcoded to `"google"` after device code auth regardless of which provider the player chose, so Apple linkers showed the wrong auth badge on leaderboards. The SDK now reads the real provider from the server (falling back to `"google"` against older deployments)
+
+### Changed
+
+- `change_nickname()` now validates against the canonical platform rule — **3–16 characters, letters, numbers, and underscores** — with the same error strings the server uses (previously it only checked for a 2-character minimum, letting names through that the server would reject). Rejections are permanent for that name; don't retry the same value
+- Docs: [Authentication](docs/guides/authentication.md) and [Device Code Login](docs/guides/device-code-login.md) rewritten with the full linking semantics — signal ordering, cross-device merge behavior, one-way linking, and testing tips — and [Signals Reference](docs/guides/signals-reference.md) annotations updated to match
+
+### Migration from v2.2.3
+
+No code changes required. Two behavior notes: handlers already connected to `account_upgrade_failed` will start receiving events (including the benign `"Anonymous account not found"` reason above), and nicknames shorter than 3 or longer than 16 characters now fail client-side with the same error the server was already returning.
+
+---
+
 ## [2.2.3] - 2026-08-09
 
 ### Stay Signed In
