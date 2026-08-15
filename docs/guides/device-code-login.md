@@ -18,7 +18,7 @@ This is the hands-on companion to [Authentication](authentication.md), which cov
 1. You call `login_with_device_code()`.
 2. The SDK emits `device_code_received` with a short code, a verification URL, and a QR image.
 3. You show those to the player. They scan the QR (or open the link) on their phone and sign in with Google or Apple.
-4. The SDK polls in the background and emits `device_code_approved(nickname)` when they're done — or `device_code_expired` after 5 minutes.
+4. The SDK polls in the background and emits `device_code_approved(nickname)` when they're done — or `device_code_expired` after 5 minutes. If the player was playing anonymously, their progress then merges into the account in the background — see [After approval](#after-approval-account-upgrade-signals) below.
 
 Players do this **once** (SDK v2.2.3+): the session persists to `user://` and is restored on startup, so this screen only appears again after a logout or a server-side session expiry — see [Authentication → Staying signed in](authentication.md#staying-signed-in-v223).
 
@@ -55,6 +55,26 @@ Whether you use the prebuilt popup or roll your own, these four CheddaBoards sig
 | `device_code_error(reason)` | Something went wrong | Show the reason, offer retry |
 
 Connect them in `_ready()`, and disconnect on teardown so a second attempt starts clean.
+
+---
+
+## After approval: account upgrade signals
+
+`device_code_approved` isn't always the end of the story. If the player was **playing anonymously** before linking, the SDK automatically migrates their progress (scores, streaks, achievements, play counts) into the account in the background, and exactly one of these follows:
+
+| Signal | Fires when |
+|--------|------------|
+| `account_upgraded(profile, migration)` | The merge landed — `migration` carries `migratedGames` and `migratedScoreboards` counts |
+| `account_upgrade_failed(reason)` | The merge couldn't run — the `reason` string comes from the server |
+
+Two things worth knowing:
+
+- **"Anonymous account not found" is harmless.** It means the player linked before ever submitting a score, so there was nothing to migrate. Safe to ignore in your UX.
+- **A fresh player who links with no anonymous history gets neither signal** — no migration is attempted, and `device_code_approved` is the whole flow.
+
+Your login screen doesn't need to handle these (the popup can close on `device_code_approved` as shown), but if you show a "progress transferred!" message or gate anything on the merge, connect them. The wider linking picture is in [Authentication → account linking](authentication.md).
+
+> **Nicknames can settle a beat after approval.** When linking *creates* the account, it's born with the player's in-game name — but if their anonymous profile still holds that name at creation time, the account briefly gets a suffixed one (`Jegg_1`) and the SDK reclaims the exact name right after the merge, emitting `nickname_changed`. If you display the player's name anywhere persistent, connect `nickname_changed` too rather than caching the string from `device_code_approved`.
 
 ---
 
