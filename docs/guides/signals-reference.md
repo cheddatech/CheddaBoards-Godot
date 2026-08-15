@@ -23,10 +23,11 @@ signal init_error(reason: String)
 signal login_success(nickname: String)
 signal login_failed(reason: String)
 signal logout_success()
-# v2.2.3: fired when the server rejects the stored session token (401/403).
-# The saved session is cleared and logout_success ALSO fires, so menus that
-# already handle logout_success need no changes - connect this only to show
-# something specific ("Session expired - please sign in again").
+# v2.2.3: fired when the server rejects the stored session token - expired,
+# revoked, or the account no longer exists. The saved session is cleared and
+# logout_success ALSO fires, so menus that already handle logout_success need
+# no changes - connect this only to show something specific ("Session
+# expired - please sign in again").
 signal session_expired()
 signal auth_error(reason: String)
 ```
@@ -90,7 +91,15 @@ signal play_session_error(reason: String)
 ### Account Upgrade (Anonymous → Verified)
 
 ```gdscript
+# Fires AFTER device_code_approved, once the background migration of the
+# player's anonymous progress lands. migration carries migratedGames and
+# migratedScoreboards counts. Neither upgrade signal fires for a player
+# with no anonymous history - approval is the whole flow.
 signal account_upgraded(profile: Dictionary, migration: Dictionary)
+# reason comes from the server. "Anonymous account not found" is harmless -
+# the player linked before ever submitting a score, so there was nothing to
+# migrate. NOTE: earlier SDK releases declared this signal but never emitted
+# it - update from the repo before building on it.
 signal account_upgrade_failed(reason: String)
 ```
 
