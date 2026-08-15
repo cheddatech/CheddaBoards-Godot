@@ -76,25 +76,35 @@ When the player finishes signing in on their phone and returns to the game, focu
 
 Players go through this flow **once**. The session token is saved to `user://cheddaboards_session.cfg` and restored on startup before `sdk_ready` fires, so returning players land straight in their signed-in state. `logout()` clears the saved session.
 
-If the server rejects a stored token (`401`/`403` — expired or revoked), the SDK clears it and emits `session_expired` **plus** `logout_success`, so a menu that already handles `logout_success` falls back to its login screen automatically. Web caveats (Safari in iframes, itch.io re-uploads): [Web Export](web-export.md).
+If the server rejects a stored token — expired, revoked, or the account no longer exists — the SDK clears it and emits `session_expired` **plus** `logout_success`, so a menu that already handles `logout_success` falls back to its login screen automatically. Web caveats (Safari in iframes, itch.io re-uploads): [Web Export](web-export.md).
 
 ---
 
 ## Account linking (Anonymous → Verified)
 
-- Anonymous players can upgrade to Google / Apple via the same device code flow.
-- All scores, achievements, and progress are preserved through migration.
-  > On SDK < 2.2.3, achievements unlocked **before** linking could be lost during the upgrade — fixed in v2.2.3.
-- Available from both the in-game **Sign In** button and the **Anonymous Dashboard**.
+Anonymous players can upgrade to Google / Apple via the same device code flow — available from both the in-game **Sign In** button and the **Anonymous Dashboard**. All scores, achievements, and progress are preserved through migration.
+
+> On SDK < 2.2.3, achievements unlocked **before** linking could be lost during the upgrade — fixed in v2.2.3.
+
+**Signal order.** `device_code_approved` (and `login_success`) fire the moment the link is approved. If the player had anonymous data, the SDK then migrates it in the background and exactly one of `account_upgraded` / `account_upgrade_failed` follows. A fresh player with no anonymous history gets neither — approval is the whole flow. (Earlier SDK releases never actually emitted `account_upgrade_failed`; update from the repo if you build on it.)
 
 ```gdscript
 CheddaBoards.account_upgraded.connect(func(profile, migration):
-    print("Upgraded — progress preserved")
+    print("Upgraded — %s game(s), %s board entries migrated" % [
+        migration.get("migratedGames", 0), migration.get("migratedScoreboards", 0)])
 )
 CheddaBoards.account_upgrade_failed.connect(func(reason):
     push_warning("Upgrade failed: %s" % reason)
 )
 ```
+
+**Merging is safe across devices.** If a player has been playing anonymously on two devices and links both to the same Google/Apple account, the second link **merges** into the existing account rather than erroring: best score and best streak are kept per field, achievements are combined and deduplicated, and play counts add together. The message for your players is simply "link on every device and your best progress carries over."
+
+**Linking is one-way.** Migration absorbs the anonymous account and deletes it — there is nothing to unlink back to. For testing your own flow, use throwaway Google accounts and clear the stored device ID to spawn a fresh anonymous identity.
+
+**"Anonymous account not found" is harmless.** If a player links before ever submitting a score, there's no server-side anonymous profile to migrate, and `account_upgrade_failed` reports that reason. Safe to ignore in your UX.
+
+**Nicknames carry over.** When linking *creates* the account, it's born with the player's in-game name (the SDK seeds it into the flow). If their anonymous profile still holds that name at creation time, the account briefly gets a suffixed one and the SDK reclaims the exact name right after the merge — connect `nickname_changed` rather than caching the name from `device_code_approved` if you display it persistently.
 
 ---
 
@@ -138,4 +148,4 @@ signal account_upgrade_failed(reason: String)
 
 ---
 
-**See also:** [Signals Reference](signals-reference.md) · [Achievements](achievements.md) · [docs index](../README.md)
+**See also:** [Device Code Login](device-code-login.md) · [Signals Reference](signals-reference.md) · [Achievements](achievements.md) · [docs index](../README.md)
