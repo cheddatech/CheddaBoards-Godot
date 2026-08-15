@@ -377,9 +377,10 @@ func _on_http_request_completed(result: int, response_code: int, headers: Packed
 			_http_busy = false
 			_process_next_request()
 			return
-		# Migration errors are non-fatal
+		# Migration errors are non-fatal for login, but games need to know
 		if _current_endpoint == "migrate_account":
 			_log("Migration note: %s (non-fatal, continuing)" % error_msg)
+			account_upgrade_failed.emit(error_msg)
 			_current_meta = {}
 			_http_busy = false
 			_process_next_request()
@@ -619,6 +620,9 @@ func _emit_http_failure(error: String) -> void:
 			_deferred_achievements_remaining = 0
 		"achievements":
 			achievements_loaded.emit([])
+		"migrate_account":
+			_log("Migration failed: %s" % error)
+			account_upgrade_failed.emit(error)
 		"list_scoreboards":
 			scoreboards_loaded.emit([])
 			scoreboard_error.emit(error)
@@ -1308,7 +1312,7 @@ func _handle_device_code_poll_response(result: int, response_code: int, body: Pa
 		# Set session state
 		_session_token = session_id
 		_nickname = nickname
-		_auth_type = "google"  # Provider determined by what they chose on the page
+		_auth_type = str(data.get("provider", "google"))  # Real provider from proxy; older proxies omit it
 		_save_session()
 		
 		# Clear stale anonymous play session
@@ -1364,6 +1368,7 @@ func _handle_device_code_poll_response(result: int, response_code: int, body: Pa
 func _migrate_anonymous_account(anonymous_device_id: String) -> void:
 	if anonymous_device_id.is_empty() or _session_token.is_empty():
 		_log("Migration skipped: missing device ID or session token")
+		account_upgrade_failed.emit("Missing device ID or session token")
 		return
 	
 	_log("Migrating anonymous data: %s → authenticated account" % anonymous_device_id)
