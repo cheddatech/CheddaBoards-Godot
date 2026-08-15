@@ -229,6 +229,12 @@ var _device_code_expires_at: float = 0.0
 var _is_polling_device_code: bool = false
 var _device_code_poll_in_flight: bool = false
 var _device_code_approved: bool = false
+# Fresh-account nickname preservation: when device-code linking CREATES a new
+# account (isNewUser) while the player was anonymous, the account is born with
+# a server-generated name ("Player_2") and migration then stamps it over the
+# name the player actually chose. This holds the anon nickname so it can be
+# restored right after account_upgraded. Empty = nothing to restore.
+var _pending_nickname_restore: String = ""
 
 # ============================================================
 # HTTP REQUEST
@@ -380,6 +386,7 @@ func _on_http_request_completed(result: int, response_code: int, headers: Packed
 		# Migration errors are non-fatal for login, but games need to know
 		if _current_endpoint == "migrate_account":
 			_log("Migration note: %s (non-fatal, continuing)" % error_msg)
+			_pending_nickname_restore = ""
 			account_upgrade_failed.emit(error_msg)
 			_current_meta = {}
 			_http_busy = false
@@ -561,6 +568,14 @@ func _emit_http_success(data) -> void:
 				"migratedGames": migrated_games,
 				"migratedScoreboards": migrated_sb,
 			})
+			# Fresh-account case: put the player's chosen anon name back on the
+			# new account (server validates; suffixes on collision). No-op for
+			# merges into existing accounts (_pending_nickname_restore empty).
+			if not _pending_nickname_restore.is_empty():
+				var restore_nick = _pending_nickname_restore
+				_pending_nickname_restore = ""
+				_log("Restoring player-chosen nickname on new account: %s" % restore_nick)
+				change_nickname(restore_nick)
 		
 		"device_code_request":
 			var dc = str(data.get("device_code", ""))
@@ -622,6 +637,7 @@ func _emit_http_failure(error: String) -> void:
 			achievements_loaded.emit([])
 		"migrate_account":
 			_log("Migration failed: %s" % error)
+			_pending_nickname_restore = ""
 			account_upgrade_failed.emit(error)
 		"list_scoreboards":
 			scoreboards_loaded.emit([])
@@ -1308,6 +1324,16 @@ func _handle_device_code_poll_response(result: int, response_code: int, body: Pa
 		# Save anonymous player ID BEFORE switching auth — needed for migration
 		var previous_anonymous_id = _player_id
 		var was_anonymous = _auth_type == "anonymous" and not previous_anonymous_id.is_empty()
+		
+		# Fresh-account nickname preservation: if this link CREATED the account
+		# (isNewUser) and the player was anonymous with a chosen name, restore
+		# that name after migration instead of keeping the generated one.
+		# Existing accounts keep their own nickname (merge case) — untouched.
+		var is_new_user: bool = bool(data.get("isNewUser", false))
+		_pending_nickname_restore = ""
+		if was_anonymous and is_new_user and not _nickname.is_empty() and _nickname != nickname:
+			_pending_nickname_restore = _nickname
+			_log("New account created at link time - will restore anon nickname '%s' after migration" % _nickname)
 		
 		# Set session state
 		_session_token = session_id
