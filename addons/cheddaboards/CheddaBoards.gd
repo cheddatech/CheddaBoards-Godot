@@ -1177,6 +1177,12 @@ func login_with_device_code() -> void:
 	
 	_log("Requesting device code for game: %s" % game_id)
 	var body = {"gameId": game_id}
+	# Seed the player's current nickname so that if this link CREATES a new
+	# account, it's born with the name they chose in-game (server suffixes
+	# on collision). Existing accounts are unaffected — the canister ignores
+	# the nickname for known users. Fixes new accounts landing as "Player_N".
+	if not _nickname.is_empty():
+		body["nickname"] = _nickname
 	_make_http_request("/auth/device/code", HTTPClient.METHOD_POST, body, "device_code_request")
 
 ## Cancel an in-progress device code login.
