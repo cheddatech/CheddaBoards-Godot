@@ -181,14 +181,26 @@ func _show_api_key_dialog():
 	dialog.ok_button_text = "Save"
 	dialog.add_cancel_button("Cancel")
 
-	# Layout
+	# Layout — sized to the editor viewport so the dialog (and its buttons)
+	# always fits on small screens like the Godot 4 mobile editor.
+	# Content lives in a ScrollContainer with a capped height: on desktop it
+	# never scrolls, on a phone it scrolls while Save/Cancel stay visible.
+	var avail: Vector2 = base_control.get_viewport_rect().size
+	var dlg_width: float = minf(480.0, avail.x * 0.85)
+	var dlg_height: float = minf(320.0, avail.y * 0.55)
+
+	var scroll = ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(dlg_width, dlg_height)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+
 	var vbox = VBoxContainer.new()
-	vbox.custom_minimum_size = Vector2(480, 0)
+	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 	# Header
 	var header = Label.new()
 	header.text = "Enter your API Key from cheddaboards.com/dashboard"
 	header.add_theme_font_size_override("font_size", 13)
+	header.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	vbox.add_child(header)
 
 	var spacer1 = Control.new()
@@ -214,6 +226,7 @@ func _show_api_key_dialog():
 	var game_id_label = Label.new()
 	game_id_label.text = "🎮 Game ID (auto-detected from API Key)"
 	game_id_label.add_theme_font_size_override("font_size", 12)
+	game_id_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	vbox.add_child(game_id_label)
 
 	var game_id_preview = Label.new()
@@ -256,7 +269,8 @@ func _show_api_key_dialog():
 	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	vbox.add_child(status)
 
-	dialog.add_child(vbox)
+	scroll.add_child(vbox)
+	dialog.add_child(scroll)
 
 	# Save handler
 	dialog.confirmed.connect(func():
@@ -322,7 +336,7 @@ func _show_api_key_dialog():
 	)
 
 	base_control.add_child(dialog)
-	dialog.popup_centered()
+	dialog.popup_centered_clamped(Vector2i(int(dlg_width) + 32, int(dlg_height) + 120), 0.9)
 	key_input.grab_focus()
 
 
