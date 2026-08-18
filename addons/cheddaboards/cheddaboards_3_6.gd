@@ -162,7 +162,7 @@ const API_BASE_URL = "https://api.cheddaboards.com"
 ## Set via set_api_key() at runtime, or paste below for quick prototyping.
 ## ⚠️ PRE-PUBLISH: clear this to "" before pushing the SDK to GitHub —
 ##    these are The Cheese Game's credentials, not for public distribution.
-var api_key: String = "cb_the-cheese-game_3365306549"
+var api_key: String = "cb_your-game_xxxxxxxxxx"
 ## Your game ID from the developer dashboard.
 ## Set via set_game_id() at runtime, or paste below for quick prototyping.
 ## ⚠️ PRE-PUBLISH: clear this to "" before pushing the SDK to GitHub.
