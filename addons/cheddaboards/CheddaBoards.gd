@@ -1,4 +1,4 @@
-# CheddaBoards.gd v2.2.3
+# CheddaBoards.gd v2.2.4
 # CheddaBoards integration for Godot 4.x
 # https://github.com/cheddatech/CheddaBoards-Godot
 # https://cheddaboards.com
@@ -9,6 +9,18 @@
 #   Player authenticates on their phone at cheddaboards.com/link
 # - Score submissions, play sessions, achievements: all via HTTP API
 #
+# v2.2.4:
+#   - Nickname validation unified with the server: 3-16 characters,
+#     letters/numbers/underscores, with error strings matching the
+#     canister's. A rejected nickname is a permanent rejection — do
+#     not retry the same value on nickname_error.
+#   - account_upgrade_failed now actually fires on migration failures
+#     (it was declared but never emitted).
+#   - Linked accounts report their real provider — Apple sign-ins are
+#     no longer labelled "google".
+#   - Device code requests seed the player's current in-game nickname,
+#     so accounts created via linking are born with the name the
+#     player chose instead of "Player_N".
 # v2.2.3:
 #   - Session persistence: the session token from device code auth is
 #     saved to user://cheddaboards_session.cfg and restored on startup,
@@ -269,7 +281,7 @@ func _ready() -> void:
 	# to hang indefinitely.
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_setup_http_client()
-	_log("Initializing CheddaBoards v2.2.3 (HTTP API Mode)...")
+	_log("Initializing CheddaBoards v2.2.4 (HTTP API Mode)...")
 	_load_saved_session()
 	_init_complete = true
 	call_deferred("_emit_sdk_ready")
@@ -1856,7 +1868,7 @@ func health_check() -> void:
 func debug_status() -> void:
 	print("")
 	print("╔══════════════════════════════════════════════╗")
-	print("║        CheddaBoards Debug Status v2.2.0      ║")
+	print("║        CheddaBoards Debug Status v2.2.4      ║")
 	print("╠══════════════════════════════════════════════╣")
 	print("║ Configuration                                ║")
 	print("║  - Platform:         %s" % OS.get_name().rpad(24) + "║")
