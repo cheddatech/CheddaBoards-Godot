@@ -7,7 +7,7 @@
 **A complete game template with leaderboards, achievements, and cross-platform auth built in.**
 **Download → Add your game → Export. That's it.**
 
-> **SDK 2.2.3** · Godot 4.6+ · Windows / Mac / Linux / Mobile / Web · MIT · Free tier · [Changelog](docs/CHANGELOG.md)
+> **SDK 2.2.4** · Godot 4.6+ · Windows / Mac / Linux / Mobile / Web · MIT · Free tier · [Changelog](docs/CHANGELOG.md)
 
 <p align="center">
   <img src="screenshots/screenshot-anonymous.png" alt="Anonymous dashboard" width="45%"/>
@@ -68,7 +68,7 @@ Point the wrapper at your scene and that's the whole game-side integration — t
 | **Achievements** | Backend-synced, with popup notifications & offline cache |
 | **CheddaBoards SDK** | Core backend integration (also usable standalone) |
 
-**Status:** Native, Mobile, and Web are all ✅ stable. Every platform supports Google / Apple sign-in via Device Code Auth — no OAuth SDKs in your game — and since **v2.2.3** sessions persist, so players sign in **once** and stay signed in across restarts. → [Device Code Login](docs/guides/device-code-login.md)
+**Status:** Native, Mobile, and Web are all ✅ stable. Every platform supports Google / Apple sign-in via Device Code Auth — no OAuth SDKs in your game — and sessions persist, so players sign in **once** and stay signed in across restarts. → [Device Code Login](docs/guides/device-code-login.md)
 
 <p align="center">
   <img src="screenshots/screenshot-device-code-auth.png" alt="Device Code Login — scan the QR on your phone, no OAuth SDKs in the game" width="45%"/>
@@ -222,8 +222,8 @@ CheddaBoards-Godot/
 
 - [x] Godot 3.6 SDK release — shipped ([CheddaBoards 3.x backport](https://github.com/cheddatech/CheddaBoards-Godot))
 - [x] Unity SDK — shipped with full API parity ([CheddaBoards-Unity](https://github.com/cheddatech/CheddaBoards-Unity))
+- [x] Self-serve score moderation in the developer dashboard — shipped ([guide](docs/guides/moderation.md))
 - [ ] More game slots per account
-- [ ] Self-serve score entry deletion in the developer dashboard
 - [ ] Expanded analytics dashboard
 
 ---
