@@ -6,7 +6,7 @@
 
 **Leaderboards, achievements, and cross-platform sign-in for Godot 4 — as a drop-in SDK or a full template.**
 
-> **SDK 2.2.3** · Godot 4.6+ · Windows / Mac / Linux / Mobile / Web · MIT · [Changelog](CHANGELOG.md)
+> **SDK 2.2.4** · Godot 4.6+ · Windows / Mac / Linux / Mobile / Web · MIT · [Changelog](CHANGELOG.md)
 
 <p align="center">
   <img src="../screenshots/screenshot-anonymous.png" alt="Anonymous dashboard" width="45%"/>
@@ -47,8 +47,8 @@ Three ways in. The difference is really *how much UI we hand you* versus *how mu
 | **Timed scoreboards** | Weekly / daily / monthly / custom-interval boards that reset and archive automatically | [Guide](guides/timed-leaderboards.md) |
 | **Category scoreboards** | Per-level / per-mode targeted boards under one game — submit to one board by ID | [Guide](guides/category-scoreboards.md) |
 | **Achievements** | Auto-unlock on score/streak/level, offline cache, deferred sync, popups | [Guide](guides/achievements.md) |
-| **Device Code Auth** | Google / Apple sign-in on *any* platform via QR + code — no OAuth SDKs. Sessions persist (v2.2.3): players sign in once and stay signed in | [Guide](guides/device-code-login.md) |
-| **Account linking** | Anonymous players upgrade to Google / Apple later, keeping all progress | [Guide](guides/authentication.md) |
+| **Device Code Auth** | Google / Apple sign-in on *any* platform via QR + code — no OAuth SDKs. Sessions persist: players sign in once and stay signed in | [Guide](guides/device-code-login.md) |
+| **Account linking** | Anonymous players upgrade to Google / Apple later, keeping all progress. Nicknames follow one rule everywhere: 3–16 chars, letters/numbers/underscores | [Guide](guides/authentication.md) |
 | **Anti-cheat** | Server-side play sessions, score validation, rate limiting, configurable caps | [Guide](guides/anti-cheat.md) |
 | **Score moderation** | Delete junk entries or wipe a player from all boards, with a full deletion log | [Guide](guides/moderation.md) |
 
