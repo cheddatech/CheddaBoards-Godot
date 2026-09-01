@@ -1,4 +1,4 @@
-# CheddaBoards.gd v2.2.4
+# CheddaBoards.gd v2.2.5
 # CheddaBoards integration for Godot 4.x
 # https://github.com/cheddatech/CheddaBoards-Godot
 # https://cheddaboards.com
@@ -9,14 +9,23 @@
 #   Player authenticates on their phone at cheddaboards.com/link
 # - Score submissions, play sessions, achievements: all via HTTP API
 #
+# v2.2.5:
+#   - Direct canister reads: get_scoreboard() now fetches straight from
+#     the CheddaBoards canister over HTTP (raw.icp0.io) instead of the
+#     proxy. Same JSON, same signals - nothing changes in your game code.
+#     If the direct read fails (network filter, gateway hiccup), the SDK
+#     automatically retries the same request through the proxy, and after
+#     repeated direct failures it sticks to the proxy for the rest of the
+#     session. Direct reads are keyless public GETs, so no credentials
+#     travel on this path and web exports skip the CORS preflight.
 # v2.2.4:
 #   - Nickname validation unified with the server: 3-16 characters,
 #     letters/numbers/underscores, with error strings matching the
-#     canister's. A rejected nickname is a permanent rejection — do
+#     canister's. A rejected nickname is a permanent rejection - do
 #     not retry the same value on nickname_error.
 #   - account_upgrade_failed now actually fires on migration failures
 #     (it was declared but never emitted).
-#   - Linked accounts report their real provider — Apple sign-ins are
+#   - Linked accounts report their real provider - Apple sign-ins are
 #     no longer labelled "google".
 #   - Device code requests seed the player's current in-game nickname,
 #     so accounts created via linking are born with the name the
@@ -191,6 +200,14 @@ var debug_logging: bool = false
 
 ## HTTP API Configuration
 const API_BASE_URL = "https://api.cheddaboards.com"
+## Direct canister reads (public board GETs served by the canister itself
+## over the IC HTTP gateway). Same response shape as the proxy; used for
+## get_scoreboard with automatic proxy fallback. Keyless and header-free
+## by design: adding custom headers here would break web exports (the
+## canister route does not answer CORS preflights).
+const DIRECT_READ_URL = "https://fdvph-sqaaa-aaaap-qqc4a-cai.raw.icp0.io"
+## Request types served from DIRECT_READ_URL first
+const DIRECT_READ_TYPES = ["get_scoreboard"]
 ## Your API key from the CheddaBoards developer dashboard (cheddaboards.com).
 ## Set at runtime via set_api_key():
 ##     CheddaBoards.set_api_key("cb_your-game_xxxxxxxxxx")
@@ -255,8 +272,13 @@ var _pending_nickname_restore: String = ""
 var _http_request: HTTPRequest
 var _current_endpoint: String = ""
 var _current_meta: Dictionary = {}
+var _current_request_data: Dictionary = {}
 var _http_busy: bool = false
 var _request_queue: Array = []
+## Direct-read health: consecutive failures before giving up on the
+## direct path for this session (some networks block *.raw.icp0.io)
+var _direct_read_failures: int = 0
+const DIRECT_READ_MAX_FAILURES = 3
 
 # Deferred achievement tracking (sent after score succeeds)
 var _deferred_achievement_ids: Array = []
@@ -281,7 +303,7 @@ func _ready() -> void:
 	# to hang indefinitely.
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_setup_http_client()
-	_log("Initializing CheddaBoards v2.2.4 (HTTP API Mode)...")
+	_log("Initializing CheddaBoards v2.2.5 (HTTP API Mode)...")
 	_load_saved_session()
 	_init_complete = true
 	call_deferred("_emit_sdk_ready")
@@ -351,7 +373,12 @@ func _build_headers(request_type: String = "") -> PackedStringArray:
 # ============================================================
 
 func _on_http_request_completed(result: int, response_code: int, headers: PackedStringArray, body: PackedByteArray) -> void:
+	var was_direct = _current_request_data.get("went_direct", false)
+	
 	if result != HTTPRequest.RESULT_SUCCESS:
+		if was_direct:
+			_retry_via_proxy("network error %d" % result)
+			return
 		push_error("[CheddaBoards] Request failed with result %d" % result)
 		request_failed.emit(_current_endpoint, "Network error")
 		_emit_http_failure("Network error")
@@ -361,12 +388,27 @@ func _on_http_request_completed(result: int, response_code: int, headers: Packed
 	var parse_result = json.parse(body.get_string_from_utf8())
 	
 	if parse_result != OK:
+		if was_direct:
+			# Gateways return HTML error pages on certification/boundary
+			# problems - not a canister answer, so ask the proxy instead
+			_retry_via_proxy("non-JSON response (HTTP %d)" % response_code)
+			return
 		push_error("[CheddaBoards] Failed to parse JSON response")
 		request_failed.emit(_current_endpoint, "Invalid JSON response")
 		_emit_http_failure("Invalid JSON response")
 		return
 	
 	var response = json.data
+	
+	# Gateway-level failures on the direct path (5xx) are infrastructure,
+	# not answers - fall back. A canister 404/JSON error is authoritative
+	# and flows through normal handling below.
+	if was_direct and response_code >= 500:
+		_retry_via_proxy("gateway error %d" % response_code)
+		return
+	
+	if was_direct:
+		_direct_read_failures = 0
 	
 	if response_code != 200:
 		var error_msg = response.get("error", "Unknown error")
@@ -719,13 +761,45 @@ func _make_http_request(endpoint: String, method: int, body: Dictionary, request
 	
 	_execute_http_request(request_data)
 
+## A direct canister read failed at the transport/gateway level.
+## Re-run the identical request through the proxy; after
+## DIRECT_READ_MAX_FAILURES consecutive failures, stop trying direct
+## for the rest of the session (e.g. networks that block raw.icp0.io).
+func _retry_via_proxy(reason: String) -> void:
+	_direct_read_failures += 1
+	if _direct_read_failures == DIRECT_READ_MAX_FAILURES:
+		_log("Direct reads disabled for this session after %d failures" % _direct_read_failures)
+	_log("Direct read failed (%s) - retrying via proxy" % reason)
+	var retry = _current_request_data.duplicate()
+	retry["direct_attempted"] = true
+	# Route the retry through the normal queue (at the front) and let the
+	# single guarded dispatcher start it next idle frame. Grabbing the
+	# HTTPRequest node directly from here races the queue-pop paths in
+	# the response handler (observed as ERR_BUSY in the wild).
+	_request_queue.push_front(retry)
+	_current_meta = {}
+	_http_busy = false
+	call_deferred("_process_next_request")
+
 func _execute_http_request(request_data: Dictionary) -> void:
 	_http_busy = true
 	_current_endpoint = request_data.request_type
 	_current_meta = request_data.get("meta", {})
+	_current_request_data = request_data
 	
-	var headers = _build_headers(_current_endpoint)
-	var url = API_BASE_URL + request_data.endpoint
+	# Public board reads go direct to the canister first (keyless, no
+	# custom headers so web exports stay CORS-simple). Everything else,
+	# and any read that already failed direct, goes through the proxy.
+	var use_direct = (
+		_current_endpoint in DIRECT_READ_TYPES
+		and not request_data.get("direct_attempted", false)
+		and _direct_read_failures < DIRECT_READ_MAX_FAILURES
+	)
+	request_data["went_direct"] = use_direct
+	
+	var headers: PackedStringArray = [] if use_direct else _build_headers(_current_endpoint)
+	var base = DIRECT_READ_URL if use_direct else API_BASE_URL
+	var url = base + request_data.endpoint
 	var json_body = JSON.stringify(request_data.body) if request_data.body.size() > 0 else ""
 	
 	var method_str = "GET"
@@ -738,6 +812,15 @@ func _execute_http_request(request_data: Dictionary) -> void:
 	_log("HTTP %s: %s" % [method_str, url])
 	
 	var error = _http_request.request(url, headers, request_data.method, json_body)
+	if error == ERR_BUSY:
+		# The node is still finishing the previous request (emission-order
+		# quirk). Put this request back at the front and try again next
+		# idle frame instead of dropping it.
+		_log("HTTPRequest busy - requeuing %s for next frame" % _current_endpoint)
+		_request_queue.push_front(request_data)
+		_http_busy = false
+		call_deferred("_process_next_request")
+		return
 	if error != OK:
 		push_error("[CheddaBoards] HTTP request failed to start: %s" % error)
 		request_failed.emit(request_data.endpoint, "Request failed to start: %s" % error)
@@ -746,6 +829,12 @@ func _execute_http_request(request_data: Dictionary) -> void:
 
 func _process_next_request() -> void:
 	if _request_queue.is_empty():
+		return
+	# Guard against double-dispatch: several paths (queue pops in the
+	# response handler, deferred retries) can call this in the same
+	# frame. If a request is already in flight, the queued one will be
+	# picked up when it completes.
+	if _http_busy:
 		return
 	
 	var next_request = _request_queue.pop_front()
@@ -1868,7 +1957,7 @@ func health_check() -> void:
 func debug_status() -> void:
 	print("")
 	print("╔══════════════════════════════════════════════╗")
-	print("║        CheddaBoards Debug Status v2.2.4      ║")
+	print("║        CheddaBoards Debug Status v2.2.0      ║")
 	print("╠══════════════════════════════════════════════╣")
 	print("║ Configuration                                ║")
 	print("║  - Platform:         %s" % OS.get_name().rpad(24) + "║")
