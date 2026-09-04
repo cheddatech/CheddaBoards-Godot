@@ -1,4 +1,4 @@
-# Achievements.gd v2.2.0
+# Achievements.gd v2.2.1
 # Achievement tracking for CheddaClick - CheddaBoards Template
 # Add as Autoload: Project → Project Settings → Autoload → "Achievements"
 # (AFTER the CheddaBoards autoload, so the SDK exists when this wires up)
@@ -23,6 +23,15 @@
 # to keep as-is. Only the definitions and the check_* conditions are example.
 # ============================================================
 #
+# v2.2.1: Delta sync - only unsynced achievements go to the backend.
+#         force_sync_pending() used to re-send the ENTIRE unlocked set on
+#         every call (one redundant batch request per menu visit / login).
+#         The synced set is now tracked per slot, persisted in the save
+#         file, and confirmed two ways: ids the server reports back in
+#         profile_loaded, and ids the SDK confirms via the batch response
+#         (achievements_loaded, SDK v2.2.6+). Anonymous players now sync
+#         on login_success like account holders - the menu no longer
+#         needs to (and shouldn't) call force_sync_pending() itself.
 # v2.2.0: Identity-scoped save slots + automatic backend sync.
 #         - Unlocks are now saved per identity ("anon" vs "account"), so
 #           guest progress no longer leaks into whoever signs in next on
@@ -165,6 +174,11 @@ const SLOT_ACCOUNT := "account"
 const LEGACY_SAVE_PATH := "user://achievements.save"
 var _slot: String = SLOT_ANON
 
+# Ids confirmed to exist on the backend (per slot, persisted). Sync only
+# sends unlocked ids NOT in this set - re-sending the whole collection on
+# every login/menu visit was one redundant batch request per visit.
+var _synced_achievements: Array = []
+
 # ============================================================
 # INITIALIZATION
 # ============================================================
@@ -206,12 +220,14 @@ func _load_slot(slot: String):
 	var data = _read_slot_file(slot)
 	unlocked_achievements = data.get("unlocked", [])
 	total_games_played = data.get("games_played", 0)
+	_synced_achievements = data.get("synced", [])
 
 func _save_local_achievements():
 	var file = FileAccess.open(_save_path(_slot), FileAccess.WRITE)
 	file.store_var({
 		"unlocked": unlocked_achievements,
-		"games_played": total_games_played
+		"games_played": total_games_played,
+		"synced": _synced_achievements
 	})
 	file.close()
 
@@ -236,6 +252,8 @@ func _connect_sdk():
 	_connect_if_present(sdk, "logout_success", _on_sdk_logout)
 	_connect_if_present(sdk, "profile_loaded", _on_sdk_profile_loaded)
 	_connect_if_present(sdk, "account_upgraded", _on_sdk_account_upgraded)
+	# SDK v2.2.6+ batch responses confirm synced ids via achievements_loaded
+	_connect_if_present(sdk, "achievements_loaded", _on_sdk_achievements_loaded)
 
 func _connect_if_present(sdk: Node, sig: String, callable: Callable):
 	if sdk.has_signal(sig) and not sdk.is_connected(sig, callable):
@@ -245,14 +263,15 @@ func _on_sdk_login(_nickname: String):
 	var sdk = get_node_or_null("/root/CheddaBoards")
 	if sdk and sdk.has_method("has_account") and sdk.has_account():
 		_switch_slot(SLOT_ACCOUNT)
-		# Identity is settled and authenticated NOW - this is the reliable
-		# moment to reconcile local unlocks up to the backend. Do NOT push
-		# at menu load instead: that runs before login completes and can
-		# go out under a fallback/device ID, storing unlocks against the
-		# wrong player.
-		force_sync_pending()
 	else:
 		_switch_slot(SLOT_ANON)
+	# Identity is settled and authenticated NOW - this is the reliable
+	# moment to reconcile local unlocks up to the backend (for anonymous
+	# players too, since v2.2.1). Do NOT push at menu load instead: that
+	# runs before login completes and can go out under a fallback/device
+	# ID, storing unlocks against the wrong player. Delta tracking makes
+	# this a no-op when everything is already synced.
+	force_sync_pending()
 
 func _on_sdk_logout():
 	# Persist the account's progress, then hand the device to a genuinely
@@ -272,6 +291,10 @@ func _on_sdk_profile_loaded(_nickname: String, _score: int, _streak: int,
 	var changed := false
 	for ach_id in remote_achievements:
 		var id := str(ach_id)
+		# The server has this id -> it is synced by definition
+		if achievements.has(id) and id not in _synced_achievements:
+			_synced_achievements.append(id)
+			changed = true
 		if id not in unlocked_achievements and achievements.has(id):
 			unlocked_achievements.append(id)
 			changed = true
@@ -503,10 +526,26 @@ func force_sync_pending():
 	must already exist on the backend (i.e. a score has been submitted at
 	least once), or the unlocks are ignored. The normal in-game path is
 	submit_with_score()."""
-	if unlocked_achievements.is_empty():
-		return
-	print("[Achievements] Syncing %d achievements" % unlocked_achievements.size())
-	CheddaBoards.unlock_achievements_batch(unlocked_achievements)
+	var pending: Array = []
+	for id in unlocked_achievements:
+		if id not in _synced_achievements:
+			pending.append(id)
+	if pending.is_empty():
+		return  # everything already on the backend - no request, no noise
+	print("[Achievements] Syncing %d achievements (%d already synced)" % [pending.size(), _synced_achievements.size()])
+	CheddaBoards.unlock_achievements_batch(pending)
+
+func _on_sdk_achievements_loaded(entries: Array):
+	# Fires from two SDK paths: batch unlock responses pass id STRINGS
+	# (these confirm a sync), get_achievements passes dicts (ignore -
+	# profile_loaded already covers server truth). Only trust strings.
+	var changed := false
+	for entry in entries:
+		if entry is String and achievements.has(entry) and entry not in _synced_achievements:
+			_synced_achievements.append(entry)
+			changed = true
+	if changed:
+		_save_local_achievements()
 
 func sync_from_profile(profile: Dictionary):
 	"""Merge achievements from a loaded profile dictionary.

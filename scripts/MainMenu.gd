@@ -19,6 +19,14 @@
 #           the profile payload, so every stats repaint used to fire
 #           get_scoreboard_rank again - boot sequences fetched it twice
 #           back-to-back.
+#         - Rename race fixed: while a change_nickname is in flight, the
+#           profile->local nickname sync is paused (the stale SDK cache
+#           used to revert the new name AND save the old one to disk;
+#           the confirmation handler then fixed memory but never saved,
+#           so a quit right after renaming rebooted with the old name).
+#           _on_nickname_changed now persists, and nickname_error is
+#           wired so a rejected rename shows feedback and re-syncs from
+#           the server instead of failing silently.
 # v2.1.7: Exit button rework + has_played now means a real score
 #          + mobile panel scrolling.
 #          - Panels are now scrollable on phones: each panel's VBox is
@@ -244,6 +252,12 @@ var _is_silent_login: bool = false
 ## so every stats repaint used to re-request it — rate-limit to one per 5s.
 var _last_rank_fetch_at: float = 0.0
 
+## True while a change_nickname is in flight. Pauses the profile->local
+## nickname sync: the SDK's cached profile still holds the OLD name for a
+## moment, and syncing from it mid-rename reverted (and saved!) the old
+## name. Cleared on nickname_changed / nickname_error.
+var _rename_pending: bool = false
+
 # Prevent duplicate SDK ready handling
 var _sdk_ready_handled: bool = false
 
@@ -268,7 +282,10 @@ var profile_timeout_timer: Timer = null
 # DEBUG
 # ============================================================
 
-var debug_logging: bool = true
+## Verbose logging. Off by default for release. Flipping the SDK's
+## master switch (CheddaBoards.debug_logging = true) enables this too,
+## so one flag lights up the whole stack when investigating an issue.
+var debug_logging: bool = false
 var state_history: Array = []
 
 # ============================================================
@@ -299,6 +316,7 @@ func _ready():
 	CheddaBoards.no_profile.connect(_on_no_profile)
 	CheddaBoards.logout_success.connect(_on_logout_success)
 	CheddaBoards.nickname_changed.connect(_on_nickname_changed)
+	CheddaBoards.nickname_error.connect(_on_nickname_error)
 	
 	# Connect upgrade signals
 	CheddaBoards.account_upgraded.connect(_on_upgrade_success)
@@ -389,7 +407,7 @@ func _ready():
 	status_label.text = "Connecting..."
 	_enable_login_buttons(false)
 	
-	_log("MainMenu v2.1.8 initialized | Mobile: %s | UI Scale: %.2f" % [MobileUI.is_mobile, MobileUI.ui_scale])
+	print("[MainMenu] v2.1.8 initialized | Mobile: %s | UI Scale: %.2f" % [MobileUI.is_mobile, MobileUI.ui_scale])
 	
 	# Check if SDK already ready
 	if CheddaBoards.is_ready():
@@ -943,7 +961,8 @@ func _show_anonymous_panel():
 	_stop_all_timers()
 	
 	# Sync any pending achievements when dashboard is shown
-	Achievements.force_sync_pending()
+	# (v2.1.8: no manual achievement sync here - Achievements v2.2.1 syncs
+	# on login_success with delta tracking, the reliable identity moment)
 	
 	if anon_welcome_label:
 		anon_welcome_label.text = "Welcome back, %s!" % anonymous_nickname
@@ -1072,7 +1091,7 @@ func _update_anonymous_panel_stats(profile: Dictionary):
 	
 	# Update nickname if backend has a different one (e.g. auto-suffixed)
 	var profile_nickname = profile.get("nickname", "")
-	if not profile_nickname.is_empty() and profile_nickname != anonymous_nickname:
+	if not profile_nickname.is_empty() and profile_nickname != anonymous_nickname and not _rename_pending:
 		_log("Updating nickname from profile: '%s' -> '%s'" % [anonymous_nickname, profile_nickname])
 		anonymous_nickname = profile_nickname
 		_save_player_data()
@@ -1514,6 +1533,7 @@ func _on_confirm_name_pressed():
 	if _name_entry_mode == "rename":
 		_log("Renaming to: %s" % name_text)
 		anonymous_nickname = name_text
+		_rename_pending = true
 		CheddaBoards.change_nickname(name_text)
 		
 		name_status_label.text = "Saving..."
@@ -1600,7 +1620,7 @@ func _on_profile_loaded(nickname: String, score: int, _streak: int, achievements
 	_log("Profile loaded: %s (all-time score: %d, plays: %d)" % [nickname, score, play_count])
 	
 	# If backend has different nickname (e.g. auto-suffixed), update local storage
-	if CheddaBoards.is_anonymous() and not nickname.is_empty():
+	if CheddaBoards.is_anonymous() and not nickname.is_empty() and not _rename_pending:
 		if anonymous_nickname != nickname:
 			_log("Updating local nickname: '%s' -> '%s' (backend sync)" % [anonymous_nickname, nickname])
 			anonymous_nickname = nickname
@@ -1672,11 +1692,27 @@ func _on_logout_success():
 func _on_nickname_changed(new_nickname: String):
 	"""Nickname changed - update all UI and local state"""
 	_log("Nickname changed: %s" % new_nickname)
+	_rename_pending = false
 	anonymous_nickname = new_nickname
+	_save_player_data()  # persist the CONFIRMED name (the old code never
+	# saved here, so a quit right after renaming rebooted with the old name)
 	if main_panel.visible:
 		welcome_label.text = "Welcome, %s!" % new_nickname
 	elif anonymous_panel and anonymous_panel.visible:
 		anon_welcome_label.text = "Welcome back, %s!" % new_nickname
+
+func _on_nickname_error(reason: String):
+	"""Rename rejected (taken, invalid, etc). Unblock the profile sync so
+	the server's real name flows back into local state, and say so."""
+	_log("Nickname error: %s" % reason)
+	_rename_pending = false
+	if anonymous_panel and anonymous_panel.visible and upgrade_status_label:
+		upgrade_status_label.text = "Name change failed: %s" % reason
+	elif name_status_label and name_entry_panel and name_entry_panel.visible:
+		name_status_label.text = "Name change failed: %s" % reason
+		name_status_label.add_theme_color_override("font_color", Color.RED)
+	# Pull the server's actual nickname back (sync is unblocked now)
+	CheddaBoards.refresh_profile()
 
 # ============================================================
 # MAIN PANEL BUTTON HANDLERS
@@ -1757,7 +1793,7 @@ func _test_submit_bulk_scores(count: int = 5):
 
 func _log(message: String):
 	"""Log with timestamp"""
-	if not debug_logging:
+	if not (debug_logging or CheddaBoards.debug_logging):
 		return
 	var entry = "[%d] %s" % [Time.get_ticks_msec(), message]
 	state_history.append(entry)

@@ -336,7 +336,6 @@ YourGame/
 │   └── cheddaboards/
 │       ├── CheddaBoards.gd       ← Autoload
 │       ├── SetupWizard.gd
-│       ├── cheddaboards_logo.png
 │       └── icon.png
 ├── autoloads/
 │   ├── Achievements.gd           ← Autoload
