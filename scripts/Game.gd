@@ -1,8 +1,14 @@
-# Game.gd v1.1.1
+# Game.gd v1.1.2
 # Modular wrapper for CheddaBoards integration
 # Drop ANY game scene as a child - just emit the right signals!
 # https://github.com/cheddatech/CheddaBoards-Godot
 #
+# v1.1.2: Game-over title thresholds are dev-proof. The title picker
+#         indexed title_thresholds[0..3] directly, so a dev who trimmed
+#         the exported array below 4 entries crashed on their first game
+#         over. It now walks whatever thresholds exist (highest first)
+#         and pairs them with the title keys in order - any array length
+#         works, including empty (always "Game Over").
 # v1.1.1: Marks has_played in user://player_data.save when a score
 #         actually submits (read-modify-write, preserves the nickname
 #         MainMenu saved). MainMenu v2.1.7 routes its "returning
@@ -152,7 +158,7 @@ func _ready():
 	# Check if Achievements autoload exists
 	has_achievements = get_node_or_null("/root/Achievements") != null
 	
-	print("[GameWrapper] Initializing v1.1.0")
+	print("[GameWrapper] Initializing v1.1.2")
 	print("[GameWrapper] Platform: %s" % ("Web" if OS.get_name() == "Web" else "Native"))
 	print("[GameWrapper] Achievements: %s" % ("enabled" if has_achievements else "disabled"))
 	
@@ -315,14 +321,16 @@ func _show_game_over_screen(stats: Dictionary):
 		"default": Color.WHITE
 	}
 	
-	if current_score >= title_thresholds[0]:
-		title_key = "amazing"
-	elif current_score >= title_thresholds[1]:
-		title_key = "excellent"
-	elif current_score >= title_thresholds[2]:
-		title_key = "great"
-	elif current_score >= title_thresholds[3]:
-		title_key = "good"
+	# Walk the thresholds (highest first) and pair them with the title
+	# keys in order. Works with any array length a dev exports - fewer
+	# thresholds just means fewer tiers, and an empty array always
+	# yields "default". (v1.1.2: was hard-indexed [0..3] and crashed
+	# on trimmed arrays.)
+	var tier_keys = ["amazing", "excellent", "great", "good"]
+	for i in range(min(title_thresholds.size(), tier_keys.size())):
+		if current_score >= title_thresholds[i]:
+			title_key = tier_keys[i]
+			break
 	
 	title_label.text = game_over_titles.get(title_key, "Game Over")
 	title_label.add_theme_color_override("font_color", title_colors.get(title_key, Color.WHITE))

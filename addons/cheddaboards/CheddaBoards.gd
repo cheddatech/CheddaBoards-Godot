@@ -1,4 +1,4 @@
-# CheddaBoards.gd v2.2.5
+# CheddaBoards.gd v2.2.6
 # CheddaBoards integration for Godot 4.x
 # https://github.com/cheddatech/CheddaBoards-Godot
 # https://cheddaboards.com
@@ -9,6 +9,22 @@
 #   Player authenticates on their phone at cheddaboards.com/link
 # - Score submissions, play sessions, achievements: all via HTTP API
 #
+# v2.2.6:
+#   - Request de-duplication: an identical read request (same endpoint)
+#     that is already queued or in flight is dropped instead of being
+#     sent twice. Cuts wasted API calls when UI code fires the same
+#     refresh from several paths in one frame. Score submits and other
+#     writes are never de-duplicated.
+#   - BEHAVIOR CHANGE: get_leaderboard() default limit is now 100
+#     entries (was 1000), matching every other getter. Games that need
+#     deeper results should pass a limit explicitly:
+#     get_leaderboard("score", 1000). To find a specific player's
+#     position, use get_player_rank() instead of scanning the board.
+#   - Batch achievement unlocks emit their signals again:
+#     achievement_unlocked fires per synced id and achievements_loaded
+#     fires with the synced list. The async batch path previously skipped
+#     response handling entirely, so batches synced server-side but the
+#     SDK stayed silent and left internal sync counters dirty.
 # v2.2.5:
 #   - Direct canister reads: get_scoreboard() now fetches straight from
 #     the CheddaBoards canister over HTTP (raw.icp0.io) instead of the
@@ -208,6 +224,16 @@ const API_BASE_URL = "https://api.cheddaboards.com"
 const DIRECT_READ_URL = "https://fdvph-sqaaa-aaaap-qqc4a-cai.raw.icp0.io"
 ## Request types served from DIRECT_READ_URL first
 const DIRECT_READ_TYPES = ["get_scoreboard"]
+## Idempotent read types eligible for de-duplication: if an identical
+## request (same type + endpoint) is already queued or in flight, a new
+## call is dropped - the caller still gets its signal from the request
+## already on the wire. Writes (submits, unlocks, auth) are never listed.
+const DEDUPE_READ_TYPES = [
+	"leaderboard", "player_rank", "player_profile", "achievements",
+	"list_scoreboards", "get_scoreboard", "scoreboard_rank",
+	"list_archives", "get_archive", "get_last_archive", "archive_stats",
+	"game_info", "game_stats", "health",
+]
 ## Your API key from the CheddaBoards developer dashboard (cheddaboards.com).
 ## Set at runtime via set_api_key():
 ##     CheddaBoards.set_api_key("cb_your-game_xxxxxxxxxx")
@@ -303,7 +329,7 @@ func _ready() -> void:
 	# to hang indefinitely.
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_setup_http_client()
-	_log("Initializing CheddaBoards v2.2.5 (HTTP API Mode)...")
+	_log("Initializing CheddaBoards v2.2.6 (HTTP API Mode)...")
 	_load_saved_session()
 	_init_complete = true
 	call_deferred("_emit_sdk_ready")
@@ -755,6 +781,17 @@ func _make_http_request(endpoint: String, method: int, body: Dictionary, request
 	}
 	
 	if _http_busy:
+		# De-duplicate idempotent reads: if this exact read is already in
+		# flight or waiting in the queue, sending it again is pure waste -
+		# the caller's signal fires from the copy already on the wire.
+		if request_type in DEDUPE_READ_TYPES:
+			if _current_endpoint == request_type and _current_request_data.get("endpoint", "") == endpoint:
+				_log("Duplicate read already in flight - dropped: %s" % request_type)
+				return
+			for queued in _request_queue:
+				if queued.request_type == request_type and queued.endpoint == endpoint:
+					_log("Duplicate read already queued - dropped: %s" % request_type)
+					return
 		_log("HTTP busy, queuing request: %s" % request_type)
 		_request_queue.append(request_data)
 		return
@@ -1672,7 +1709,11 @@ func clear_play_session() -> void:
 # PUBLIC API - LEADERBOARDS
 # ============================================================
 
-func get_leaderboard(sort_by: String = "score", limit: int = 1000) -> void:
+## Fetch the main (all-time) leaderboard. Default limit is 100 entries
+## (v2.2.6; previously 1000) - pass a larger limit explicitly if you
+## genuinely need deeper results. To locate a specific player, use
+## get_player_rank() instead of fetching the whole board.
+func get_leaderboard(sort_by: String = "score", limit: int = 100) -> void:
 	var url = "/leaderboard?sort=%s&limit=%d" % [sort_by, limit]
 	_make_http_request(url, HTTPClient.METHOD_GET, {}, "leaderboard")
 	_log("Leaderboard requested (sort: %s, limit: %d)" % [sort_by, limit])
@@ -1827,16 +1868,8 @@ func unlock_achievements_batch(achievement_ids: Array) -> void:
 	"""Unlock multiple achievements in a single request."""
 	if achievement_ids.is_empty():
 		return
-	
 	_log("Batch unlocking %d achievements..." % achievement_ids.size())
-	_deferred_achievements_remaining = 1
-	_deferred_achievements_synced = []
-	
-	var body = {
-		"playerId": get_player_id(),
-		"achievementIds": achievement_ids
-	}
-	_make_http_request_async("/achievements", HTTPClient.METHOD_POST, body, "unlock_achievement_batch")
+	_send_achievement_batch(achievement_ids)
 
 func get_achievements(player_id: String = "") -> void:
 	var pid = player_id if player_id != "" else get_player_id()
@@ -1848,17 +1881,61 @@ func _flush_deferred_achievements() -> void:
 	"""Send all deferred achievements in a single batch request."""
 	if _deferred_achievement_ids.is_empty():
 		return
-	var count = _deferred_achievement_ids.size()
-	_deferred_achievements_remaining = 1
+	_log("Batch syncing %d achievements..." % _deferred_achievement_ids.size())
+	_send_achievement_batch(_deferred_achievement_ids.duplicate())
+	_deferred_achievement_ids.clear()
+
+## Send a batch achievement unlock on its own HTTPRequest (off the main
+## queue so it never blocks leaderboard loads), with a real completion
+## handler: the generic async path only logs, which left batch unlocks
+## silent - server synced them but achievement_unlocked /
+## achievements_loaded never fired and sync counters stayed dirty.
+func _send_achievement_batch(achievement_ids: Array) -> void:
+	if api_key.is_empty() and _session_token.is_empty():
+		_log("No credentials - skipping achievement batch")
+		return
+	_deferred_achievements_remaining = 0
 	_deferred_achievements_synced = []
-	_log("Batch syncing %d achievements..." % count)
 	
 	var body = {
 		"playerId": get_player_id(),
-		"achievementIds": _deferred_achievement_ids.duplicate()
+		"achievementIds": achievement_ids
 	}
-	_make_http_request_async("/achievements", HTTPClient.METHOD_POST, body, "unlock_achievement_batch")
-	_deferred_achievement_ids.clear()
+	var http = HTTPRequest.new()
+	add_child(http)
+	http.process_mode = Node.PROCESS_MODE_ALWAYS
+	var headers = _build_headers("unlock_achievement_batch")
+	_log("HTTP async unlock_achievement_batch: /achievements (%d ids)" % achievement_ids.size())
+	http.request_completed.connect(func(_result, code, _headers, response_body):
+		_on_achievement_batch_completed(code, response_body)
+		http.queue_free()
+	)
+	var error = http.request(API_BASE_URL + "/achievements", headers, HTTPClient.METHOD_POST, JSON.stringify(body))
+	if error != OK:
+		_log("Achievement batch failed to start: %s" % error)
+		http.queue_free()
+
+func _on_achievement_batch_completed(code: int, body: PackedByteArray) -> void:
+	if code < 200 or code >= 300:
+		_log("Batch achievement sync failed (HTTP %d)" % code)
+		return
+	var json = JSON.new()
+	if json.parse(body.get_string_from_utf8()) != OK:
+		_log("Batch achievement sync: invalid JSON response")
+		return
+	var response = json.data
+	if typeof(response) != TYPE_DICTIONARY:
+		return
+	var data = response.get("data", {})
+	var results = data.get("results", [])
+	var synced_ids: Array = []
+	for result in results:
+		if typeof(result) == TYPE_DICTIONARY and result.get("success", false):
+			var ach_id = str(result.get("achievementId", ""))
+			synced_ids.append(ach_id)
+			achievement_unlocked.emit(ach_id)
+	_log("Batch achievement sync complete: %d synced" % synced_ids.size())
+	achievements_loaded.emit(synced_ids)
 
 # ============================================================
 # BACKWARDS COMPATIBILITY ALIASES (legacy SDK method names)

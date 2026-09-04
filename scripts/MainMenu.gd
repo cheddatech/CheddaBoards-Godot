@@ -1,4 +1,4 @@
-# MainMenu.gd v2.1.7
+# MainMenu.gd v2.1.8
 # Main menu with authentication flow and profile display
 # - Login panel: PLAY NOW (with name entry), Leaderboard, and Sign In (device code)
 # - Name entry panel: For new anonymous players to set their display name
@@ -9,6 +9,16 @@
 # - MobileUI integration for responsive scaling
 # https://github.com/cheddatech/CheddaBoards-Godot
 #
+# v2.1.8: Network diet on the anonymous dashboard.
+#         - The stats fallback loop no longer requests a profile refresh
+#           on every 0.5s attempt (it raced the login flow's own refresh
+#           and each redundant profile load dragged a rank request behind
+#           it). The loop now watches the cache only, with ONE genuine
+#           fallback refresh at ~3s if login_success never fired.
+#         - Rank fetches are rate-limited to one per 5s: rank is never in
+#           the profile payload, so every stats repaint used to fire
+#           get_scoreboard_rank again - boot sequences fetched it twice
+#           back-to-back.
 # v2.1.7: Exit button rework + has_played now means a real score
 #          + mobile panel scrolling.
 #          - Panels are now scrollable on phones: each panel's VBox is
@@ -230,6 +240,10 @@ var _is_test_submission: bool = false
 # Silent login flag (for anonymous dashboard - don't trigger full login flow)
 var _is_silent_login: bool = false
 
+## Unix time of the last rank request. Rank isn't in the profile payload,
+## so every stats repaint used to re-request it — rate-limit to one per 5s.
+var _last_rank_fetch_at: float = 0.0
+
 # Prevent duplicate SDK ready handling
 var _sdk_ready_handled: bool = false
 
@@ -375,7 +389,7 @@ func _ready():
 	status_label.text = "Connecting..."
 	_enable_login_buttons(false)
 	
-	_log("MainMenu v2.1.0 initialized | Mobile: %s | UI Scale: %.2f" % [MobileUI.is_mobile, MobileUI.ui_scale])
+	_log("MainMenu v2.1.8 initialized | Mobile: %s | UI Scale: %.2f" % [MobileUI.is_mobile, MobileUI.ui_scale])
 	
 	# Check if SDK already ready
 	if CheddaBoards.is_ready():
@@ -993,13 +1007,27 @@ func _fetch_stats_after_delay():
 			_update_anonymous_panel_stats(profile)
 			return
 		
-		_log("Stats polling attempt %d/%d - requesting refresh" % [attempts, max_attempts])
-		CheddaBoards.refresh_profile()
+		# Watch the cache only - the login flow requests the profile
+		# itself, so re-requesting every 0.5s just raced it (and each
+		# redundant profile load dragged a rank request behind it).
+		# ONE genuine fallback refresh at ~3s covers the case where
+		# login_success never fired.
+		if attempts == 6:
+			_log("Stats polling: no profile after 3s - one fallback refresh")
+			CheddaBoards.refresh_profile()
+		else:
+			_log("Stats polling attempt %d/%d - waiting" % [attempts, max_attempts])
 	
 	_log("Stats polling: gave up after %d attempts" % max_attempts)
 
 func _fetch_player_rank():
-	"""Fetch player's rank via CheddaBoards SDK"""
+	"""Fetch player's rank via CheddaBoards SDK (max one request per 5s —
+	several code paths call this after every stats repaint)"""
+	var now = Time.get_unix_time_from_system()
+	if now - _last_rank_fetch_at < 5.0:
+		_log("Rank fetch skipped (recently requested)")
+		return
+	_last_rank_fetch_at = now
 	_log("Fetching player rank via SDK...")
 	CheddaBoards.get_scoreboard_rank(SCOREBOARD_ID)
 

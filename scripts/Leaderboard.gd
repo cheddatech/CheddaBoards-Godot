@@ -1,8 +1,24 @@
-# Leaderboard.gd v2.0.1
+# Leaderboard.gd v2.1.0
 # Redesigned leaderboard showcasing CheddaBoards features
 # Tabs: All Time | Weekly | Daily with archive dropdown for timed scoreboards
 # https://github.com/cheddatech/CheddaBoards-Godot
 #
+# v2.1.0: Network diet — same freshness, a fraction of the requests.
+#         - Auto-refresh default interval 4s -> 30s. The 4s cadence was a
+#           demo/recording setting shipping as the default: one open
+#           leaderboard screen generated ~2 requests every 4 seconds,
+#           indefinitely. Lower it per-scene for recordings if you need
+#           the old behaviour (auto_refresh_interval is still exported).
+#         - Refresh-on-submit: the board now silently refreshes the
+#           moment THIS player's score lands (score_submitted /
+#           score_submitted_to_board), so the polling interval no longer
+#           determines how fast your own score appears. The poll timer
+#           restarts after a submit refresh to avoid a double fetch.
+#         - Refresh-on-show: if the screen becomes visible while stale
+#           (older than the refresh interval) or after a submit happened
+#           while it was hidden, it refreshes once immediately.
+#         - LEADERBOARD_LIMIT 1000 -> 100. No UI shows a thousand rows;
+#           the player's own position comes from get_scoreboard_rank.
 # v2.0.1: Mobile fixes.
 #         - Layout rule on phones: the chrome (title, tabs, archive/sort,
 #           rank panel, buttons) must FIT the screen; the entries list -
@@ -33,8 +49,10 @@ extends Control
 # CONFIGURATION
 # ============================================================
 
-## How many entries to load per page
-const LEADERBOARD_LIMIT: int = 1000
+## How many entries to load per page (v2.1.0: was 1000 — no UI renders
+## that many rows, and the player's own position comes from the rank
+## call, not from scanning the list)
+const LEADERBOARD_LIMIT: int = 100
 
 ## How long to wait before timing out
 const LOAD_TIMEOUT_SECONDS: float = 15.0
@@ -56,13 +74,17 @@ const TAB_DAILY: int = 2
 ## Which tab to show by default
 @export var default_tab: int = TAB_ALL_TIME
 
-## Auto-refresh: silently reloads the live board on a timer so new scores
-## appear without anyone pressing Refresh. Perfect for demos / recording.
-## Set to false for normal play if you don't want background polling.
+## Auto-refresh: silently reloads the live board on a timer so OTHER
+## players' new scores appear without anyone pressing Refresh. Your own
+## submits show up immediately regardless (refresh-on-submit), so this
+## only controls how fast rivals' scores arrive. Set to false to disable
+## background polling entirely.
 @export var auto_refresh_enabled: bool = true
 
-## How often the silent refresh runs, in seconds (min 1.0)
-@export var auto_refresh_interval: float = 4.0
+## How often the silent refresh runs, in seconds (min 1.0).
+## v2.1.0: default 30.0 (was 4.0 — a demo cadence). Lower it for
+## recordings / live events where rival scores must appear in seconds.
+@export var auto_refresh_interval: float = 30.0
 
 # ============================================================
 # COLORS — CheddaBoards brand palette
@@ -151,6 +173,14 @@ var auto_refresh_timer: Timer = null
 ## so the board updates invisibly during a recording.
 var is_silent_refresh: bool = false
 
+## Unix time of the last board request (any kind). Used by the
+## refresh-on-show check to decide whether the data is stale.
+var _last_refresh_at: float = 0.0
+
+## Set when this player submits while the screen is hidden; the next
+## time the screen becomes visible it refreshes once immediately.
+var _board_dirty: bool = false
+
 ## Current player nickname for highlighting
 var current_player_nickname: String = ""
 
@@ -209,6 +239,12 @@ func _ready():
 	CheddaBoards.archived_scoreboard_loaded.connect(_on_archived_scoreboard_loaded)
 	CheddaBoards.archive_error.connect(_on_archive_error)
 	
+	# Refresh-on-submit: show this player's score the moment it lands
+	# instead of waiting for the next poll tick
+	CheddaBoards.score_submitted.connect(_on_own_score_submitted)
+	CheddaBoards.score_submitted_to_board.connect(_on_own_score_submitted_to_board)
+	visibility_changed.connect(_on_visibility_changed)
+	
 	# Set default tab
 	active_tab = default_tab
 	scoreboard_id = tab_scoreboard_ids[active_tab]
@@ -219,7 +255,7 @@ func _ready():
 	
 	_setup_auto_refresh()
 	
-	print("[Leaderboard] v2.0.1 initialized (Mobile: %s, Scale: %.2f)" % [MobileUI.is_mobile, MobileUI.ui_scale])
+	print("[Leaderboard] v2.1.0 initialized (Mobile: %s, Scale: %.2f)" % [MobileUI.is_mobile, MobileUI.ui_scale])
 
 # ============================================================
 # UI SCALING
@@ -485,6 +521,8 @@ func _load_leaderboard():
 	
 	_start_load_timeout()
 	
+	_last_refresh_at = Time.get_unix_time_from_system()
+	_board_dirty = false
 	if viewing_archive:
 		_load_archive_by_index(selected_archive_index)
 	else:
@@ -539,6 +577,8 @@ func _silent_refresh():
 	if not CheddaBoards.is_ready():
 		return
 	is_silent_refresh = true
+	_last_refresh_at = Time.get_unix_time_from_system()
+	_board_dirty = false
 	CheddaBoards.get_scoreboard(scoreboard_id, LEADERBOARD_LIMIT)
 	if CheddaBoards.has_account():
 		CheddaBoards.get_scoreboard_rank(scoreboard_id)
@@ -553,6 +593,42 @@ func set_auto_refresh(enabled: bool):
 			auto_refresh_timer.start()
 	elif auto_refresh_timer:
 		auto_refresh_timer.stop()
+
+## This player just submitted to the main board (fans out to the period
+## boards this screen shows) — surface it immediately.
+func _on_own_score_submitted(_score: int, _streak: int) -> void:
+	_refresh_after_own_submit()
+
+## Targeted submit — only relevant if it hit the board on screen.
+func _on_own_score_submitted_to_board(sb_id: String, _score: int, _streak: int) -> void:
+	if sb_id == scoreboard_id:
+		_refresh_after_own_submit()
+
+func _refresh_after_own_submit() -> void:
+	if viewing_archive:
+		return
+	if not is_visible_in_tree():
+		# Hidden (typical: submit happens on the game-over screen before
+		# this scene is shown). Refresh once when we become visible.
+		_board_dirty = true
+		return
+	_silent_refresh()
+	# Restart the poll so a scheduled tick doesn't land right behind
+	# the submit refresh and fetch the same data twice.
+	if auto_refresh_timer and auto_refresh_enabled:
+		auto_refresh_timer.start()
+
+## Screen (re)shown: refresh once if a submit happened while hidden or
+## the data is older than one polling interval. The SDK de-dupes reads,
+## so overlapping with the initial load or a poll costs nothing.
+func _on_visibility_changed() -> void:
+	if not is_visible_in_tree() or viewing_archive or is_loading:
+		return
+	var stale = Time.get_unix_time_from_system() - _last_refresh_at > max(1.0, auto_refresh_interval)
+	if _board_dirty or stale:
+		_silent_refresh()
+		if auto_refresh_timer and auto_refresh_enabled:
+			auto_refresh_timer.start()
 
 # ============================================================
 # SIGNAL HANDLERS — SCOREBOARDS
