@@ -5,6 +5,65 @@ All notable changes to CheddaBoards Godot 4 SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v2.2.6 — "Request Diet" (2026-09-04)
+
+### ⚠️ Behavior change
+- `get_leaderboard()` default limit is now **100** entries (was 1000),
+  matching every other getter. Pass a limit explicitly if you need deeper
+  results: `get_leaderboard("score", 1000)`. To find a specific player's
+  position, use `get_player_rank()` instead of scanning the board.
+
+### SDK (CheddaBoards.gd v2.2.6)
+- **Read de-duplication**: an identical read request (same endpoint)
+  already queued or in flight is dropped instead of sent twice. Score
+  submits and other writes are never de-duplicated.
+- **Batch achievement signals fixed**: the async batch path skipped
+  response handling, so batches synced server-side but
+  `achievement_unlocked` / `achievements_loaded` never fired and sync
+  counters were left dirty.
+
+### Leaderboard scene (v2.1.0)
+- Auto-refresh default 4s → **30s** (4s was a demo cadence shipping as
+  the default). Still exported — lower it per-scene for recordings.
+- **Refresh-on-submit**: your own score appears on the board immediately;
+  the polling interval now only governs how fast rivals' scores arrive.
+- **Refresh-on-show**: one-shot refresh when the screen becomes visible
+  stale or after a submit happened while it was hidden.
+- `LEADERBOARD_LIMIT` 1000 → 100.
+
+### Main menu (v2.1.8)
+- Anonymous-boot stats loop watches the cache instead of requesting a
+  refresh every 0.5s; one genuine fallback refresh at ~3s.
+- Rank fetches rate-limited to one per 5s (rank is never in the profile
+  payload, so every stats repaint re-requested it).
+- **Rename race fixed**: the stale profile cache could revert a new
+  nickname and save the old one to disk; the profile→local sync now
+  pauses while a rename is in flight, the confirmed name is persisted,
+  and `nickname_error` is wired so rejected renames show feedback.
+- Debug logging off by default; `CheddaBoards.debug_logging = true` is
+  the master switch for the whole stack.
+
+### Game wrapper (v1.1.2)
+- Game-over title thresholds accept any exported array length instead of
+  hard-indexing four entries (trimmed arrays crashed on first game over).
+
+### Achievements (v2.2.1)
+- **Delta sync**: only unsynced achievements are sent, confirmed via the
+  server profile and the SDK's batch response. The menu no longer pushes
+  the full set on every visit — anonymous players sync on login like
+  account holders, at the settled-identity moment.
+
+### Repo & assets
+- Godot 3.6 backport removed — now lives in `cheddaboards-godot3-addon`.
+- `.uid` and `.import` files tracked for stable references across clones.
+- Images trimmed ~11MB: screenshots resized + compressed, orphaned logo
+  removed, remaining assets sized to their jobs (icon.png kept at 1024px
+  — it's also the boot splash).
+
+Net effect: an open leaderboard drops from ~2 requests/4s at 1000
+entries to ~2/30s at 100, anonymous boot from ~5–6 requests to 3, and
+your own score appears faster than before.
+
 ---
 
 ## [2.2.5] - 2026-09-01
