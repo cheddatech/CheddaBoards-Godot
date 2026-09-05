@@ -7,7 +7,9 @@
 **A complete game template with leaderboards, achievements, and cross-platform auth built in.**
 **Download → Add your game → Export. That's it.**
 
-> **SDK 2.2.4** · Godot 4.6+ · Windows / Mac / Linux / Mobile / Web · MIT · Free tier · [Changelog](docs/CHANGELOG.md)
+> **SDK 2.2.6** · Godot 4.6+ · Windows / Mac / Linux / Mobile / Web · MIT · Free tier · [Changelog](docs/CHANGELOG.md)
+
+> 📚 **Full documentation is now at [docs.cheddaboards.com](https://docs.cheddaboards.com)** — guides, REST API reference, and per-engine setup. This README covers the Godot template; the links below point to the docs site.
 
 <p align="center">
   <img src="screenshots/screenshot-anonymous.png" alt="Anonymous dashboard" width="45%"/>
@@ -20,15 +22,15 @@ Free tier. No per-player fees, no surprise bills. Battle-tested in production by
 
 ## Choose your path
 
-This repo is a full **template** — most people should just start with the [Quick Start](#quick-start) below. If that's not you, the [`docs/`](docs/README.md) folder has the other routes:
+This repo is a full **template** — most people should just start with the [Quick Start](#quick-start) below. If that's not you, the [docs.cheddaboards.com](https://docs.cheddaboards.com) folder has the other routes:
 
 | You have… | Best route | Time |
 |-----------|------------|------|
 | A fresh project, or you want the full UI out of the box | **Template** — keep reading, start at [Quick Start](#quick-start) | ~3 min |
-| A game you've already built | **[Drop-in SDK](docs/quickstart-dropin.md)** — just the SDK, your own UI | ~10 min |
-| A non-Godot engine, or you want raw control | **[REST API](docs/quickstart-api.md)** | varies |
+| A game you've already built | **[Drop-in SDK](https://docs.cheddaboards.com/quickstart/godot)** — just the SDK, your own UI | ~10 min |
+| A non-Godot engine, or you want raw control | **[REST API](https://docs.cheddaboards.com/quickstart/rest)** | varies |
 
-> 📚 Full documentation index: **[docs/README.md](docs/README.md)**
+> 📚 Full documentation index: **[https://docs.cheddaboards.com](https://docs.cheddaboards.com)**
 
 ---
 
@@ -51,7 +53,7 @@ func _on_run_finished():
 
 Point the wrapper at your scene and that's the whole game-side integration — the wrapper shows the game-over screen, submits the score, syncs achievements, and runs the anti-cheat play session for you.
 
-> Of that dict, only `final_score` and `max_combo` reach the leaderboard — saved as the player's **score** and **streak**. The rest (`hits`, `level`, `accuracy`) just feed the game-over screen and achievements. If your game's streak isn't a combo, that's the value to put in `max_combo`. → [What CheddaBoards stores](docs/guides/data-model.md)
+> Of that dict, only `final_score` and `max_combo` reach the leaderboard — saved as the player's **score** and **streak**. The rest (`hits`, `level`, `accuracy`) just feed the game-over screen and achievements. If your game's streak isn't a combo, that's the value to put in `max_combo`. → [What CheddaBoards stores](https://docs.cheddaboards.com/concepts/data-model)
 
 > That free tier is possible because CheddaBoards runs on the [Internet Computer](https://internetcomputer.org) — predictable infrastructure costs, so there's no per-player billing to pass on to you.
 
@@ -68,7 +70,7 @@ Point the wrapper at your scene and that's the whole game-side integration — t
 | **Achievements** | Backend-synced, with popup notifications & offline cache |
 | **CheddaBoards SDK** | Core backend integration (also usable standalone) |
 
-**Status:** Native, Mobile, and Web are all ✅ stable. Every platform supports Google / Apple sign-in via Device Code Auth — no OAuth SDKs in your game — and sessions persist, so players sign in **once** and stay signed in across restarts. → [Device Code Login](docs/guides/device-code-login.md)
+**Status:** Native, Mobile, and Web are all ✅ stable. Every platform supports Google / Apple sign-in via Device Code Auth — no OAuth SDKs in your game — and sessions persist, so players sign in **once** and stay signed in across restarts. → [Device Code Login](https://docs.cheddaboards.com/concepts/device-code)
 
 <p align="center">
   <img src="screenshots/screenshot-device-code-auth.png" alt="Device Code Login — scan the QR on your phone, no OAuth SDKs in the game" width="45%"/>
@@ -79,7 +81,7 @@ Point the wrapper at your scene and that's the whole game-side integration — t
 
 ## Quick Start
 
-> 🆕 **New to Godot?** Follow the step-by-step **[Getting Started guide](docs/guides/getting-started.md)** instead — it assumes zero Godot experience and walks you from install to a score on the board. The three steps below are the fast version for people who already know Godot.
+> 🆕 **New to Godot?** Follow the step-by-step **[Getting Started guide](https://docs.cheddaboards.com/engines/godot-4)** instead — it assumes zero Godot experience and walks you from install to a score on the board. The three steps below are the fast version for people who already know Godot.
 
 ### 1. Setup
 
@@ -95,7 +97,7 @@ Enter your **API key** from [cheddaboards.com](https://cheddaboards.com) — the
 
 The template runs the example game (**CheddaClick**) out of the box — here's how to swap in your own. Your game lives in its **own scene** (any root node — `Node2D`, `Control`, whatever your game needs). The wrapper loads it as a child and listens for its signals. You only have to emit **one**.
 
-> 📖 Step-by-step version, with a complete example game and how to remove CheddaClick: **[Build Your Own Game](docs/guides/your-own-game.md)**
+> 📖 Step-by-step version, with a complete example game and how to remove CheddaClick: **[Build Your Own Game](https://docs.cheddaboards.com/engines/godot-4#the-game-over-contract)**
 
 **Required — emit `game_over` when a run ends.** This is the only signal the wrapper needs:
 
@@ -155,7 +157,7 @@ func unpause():  # optional
 
 Players get leaderboards, achievements, and anti-cheat — no further wiring.
 
-> 📖 Detailed setup, web export & OAuth specifics: **[SETUP.md](docs/SETUP.md)**
+> 📖 Detailed setup, web export & OAuth specifics: **[SETUP.md](https://docs.cheddaboards.com/engines/godot-4)**
 
 ---
 
@@ -163,12 +165,12 @@ Players get leaderboards, achievements, and anti-cheat — no further wiring.
 
 | Feature | Learn more |
 |---------|------------|
-| Cross-platform auth — anonymous, Google / Apple via device code, account linking, persistent sessions (sign in once) | [Authentication](docs/guides/authentication.md) · [Device Code Login](docs/guides/device-code-login.md) |
-| Global leaderboards (sort by score or streak, player rank highlighted) | [Drop-in Quickstart](docs/quickstart-dropin.md) |
-| Timed scoreboards — weekly / daily / monthly / custom, auto-reset & archive | [Timed Leaderboards](docs/guides/timed-leaderboards.md) |
-| Achievements — auto-unlock, offline cache, deferred sync, popups | [Achievements](docs/guides/achievements.md) |
-| Anti-cheat — server-side play sessions, score validation, configurable caps | [Anti-cheat](docs/guides/anti-cheat.md) |
-| Fully typed signal API across the SDK | [Signals Reference](docs/guides/signals-reference.md) |
+| Cross-platform auth — anonymous, Google / Apple via device code, account linking, persistent sessions (sign in once) | [Authentication](https://docs.cheddaboards.com/api/authentication) · [Device Code Login](https://docs.cheddaboards.com/concepts/device-code) |
+| Global leaderboards (sort by score or streak, player rank highlighted) | [Drop-in Quickstart](https://docs.cheddaboards.com/quickstart/godot) |
+| Timed scoreboards — weekly / daily / monthly / custom, auto-reset & archive | [Timed Leaderboards](https://docs.cheddaboards.com/concepts/timed-leaderboards) |
+| Achievements — auto-unlock, offline cache, deferred sync, popups | [Achievements](https://docs.cheddaboards.com/api/achievements) |
+| Anti-cheat — server-side play sessions, score validation, configurable caps | [Anti-cheat](https://docs.cheddaboards.com/concepts/anti-cheat) |
+| Fully typed signal API across the SDK | [Signals Reference](https://docs.cheddaboards.com/engines/godot-signals) |
 
 ---
 
@@ -183,7 +185,7 @@ CheddaBoards-Godot/
 ├── example_game/             # CheddaClick — the example game
 ├── assets/fonts/
 ├── screenshots/
-├── docs/                     # Full documentation (see docs/README.md)
+├── docs/                     # Full documentation (see https://docs.cheddaboards.com)
 │   ├── README.md             # Docs index / router
 │   ├── SETUP.md
 │   ├── quickstart-dropin.md
@@ -220,9 +222,9 @@ CheddaBoards-Godot/
 
 ## Roadmap
 
-- [x] Godot 3.6 SDK release — shipped ([CheddaBoards 3.x backport](https://github.com/cheddatech/CheddaBoards-Godot))
+- [x] Godot 3.6 SDK release — shipped ([CheddaBoards 3.x backport](https://github.com/cheddatech/cheddaboards-godot3-addon))
 - [x] Unity SDK — shipped with full API parity ([CheddaBoards-Unity](https://github.com/cheddatech/CheddaBoards-Unity))
-- [x] Self-serve score moderation in the developer dashboard — shipped ([guide](docs/guides/moderation.md))
+- [x] Self-serve score moderation in the developer dashboard — shipped ([guide](https://docs.cheddaboards.com/concepts/moderation))
 - [ ] More game slots per account
 - [ ] Expanded analytics dashboard
 
