@@ -1,4 +1,4 @@
-# Achievements.gd v2.2.1
+# Achievements.gd v2.2.2
 # Achievement tracking for CheddaClick - CheddaBoards Template
 # Add as Autoload: Project → Project Settings → Autoload → "Achievements"
 # (AFTER the CheddaBoards autoload, so the SDK exists when this wires up)
@@ -22,6 +22,15 @@
 # Everything else here — the unlock/save/sync engine — is generic and safe
 # to keep as-is. Only the definitions and the check_* conditions are example.
 # ============================================================
+#
+# v2.2.2: Sync moved from login_success to profile_loaded. Syncing at
+#         login fired the batch before a brand-new anonymous player
+#         existed on the backend (no submit yet -> HTTP 400; the
+#         unlocks had nothing to attach to). A loaded profile proves
+#         the player exists, so the reconcile now runs there - after
+#         the remote merge, so only genuinely pending ids are sent.
+#         New players lose nothing: their unlocks ride along with the
+#         first submit, exactly as before.
 #
 # v2.2.1: Delta sync - only unsynced achievements go to the backend.
 #         force_sync_pending() used to re-send the ENTIRE unlocked set on
@@ -265,13 +274,14 @@ func _on_sdk_login(_nickname: String):
 		_switch_slot(SLOT_ACCOUNT)
 	else:
 		_switch_slot(SLOT_ANON)
-	# Identity is settled and authenticated NOW - this is the reliable
-	# moment to reconcile local unlocks up to the backend (for anonymous
-	# players too, since v2.2.1). Do NOT push at menu load instead: that
-	# runs before login completes and can go out under a fallback/device
-	# ID, storing unlocks against the wrong player. Delta tracking makes
-	# this a no-op when everything is already synced.
-	force_sync_pending()
+	# Do NOT sync here. Login settles the identity, but an anonymous
+	# player does not exist on the backend until their first score
+	# submit - a batch fired now for a brand-new player is rejected
+	# (HTTP 400: nothing to attach the unlocks to). The sync happens in
+	# _on_sdk_profile_loaded instead: a loaded profile proves the player
+	# exists server-side. New players' pending unlocks ride along with
+	# their first submit (submit_with_score), and the profile fetch that
+	# follows it flushes any remainder.
 
 func _on_sdk_logout():
 	# Persist the account's progress, then hand the device to a genuinely
@@ -304,6 +314,13 @@ func _on_sdk_profile_loaded(_nickname: String, _score: int, _streak: int,
 	if changed:
 		_save_local_achievements()
 		print("[Achievements] Merged remote progress: %d unlocked" % unlocked_achievements.size())
+	# The profile just loaded, so the player exists on the backend - this
+	# is the safe moment to reconcile local unlocks upward. Runs AFTER the
+	# merge above so server-known ids are already marked synced and only
+	# genuinely pending ones go out. Delta tracking makes this a no-op
+	# when everything is already synced, so firing on every profile load
+	# is cheap.
+	force_sync_pending()
 
 func _on_sdk_account_upgraded(_profile: Dictionary, _migration: Dictionary):
 	# The player just linked their anonymous identity to a real account.

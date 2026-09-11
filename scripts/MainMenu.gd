@@ -294,8 +294,8 @@ var state_history: Array = []
 
 func _ready():
 	# --- CheddaBoards credentials (managed by Setup Wizard) ---
-	CheddaBoards.set_api_key("")
-	CheddaBoards.set_game_id("")
+	CheddaBoards.set_api_key("cb_your-game_xxxxxxxxxx")
+	CheddaBoards.set_game_id("your-game")
 	# --- end CheddaBoards credentials ---
 	# CheddaBoards credentials.
 	# Replace with your own from the developer dashboard at cheddaboards.com.

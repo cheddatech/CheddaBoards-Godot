@@ -1,4 +1,4 @@
-# CheddaBoards.gd v2.2.6
+# CheddaBoards.gd v2.2.7
 # CheddaBoards integration for Godot 4.x
 # https://github.com/cheddatech/CheddaBoards-Godot
 # https://cheddaboards.com
@@ -9,6 +9,39 @@
 #   Player authenticates on their phone at cheddaboards.com/link
 # - Score submissions, play sessions, achievements: all via HTTP API
 #
+# v2.2.7:
+#   - Submits no longer rename the player. All three submit paths
+#     (submit_score, submit_score_with_achievements, submit_score_to_board)
+#     used to ALWAYS send a nickname, generating a "Player_XXXXXX" fallback
+#     when _nickname was empty - so every submit by a returning anonymous
+#     player whose profile hadn't loaded yet silently overwrote their saved
+#     name. The nickname field is now omitted from the submit body unless
+#     the caller actually set one; the server keeps the existing profile
+#     name. The profile parser also no longer backfills a generated name
+#     into _nickname when a profile arrives unnamed (that read-path leak
+#     would have written a generated name back on the next submit).
+#     Unnamed anonymous players stay unnamed - render them as "Guest"
+#     (get_nickname() already returns "" for this case).
+#   - Batch achievement sync no longer reports "0 synced" on success.
+#     The batch response parser only accepted one exact shape
+#     (data.results[] of {success, achievementId}); anything else parsed
+#     as zero even though the server returned 200 and persisted the
+#     unlocks. Now: (a) tolerant parsing accepts plain id arrays,
+#     alternate array keys (unlocked/syncedIds/achievements), alternate
+#     id keys (id/achievement), and non-bool success flags; (b) on
+#     HTTP 2xx, if the body shape still isn't recognised, the REQUESTED
+#     ids are reported as synced (raw body logged for diagnosis) - a 200
+#     means the server stored them. Verified against the live API
+#     (v1.8.0): data.results[] of {achievementId, success, message},
+#     where re-sends of already-unlocked ids also return success:true;
+#     the count key is "unlocked", not "synced". achievements_loaded now
+#     always carries the real synced set on success.
+#   - get_achievements() works again. It called
+#     GET /players/{id}/achievements, a route the API doesn't have
+#     ("Unknown endpoint"). Achievements are only exposed on the profile,
+#     so it now fetches the profile and surfaces gameProfile.achievements
+#     via achievements_loaded. profile_loaded does not fire for this
+#     call; reading achievements from profile_loaded also still works.
 # v2.2.6:
 #   - Request de-duplication: an identical read request (same endpoint)
 #     that is already queued or in flight is dropped instead of being
@@ -212,9 +245,11 @@ signal device_code_error(reason: String)
 ##     CheddaBoards.debug_logging = true
 ## All _log() calls are gated by this flag; push_error / push_warning for
 ## genuine failures fire regardless.
-var debug_logging: bool = false
+var debug_logging: bool = true
 
 ## HTTP API Configuration
+## SDK version. Keep in sync with the header changelog.
+const VERSION = "2.2.7"
 const API_BASE_URL = "https://api.cheddaboards.com"
 ## Direct canister reads (public board GETs served by the canister itself
 ## over the IC HTTP gateway). Same response shape as the proxy; used for
@@ -310,6 +345,10 @@ const DIRECT_READ_MAX_FAILURES = 3
 var _deferred_achievement_ids: Array = []
 var _deferred_achievements_remaining: int = 0
 var _deferred_achievements_synced: Array = []
+# Ids sent in the most recent batch request. On HTTP 2xx the server has
+# persisted them, so if the response body can't be parsed these are what
+# gets reported - never "0 synced" on a success.
+var _last_batch_ids: Array = []
 
 # ============================================================
 # PERSISTENT DEVICE ID
@@ -329,7 +368,7 @@ func _ready() -> void:
 	# to hang indefinitely.
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_setup_http_client()
-	_log("Initializing CheddaBoards v2.2.6 (HTTP API Mode)...")
+	_log("Initializing CheddaBoards v%s (HTTP API Mode)..." % VERSION)
 	_load_saved_session()
 	_init_complete = true
 	call_deferred("_emit_sdk_ready")
@@ -419,7 +458,14 @@ func _on_http_request_completed(result: int, response_code: int, headers: Packed
 			# problems - not a canister answer, so ask the proxy instead
 			_retry_via_proxy("non-JSON response (HTTP %d)" % response_code)
 			return
-		push_error("[CheddaBoards] Failed to parse JSON response")
+		var raw_text := body.get_string_from_utf8()
+		var first_codes := "n/a"
+		if raw_text.length() > 0:
+			var codes: Array = []
+			for ci in range(mini(3, raw_text.length())):
+				codes.append(str(raw_text.unicode_at(ci)))
+			first_codes = ",".join(codes)
+		push_error("[CheddaBoards] Failed to parse JSON response (HTTP %d, %d chars, first char codes: %s): %s" % [response_code, raw_text.length(), first_codes, raw_text])
 		request_failed.emit(_current_endpoint, "Invalid JSON response")
 		_emit_http_failure("Invalid JSON response")
 		return
@@ -558,20 +604,31 @@ func _emit_http_success(data) -> void:
 					_deferred_achievements_synced.clear()
 		
 		"unlock_achievement_batch":
-			var synced = data.get("synced", 0)
-			var results = data.get("results", [])
-			_log("Batch achievement sync complete: %d synced" % synced)
-			for result in results:
-				if result.get("success", false):
-					var ach_id = str(result.get("achievementId", ""))
-					_deferred_achievements_synced.append(ach_id)
-					achievement_unlocked.emit(ach_id)
+			var synced_ids: Array = _parse_batch_synced_ids(data)
+			if synced_ids.is_empty() and not _last_batch_ids.is_empty():
+				_log("Batch response shape unrecognised; reporting requested ids as synced.")
+				synced_ids = _last_batch_ids.duplicate()
+			_log("Batch achievement sync complete: %d synced" % synced_ids.size())
+			for ach_id in synced_ids:
+				_deferred_achievements_synced.append(ach_id)
+				achievement_unlocked.emit(ach_id)
 			achievements_loaded.emit(_deferred_achievements_synced.duplicate())
 			_deferred_achievements_synced.clear()
 			_deferred_achievements_remaining = 0
+			_last_batch_ids.clear()
 		
 		"achievements":
-			var achievements = data.get("achievements", [])
+			# Response is a profile: achievements sit under
+			# gameProfile.achievements. Top-level "achievements" is kept as
+			# a fallback for older/alternate responses.
+			var game_profile = data.get("gameProfile", {})
+			if typeof(game_profile) != TYPE_DICTIONARY:
+				game_profile = {}
+			var achievements = game_profile.get("achievements", [])
+			if typeof(achievements) != TYPE_ARRAY or achievements.is_empty():
+				achievements = data.get("achievements", [])
+			if typeof(achievements) != TYPE_ARRAY:
+				achievements = []
 			achievements_loaded.emit(achievements)
 		
 		"list_scoreboards":
@@ -713,6 +770,7 @@ func _emit_http_failure(error: String) -> void:
 			achievements_loaded.emit([])
 			_deferred_achievements_synced.clear()
 			_deferred_achievements_remaining = 0
+			_last_batch_ids.clear()
 		"achievements":
 			achievements_loaded.emit([])
 		"migrate_account":
@@ -894,7 +952,10 @@ func _update_cached_profile(profile: Dictionary) -> void:
 
 	_cached_profile = profile
 
-	var nickname: String = str(profile.get("nickname", profile.get("username", _get_default_nickname())))
+	# Unnamed profile stays unnamed. Backfilling _get_default_nickname() here
+	# would set _nickname to a generated name, and the next submit would write
+	# it to the server - reintroducing the rename bug via the read path.
+	var nickname: String = str(profile.get("nickname", profile.get("username", "")))
 	
 	# Handle nested gameProfile from API
 	var game_profile = profile.get("gameProfile", {})
@@ -1567,16 +1628,20 @@ func submit_score(score: int, streak: int = 0) -> void:
 	_pending_score = score
 	_pending_streak = streak
 	
+	# Only send a nickname the caller actually set. Omitting the field lets
+	# the server keep the existing profile name - a submit should update the
+	# score, not silently rename the player.
 	var body = {
 		"playerId": get_player_id(),
 		"gameId": game_id,
 		"score": score,
-		"streak": streak,
-		"nickname": _nickname if _nickname != "" else _get_default_nickname()
+		"streak": streak
 	}
+	if _nickname != "":
+		body["nickname"] = _nickname
 	if _play_session_token != "":
 		body["playSessionToken"] = _play_session_token
-	_log("Submitting: score=%d, streak=%d, nickname=%s, gameId=%s, playerId=%s, session=%s" % [score, streak, body.nickname, game_id, body.playerId, _play_session_token.left(20)])
+	_log("Submitting: score=%d, streak=%d, nickname=%s, gameId=%s, playerId=%s, session=%s" % [score, streak, _nickname if _nickname != "" else "(unset)", game_id, body.playerId, _play_session_token.left(20)])
 	_make_http_request("/scores", HTTPClient.METHOD_POST, body, "submit_score")
 
 func submit_score_with_achievements(score: int, streak: int, achievements: Array) -> void:
@@ -1607,17 +1672,19 @@ func submit_score_with_achievements(score: int, streak: int, achievements: Array
 	_deferred_achievements_remaining = 0
 	_deferred_achievements_synced = []
 	
-	# Submit score FIRST (creates/updates player profile on backend)
+	# Submit score FIRST (creates/updates player profile on backend).
+	# Nickname only sent when the caller actually set one - see submit_score.
 	var score_body = {
 		"playerId": get_player_id(),
 		"gameId": game_id,
 		"score": score,
-		"streak": streak,
-		"nickname": _nickname if _nickname != "" else _get_default_nickname()
+		"streak": streak
 	}
+	if _nickname != "":
+		score_body["nickname"] = _nickname
 	if _play_session_token != "":
 		score_body["playSessionToken"] = _play_session_token
-	_log("Submitting: score=%d, streak=%d, nickname=%s, gameId=%s, playerId=%s, session=%s" % [score, streak, score_body.nickname, game_id, score_body.playerId, _play_session_token.left(20)])
+	_log("Submitting: score=%d, streak=%d, nickname=%s, gameId=%s, playerId=%s, session=%s" % [score, streak, _nickname if _nickname != "" else "(unset)", game_id, score_body.playerId, _play_session_token.left(20)])
 	_make_http_request("/scores", HTTPClient.METHOD_POST, score_body, "submit_score")
 
 ## Submit a score to ONE specific (targeted) scoreboard, by ID.
@@ -1649,14 +1716,16 @@ func submit_score_to_board(scoreboard_id: String, score: int, streak: int = 0) -
 		score_error.emit("scoreboard_id is required")
 		return
 	
+	# Nickname only sent when the caller actually set one - see submit_score.
 	var body = {
 		"playerId": get_player_id(),
 		"gameId": game_id,
 		"score": score,
 		"streak": streak,
-		"nickname": _nickname if _nickname != "" else _get_default_nickname(),
 		"scoreboardId": scoreboard_id
 	}
+	if _nickname != "":
+		body["nickname"] = _nickname
 	if _play_session_token != "":
 		body["playSessionToken"] = _play_session_token
 	
@@ -1872,8 +1941,21 @@ func unlock_achievements_batch(achievement_ids: Array) -> void:
 	_send_achievement_batch(achievement_ids)
 
 func get_achievements(player_id: String = "") -> void:
+	# Achievements live on the profile (gameProfile.achievements) - there is
+	# no standalone /players/{id}/achievements route (the old URL returned
+	# "Unknown endpoint"). This fetches the profile and surfaces just the
+	# achievements via achievements_loaded; profile_loaded does NOT fire
+	# for this call.
+	if not _session_token.is_empty() and player_id == "":
+		_make_http_request("/auth/profile", HTTPClient.METHOD_GET, {}, "achievements")
+		_log("Achievements requested (session profile)")
+		return
 	var pid = player_id if player_id != "" else get_player_id()
-	var url = "/players/%s/achievements" % pid.uri_encode()
+	if pid.is_empty():
+		_log("No player ID for achievements fetch")
+		achievements_loaded.emit([])
+		return
+	var url = "/players/%s/profile" % pid.uri_encode()
 	_make_http_request(url, HTTPClient.METHOD_GET, {}, "achievements")
 	_log("Achievements requested for: %s" % pid)
 
@@ -1896,6 +1978,7 @@ func _send_achievement_batch(achievement_ids: Array) -> void:
 		return
 	_deferred_achievements_remaining = 0
 	_deferred_achievements_synced = []
+	_last_batch_ids = achievement_ids.duplicate()
 	
 	var body = {
 		"playerId": get_player_id(),
@@ -1915,27 +1998,77 @@ func _send_achievement_batch(achievement_ids: Array) -> void:
 		_log("Achievement batch failed to start: %s" % error)
 		http.queue_free()
 
+# Tolerant batch-response reader. Canonical shape is data.results[] of
+# {success, achievementId}, but this also accepts the shapes a backend
+# plausibly returns: plain id-string arrays, alternate array keys
+# (unlocked / syncedIds / achievements), alternate id keys (id / achievement),
+# and non-bool success flags. Returns [] when nothing matches - callers fall
+# back to the requested ids on HTTP 200.
+func _parse_batch_synced_ids(data: Dictionary) -> Array:
+	var ids: Array = []
+	for key in ["results", "unlocked", "syncedIds", "achievements"]:
+		var list = data.get(key, [])
+		if typeof(list) != TYPE_ARRAY or list.is_empty():
+			continue
+		for entry in list:
+			if typeof(entry) == TYPE_STRING:
+				if entry != "":
+					ids.append(entry)
+				continue
+			if typeof(entry) != TYPE_DICTIONARY:
+				continue
+			# Success flag is optional; when present, accept any truthy form.
+			if entry.has("success") and not _truthy(entry["success"]):
+				continue
+			if entry.has("ok") and not _truthy(entry["ok"]):
+				continue
+			var ach_id = str(entry.get("achievementId", entry.get("id", entry.get("achievement", ""))))
+			if ach_id != "":
+				ids.append(ach_id)
+		if not ids.is_empty():
+			return ids
+	return ids
+
+func _truthy(v) -> bool:
+	match typeof(v):
+		TYPE_BOOL:
+			return v
+		TYPE_INT, TYPE_FLOAT:
+			return v != 0
+		TYPE_STRING:
+			var t = v.strip_edges().to_lower()
+			return t == "true" or t == "1" or t == "ok" or t == "success"
+		_:
+			return v != null
+
 func _on_achievement_batch_completed(code: int, body: PackedByteArray) -> void:
 	if code < 200 or code >= 300:
 		_log("Batch achievement sync failed (HTTP %d)" % code)
+		_last_batch_ids.clear()
 		return
 	var json = JSON.new()
 	if json.parse(body.get_string_from_utf8()) != OK:
-		_log("Batch achievement sync: invalid JSON response")
+		_log("Batch achievement sync: invalid JSON response (HTTP %d): %s" % [code, body.get_string_from_utf8()])
+		_last_batch_ids.clear()
 		return
 	var response = json.data
 	if typeof(response) != TYPE_DICTIONARY:
 		return
 	var data = response.get("data", {})
-	var results = data.get("results", [])
-	var synced_ids: Array = []
-	for result in results:
-		if typeof(result) == TYPE_DICTIONARY and result.get("success", false):
-			var ach_id = str(result.get("achievementId", ""))
-			synced_ids.append(ach_id)
-			achievement_unlocked.emit(ach_id)
+	if typeof(data) != TYPE_DICTIONARY:
+		data = {}
+	var synced_ids: Array = _parse_batch_synced_ids(data)
+	if synced_ids.is_empty() and not _last_batch_ids.is_empty():
+		# HTTP 2xx means the server persisted the batch even if the body
+		# shape isn't one we recognise - report the requested ids rather
+		# than a false "0 synced".
+		_log("Batch response shape unrecognised; reporting requested ids as synced. Raw: %s" % body.get_string_from_utf8())
+		synced_ids = _last_batch_ids.duplicate()
+	for ach_id in synced_ids:
+		achievement_unlocked.emit(ach_id)
 	_log("Batch achievement sync complete: %d synced" % synced_ids.size())
 	achievements_loaded.emit(synced_ids)
+	_last_batch_ids.clear()
 
 # ============================================================
 # BACKWARDS COMPATIBILITY ALIASES (legacy SDK method names)
