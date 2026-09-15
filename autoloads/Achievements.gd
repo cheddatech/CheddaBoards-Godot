@@ -1,4 +1,5 @@
-# Achievements.gd v2.2.2
+# Achievements.gd v2.2.3
+# v2.2.3: debug output gated behind CheddaBoards.debug_logging master switch
 # Achievement tracking for CheddaClick - CheddaBoards Template
 # Add as Autoload: Project → Project Settings → Autoload → "Achievements"
 # (AFTER the CheddaBoards autoload, so the SDK exists when this wires up)
@@ -71,6 +72,11 @@
 #   Backend sync on login/logout/account-link is automatic.
 
 extends Node
+
+## Local debug switch for this script; the SDK master switch
+## (CheddaBoards.debug_logging = true) enables this output too.
+var debug_logging: bool = false
+
 
 signal achievement_unlocked(id: String, name: String)
 signal achievements_ready()
@@ -196,7 +202,7 @@ func _ready():
 	_migrate_legacy_save()
 	_load_slot(SLOT_ANON)
 	is_ready = true
-	print("[Achievements] Loaded slot '%s': %d unlocked" % [_slot, unlocked_achievements.size()])
+	_log("[Achievements] Loaded slot '%s': %d unlocked" % [_slot, unlocked_achievements.size()])
 	achievements_ready.emit()
 	# Wire up the SDK once the autoload order has settled. If the
 	# CheddaBoards autoload isn't present, everything still works
@@ -214,7 +220,7 @@ func _migrate_legacy_save():
 		var dir = DirAccess.open("user://")
 		if dir:
 			dir.rename(LEGACY_SAVE_PATH.get_file(), _save_path(SLOT_ANON).get_file())
-			print("[Achievements] Migrated legacy save into '%s' slot" % SLOT_ANON)
+			_log("[Achievements] Migrated legacy save into '%s' slot" % SLOT_ANON)
 
 func _read_slot_file(slot: String) -> Dictionary:
 	if not FileAccess.file_exists(_save_path(slot)):
@@ -245,7 +251,7 @@ func _switch_slot(slot: String):
 		return
 	_save_local_achievements()  # persist the slot we're leaving
 	_load_slot(slot)
-	print("[Achievements] Switched to slot '%s' (%d unlocked)" % [_slot, unlocked_achievements.size()])
+	_log("[Achievements] Switched to slot '%s' (%d unlocked)" % [_slot, unlocked_achievements.size()])
 
 # ============================================================
 # SDK WIRING (automatic backend sync)
@@ -291,7 +297,7 @@ func _on_sdk_logout():
 	if FileAccess.file_exists(_save_path(SLOT_ANON)):
 		DirAccess.remove_absolute(_save_path(SLOT_ANON))
 	_load_slot(SLOT_ANON)
-	print("[Achievements] Logout: anon slot wiped, fresh start")
+	_log("[Achievements] Logout: anon slot wiped, fresh start")
 
 func _on_sdk_profile_loaded(_nickname: String, _score: int, _streak: int,
 		remote_achievements: Array, play_count: int):
@@ -313,7 +319,7 @@ func _on_sdk_profile_loaded(_nickname: String, _score: int, _streak: int,
 		changed = true
 	if changed:
 		_save_local_achievements()
-		print("[Achievements] Merged remote progress: %d unlocked" % unlocked_achievements.size())
+		_log("[Achievements] Merged remote progress: %d unlocked" % unlocked_achievements.size())
 	# The profile just loaded, so the player exists on the backend - this
 	# is the safe moment to reconcile local unlocks upward. Runs AFTER the
 	# merge above so server-known ids are already marked synced and only
@@ -344,7 +350,7 @@ func _on_sdk_account_upgraded(_profile: Dictionary, _migration: Dictionary):
 			grew = true
 	total_games_played = max(total_games_played, int(anon_snapshot.get("games_played", 0)))
 	_save_local_achievements()
-	print("[Achievements] Folded anon progress into account: %d unlocked" % unlocked_achievements.size())
+	_log("[Achievements] Folded anon progress into account: %d unlocked" % unlocked_achievements.size())
 	
 	# The anon slot's contents belong to this account now - wipe it so
 	# the next guest on this device starts clean.
@@ -462,7 +468,7 @@ func _unlock(achievement_id: String):
 	_save_local_achievements()
 	
 	var ach = achievements[achievement_id]
-	print("[Achievements] 🏆 Unlocked: %s %s" % [ach.icon, ach.name])
+	_log("[Achievements] 🏆 Unlocked: %s %s" % [ach.icon, ach.name])
 	
 	achievement_unlocked.emit(achievement_id, ach.name)
 
@@ -481,7 +487,7 @@ func submit_with_score(score: int, streak: int):
 	achievements once the score succeeds. Passing the score alone would
 	never push the achievements."""
 	CheddaBoards.submit_score_with_achievements(score, streak, unlocked_achievements)
-	print("[Achievements] Submitting score %d with %d achievements" % [score, unlocked_achievements.size()])
+	_log("[Achievements] Submitting score %d with %d achievements" % [score, unlocked_achievements.size()])
 
 # ============================================================
 # QUERIES
@@ -549,7 +555,7 @@ func force_sync_pending():
 			pending.append(id)
 	if pending.is_empty():
 		return  # everything already on the backend - no request, no noise
-	print("[Achievements] Syncing %d achievements (%d already synced)" % [pending.size(), _synced_achievements.size()])
+	_log("[Achievements] Syncing %d achievements (%d already synced)" % [pending.size(), _synced_achievements.size()])
 	CheddaBoards.unlock_achievements_batch(pending)
 
 func _on_sdk_achievements_loaded(entries: Array):
@@ -575,7 +581,7 @@ func sync_from_profile(profile: Dictionary):
 			if ach_id not in unlocked_achievements:
 				unlocked_achievements.append(ach_id)
 		_save_local_achievements()
-		print("[Achievements] Synced from profile: %d total" % unlocked_achievements.size())
+		_log("[Achievements] Synced from profile: %d total" % unlocked_achievements.size())
 
 # ============================================================
 # DEBUG
@@ -583,15 +589,23 @@ func sync_from_profile(profile: Dictionary):
 
 func debug_status():
 	"""Print debug information"""
-	print("")
-	print("========================================")
-	print("       Achievements Debug v2.2.0       ")
-	print("========================================")
-	print(" Slot:           %s" % _slot)
-	print(" Games Played:   %d" % total_games_played)
-	print(" Unlocked:       %d / %d" % [get_unlocked_count(), get_total_count()])
-	print(" Percentage:     %.1f%%" % get_unlocked_percentage())
-	print("----------------------------------------")
-	print(" Unlocked IDs:   %s" % str(unlocked_achievements))
-	print("========================================")
-	print("")
+	_log("")
+	_log("========================================")
+	_log("       Achievements Debug v2.2.0       ")
+	_log("========================================")
+	_log(" Slot:           %s" % _slot)
+	_log(" Games Played:   %d" % total_games_played)
+	_log(" Unlocked:       %d / %d" % [get_unlocked_count(), get_total_count()])
+	_log(" Percentage:     %.1f%%" % get_unlocked_percentage())
+	_log("----------------------------------------")
+	_log(" Unlocked IDs:   %s" % str(unlocked_achievements))
+	_log("========================================")
+	_log("")
+
+
+func _log(message: String):
+	## Gated debug output — silent unless this scene's switch or the SDK
+	## master switch (CheddaBoards.debug_logging = true) is on.
+	if not (debug_logging or CheddaBoards.debug_logging):
+		return
+	print(message)

@@ -5,6 +5,41 @@ All notable changes to CheddaBoards Godot 4 SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v2.2.7 — "Names That Stick" (2026-09-15)
+
+### SDK (CheddaBoards.gd v2.2.7)
+- **Rename race fixed at SDK level**: `change_nickname()` gated the server
+  rename on having a cached profile, so a rename fired while the cache was
+  empty (right after a first submit, after a failed profile fetch) took a
+  local-only branch — `nickname_changed` fired, nothing reached the server.
+  Now gated on backend existence (set by any successful submit or profile
+  load), with pending-name resync on profile load and a requested-name
+  fallback when a 2xx rename response omits the nickname. The MainMenu
+  guard from v2.2.6 stays as defense-in-depth; drop-in integrations no
+  longer need it.
+- Also in SDK 2.2.7: `get_achievements()` repaired (reads from the
+  profile), submits no longer overwrite a returning player's saved name
+  with a generated one, batch achievement sync reports the real synced
+  count. Full detail in the
+  [SDK changelog](https://github.com/cheddatech/cheddaboards-godot-addon/blob/main/CHANGELOG.md).
+- **One stable generated name**: the server assigns `Player_NNNN` when an
+  account is first created and keeps it until the player picks their own —
+  the client never invents names.
+
+### Debug logging — rollout complete
+- Every template script now routes its output through a gated `_log`,
+  silent by default, enabled per-script or globally via
+  `CheddaBoards.debug_logging = true` (started in v2.2.6 with MainMenu).
+  The F9 debug dump still prints unconditionally — that's its job.
+- Scene versions: MainMenu 2.1.9, Leaderboard 2.1.1, Game wrapper 1.1.3,
+  Achievements 2.2.3, AchievementsView 1.2.1, AchievementNotification
+  2.0.1, MobileUI gated.
+
+### Docs
+- Documentation moved to [docs.cheddaboards.com](https://docs.cheddaboards.com).
+  The old pages under `docs/` are now link-preserving stubs pointing to
+  their new homes; this changelog stays here.
+  
 ## v2.2.6 — "Request Diet" (2026-09-04)
 
 ### ⚠️ Behavior change

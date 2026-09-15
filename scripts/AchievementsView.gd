@@ -1,4 +1,5 @@
-# AchievementsView.gd v1.2.0
+# AchievementsView.gd v1.2.1
+# v1.2.1: debug output gated behind CheddaBoards.debug_logging master switch
 # Displays all achievements with unlock status and progress
 # v1.2.0: Added MobileUI scaling for mobile devices
 # https://github.com/cheddatech/CheddaBoards-Godot
@@ -12,6 +13,11 @@
 # ============================================================
 
 extends Control
+
+## Local debug switch for this script; the SDK master switch
+## (CheddaBoards.debug_logging = true) enables this output too.
+var debug_logging: bool = false
+
 
 # ============================================================
 # NODE REFERENCES
@@ -41,7 +47,7 @@ func _ready():
 	# Load and display achievements
 	_load_achievements()
 	
-	print("[AchievementsView] v1.2.0 loaded (Mobile: %s, Scale: %.2f)" % [MobileUI.is_mobile, MobileUI.ui_scale])
+	_log("[AchievementsView] v1.2.1 loaded (Mobile: %s, Scale: %.2f)" % [MobileUI.is_mobile, MobileUI.ui_scale])
 
 # ============================================================
 # UI SCALING
@@ -105,7 +111,7 @@ func _load_achievements():
 		var achievement_item = _create_achievement_item(achievement)
 		achievements_list.add_child(achievement_item)
 	
-	print("[AchievementsView] Loaded %d achievements (%d unlocked)" % [all_achievements.size(), unlocked_count])
+	_log("[AchievementsView] Loaded %d achievements (%d unlocked)" % [all_achievements.size(), unlocked_count])
 
 func _sort_achievements(a, b):
 	"""Sort achievements: unlocked first, then alphabetically"""
@@ -284,7 +290,7 @@ func _create_progress_bar(progress: Dictionary) -> HBoxContainer:
 # ============================================================
 func _on_back_pressed():
 	"""Return to main menu"""
-	print("[AchievementsView] Back to menu")
+	_log("[AchievementsView] Back to menu")
 	get_tree().change_scene_to_file("res://scenes/MainMenu.tscn")
 
 # ============================================================
@@ -293,3 +299,11 @@ func _on_back_pressed():
 func refresh():
 	"""Refresh the achievements list"""
 	_load_achievements()
+
+
+func _log(message: String):
+	## Gated debug output — silent unless this scene's switch or the SDK
+	## master switch (CheddaBoards.debug_logging = true) is on.
+	if not (debug_logging or CheddaBoards.debug_logging):
+		return
+	print(message)

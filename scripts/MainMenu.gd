@@ -1,4 +1,5 @@
-# MainMenu.gd v2.1.8
+# MainMenu.gd v2.1.9
+# v2.1.9: boot banner routed through _log (was the last ungated print)
 # Main menu with authentication flow and profile display
 # - Login panel: PLAY NOW (with name entry), Leaderboard, and Sign In (device code)
 # - Name entry panel: For new anonymous players to set their display name
@@ -407,7 +408,7 @@ func _ready():
 	status_label.text = "Connecting..."
 	_enable_login_buttons(false)
 	
-	print("[MainMenu] v2.1.8 initialized | Mobile: %s | UI Scale: %.2f" % [MobileUI.is_mobile, MobileUI.ui_scale])
+	_log("[MainMenu] v2.1.9 initialized | Mobile: %s | UI Scale: %.2f" % [MobileUI.is_mobile, MobileUI.ui_scale])
 	
 	# Check if SDK already ready
 	if CheddaBoards.is_ready():

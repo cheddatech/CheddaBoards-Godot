@@ -1,4 +1,5 @@
-# Game.gd v1.1.2
+# Game.gd v1.1.3
+# v1.1.3: debug output gated behind CheddaBoards.debug_logging master switch
 # Modular wrapper for CheddaBoards integration
 # Drop ANY game scene as a child - just emit the right signals!
 # https://github.com/cheddatech/CheddaBoards-Godot
@@ -55,6 +56,11 @@
 # ============================================================
 
 extends Control
+
+## Local debug switch for this script; the SDK master switch
+## (CheddaBoards.debug_logging = true) enables this output too.
+var debug_logging: bool = false
+
 
 # ============================================================
 # CONFIGURATION - CHANGE THIS TO YOUR GAME!
@@ -158,9 +164,9 @@ func _ready():
 	# Check if Achievements autoload exists
 	has_achievements = get_node_or_null("/root/Achievements") != null
 	
-	print("[GameWrapper] Initializing v1.1.2")
-	print("[GameWrapper] Platform: %s" % ("Web" if OS.get_name() == "Web" else "Native"))
-	print("[GameWrapper] Achievements: %s" % ("enabled" if has_achievements else "disabled"))
+	_log("[GameWrapper] Initializing v1.1.3")
+	_log("[GameWrapper] Platform: %s" % ("Web" if OS.get_name() == "Web" else "Native"))
+	_log("[GameWrapper] Achievements: %s" % ("enabled" if has_achievements else "disabled"))
 	
 	# Load and instantiate the game scene
 	_load_game()
@@ -186,7 +192,7 @@ func _load_game():
 	if CheddaBoards.is_ready():
 		CheddaBoards.start_play_session()
 	
-	print("[GameWrapper] Game loaded: %s" % game_scene_path)
+	_log("[GameWrapper] Game loaded: %s" % game_scene_path)
 
 func _connect_game_signals():
 	"""Connect to the game's signals"""
@@ -270,17 +276,17 @@ func _on_game_over(final_score: int, stats: Dictionary):
 	# Use the higher of tracked or reported max_combo
 	max_combo = max(max_combo, game_max_combo)
 	
-	print("[GameWrapper] ========================================")
-	print("[GameWrapper] GAME OVER")
-	print("[GameWrapper] Score: %d | Level: %d | Hits: %d" % [final_score, level, hits])
-	print("[GameWrapper] Accuracy: %d%% | Max Combo: x%d" % [accuracy, max_combo])
-	print("[GameWrapper] ========================================")
+	_log("[GameWrapper] ========================================")
+	_log("[GameWrapper] GAME OVER")
+	_log("[GameWrapper] Score: %d | Level: %d | Hits: %d" % [final_score, level, hits])
+	_log("[GameWrapper] Accuracy: %d%% | Max Combo: x%d" % [accuracy, max_combo])
+	_log("[GameWrapper] ========================================")
 	
 	# Check achievements at game over
 	if has_achievements:
 		Achievements.increment_games_played()
 		Achievements.check_game_over(final_score, hits, max_combo)
-		print("[GameWrapper] Achievements checked - games played: %d" % Achievements.get_games_played())
+		_log("[GameWrapper] Achievements checked - games played: %d" % Achievements.get_games_played())
 	
 	_show_game_over_screen(stats)
 
@@ -370,7 +376,7 @@ func _show_game_over_screen(stats: Dictionary):
 			status_label.add_theme_color_override("font_color", Color.WHITE)
 			_set_buttons_disabled(true)
 			_submit_score()
-			print("[GameWrapper] Submitting score (auth: %s)" % auth_type)
+			_log("[GameWrapper] Submitting score (auth: %s)" % auth_type)
 		else:
 			status_label.text = "Saving score..."
 			status_label.add_theme_color_override("font_color", Color.WHITE)
@@ -385,10 +391,10 @@ func _submit_score():
 	"""Submit score to CheddaBoards with achievements"""
 	if has_achievements:
 		Achievements.submit_with_score(current_score, max_combo)
-		print("[GameWrapper] Submitting score with achievements: %d (combo: %d)" % [current_score, max_combo])
+		_log("[GameWrapper] Submitting score with achievements: %d (combo: %d)" % [current_score, max_combo])
 	else:
 		CheddaBoards.submit_score(current_score, max_combo)
-		print("[GameWrapper] Submitting score: %d (combo: %d)" % [current_score, max_combo])
+		_log("[GameWrapper] Submitting score: %d (combo: %d)" % [current_score, max_combo])
 
 func _set_buttons_disabled(disabled: bool):
 	"""Enable/disable game over buttons"""
@@ -402,7 +408,7 @@ func _set_buttons_disabled(disabled: bool):
 
 func _on_score_submitted(score: int, streak: int):
 	"""Called when score is successfully submitted"""
-	print("[GameWrapper] ✓ Score submitted: %d points" % score)
+	_log("[GameWrapper] ✓ Score submitted: %d points" % score)
 	score_submitted = true
 	CheddaBoards.clear_play_session()
 	_mark_has_played()
@@ -441,11 +447,11 @@ func _mark_has_played():
 	if w:
 		w.store_var(data)
 		w.close()
-		print("[GameWrapper] First score recorded - marked has_played")
+		_log("[GameWrapper] First score recorded - marked has_played")
 
 func _on_score_error(reason: String):
 	"""Called when score submission fails"""
-	print("[GameWrapper] ✗ Score submission failed: %s" % reason)
+	_log("[GameWrapper] ✗ Score submission failed: %s" % reason)
 	CheddaBoards.clear_play_session()
 	
 	status_label.text = "Save failed: %s" % reason
@@ -455,11 +461,11 @@ func _on_score_error(reason: String):
 
 func _on_play_session_started(token: String):
 	"""Called when play session is started for time validation"""
-	print("[GameWrapper] ✓ Play session started: %s" % token.left(30))
+	_log("[GameWrapper] ✓ Play session started: %s" % token.left(30))
 
 func _on_play_session_error(reason: String):
 	"""Called when play session fails to start"""
-	print("[GameWrapper] ⚠ Play session error: %s (scores may be rejected)" % reason)
+	_log("[GameWrapper] ⚠ Play session error: %s (scores may be rejected)" % reason)
 
 # ============================================================
 # BUTTON HANDLERS
@@ -467,7 +473,7 @@ func _on_play_session_error(reason: String):
 
 func _on_play_again_pressed():
 	"""Restart the game"""
-	print("[GameWrapper] Play again")
+	_log("[GameWrapper] Play again")
 	
 	# Option 1: If game has a restart method, use it
 	if game_instance and game_instance.has_method("restart"):
@@ -489,11 +495,11 @@ func _on_play_again_pressed():
 		get_tree().reload_current_scene()
 
 func _on_main_menu_pressed():
-	print("[GameWrapper] Main menu")
+	_log("[GameWrapper] Main menu")
 	get_tree().change_scene_to_file(main_menu_scene)
 
 func _on_leaderboard_pressed():
-	print("[GameWrapper] Leaderboard")
+	_log("[GameWrapper] Leaderboard")
 	get_tree().change_scene_to_file(leaderboard_scene)
 
 # ============================================================
@@ -511,25 +517,33 @@ func _input(event):
 
 func _debug_status():
 	"""Print debug status"""
-	print("")
-	print("========================================")
-	print("       GameWrapper Debug Status        ")
-	print("========================================")
-	print(" Score:        %d" % current_score)
-	print(" Combo:        x%d" % current_combo)
-	print(" Max Combo:    x%d" % max_combo)
-	print(" Game Over:    %s" % str(is_game_over))
-	print("----------------------------------------")
-	print(" Game Scene:   %s" % game_scene_path)
-	print(" Game Loaded:  %s" % str(game_instance != null))
-	print("----------------------------------------")
-	print(" Platform:     %s" % OS.get_name())
-	print(" SDK Ready:    %s" % CheddaBoards.is_ready())
-	print(" Authenticated: %s" % CheddaBoards.is_authenticated())
-	print(" Play Session: %s" % ("active" if CheddaBoards.has_play_session() else "none"))
-	print(" Achievements: %s" % ("enabled" if has_achievements else "disabled"))
+	_log("")
+	_log("========================================")
+	_log("       GameWrapper Debug Status        ")
+	_log("========================================")
+	_log(" Score:        %d" % current_score)
+	_log(" Combo:        x%d" % current_combo)
+	_log(" Max Combo:    x%d" % max_combo)
+	_log(" Game Over:    %s" % str(is_game_over))
+	_log("----------------------------------------")
+	_log(" Game Scene:   %s" % game_scene_path)
+	_log(" Game Loaded:  %s" % str(game_instance != null))
+	_log("----------------------------------------")
+	_log(" Platform:     %s" % OS.get_name())
+	_log(" SDK Ready:    %s" % CheddaBoards.is_ready())
+	_log(" Authenticated: %s" % CheddaBoards.is_authenticated())
+	_log(" Play Session: %s" % ("active" if CheddaBoards.has_play_session() else "none"))
+	_log(" Achievements: %s" % ("enabled" if has_achievements else "disabled"))
 	if has_achievements:
-		print(" Games Played: %d" % Achievements.get_games_played())
-		print(" Unlocked:     %d / %d" % [Achievements.get_unlocked_count(), Achievements.get_total_count()])
-	print("========================================")
-	print("")
+		_log(" Games Played: %d" % Achievements.get_games_played())
+		_log(" Unlocked:     %d / %d" % [Achievements.get_unlocked_count(), Achievements.get_total_count()])
+	_log("========================================")
+	_log("")
+
+
+func _log(message: String):
+	## Gated debug output — silent unless this scene's switch or the SDK
+	## master switch (CheddaBoards.debug_logging = true) is on.
+	if not (debug_logging or CheddaBoards.debug_logging):
+		return
+	print(message)

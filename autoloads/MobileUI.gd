@@ -4,6 +4,11 @@
 
 extends Node
 
+## Local debug switch for this script; the SDK master switch
+## (CheddaBoards.debug_logging = true) enables this output too.
+var debug_logging: bool = false
+
+
 signal scale_changed(new_scale: float)
 
 # Base design resolution (what you designed the UI for)
@@ -33,7 +38,7 @@ func _ready() -> void:
 	# Recalculate on window resize
 	get_tree().root.size_changed.connect(_on_window_resized)
 	
-	print("[MobileUI] Platform: %s | Scale: %.2f | Font: %.2f | DPI: %.0f" % [
+	_log("[MobileUI] Platform: %s | Scale: %.2f | Font: %.2f | DPI: %.0f" % [
 		"Mobile" if is_mobile else "Desktop",
 		ui_scale,
 		font_scale,
@@ -238,3 +243,11 @@ MobileUI Debug:
 		dpi_scale,
 		str(safe_area)
 	]
+
+
+func _log(message: String):
+	## Gated debug output — silent unless this script's switch or the SDK
+	## master switch (CheddaBoards.debug_logging = true) is on.
+	if not (debug_logging or CheddaBoards.debug_logging):
+		return
+	print(message)

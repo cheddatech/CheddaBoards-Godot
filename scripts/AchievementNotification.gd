@@ -1,4 +1,5 @@
-# AchievementNotification.gd v2.0.0
+# AchievementNotification.gd v2.0.1
+# v2.0.1: debug output gated behind CheddaBoards.debug_logging master switch
 # Shows achievement unlock notifications during gameplay
 # - STACKED display: shows up to 4 achievements at once
 # - Fast timing: 1.5s per achievement (was 3s)
@@ -6,6 +7,11 @@
 # https://github.com/cheddatech/CheddaBoards-Godot
 
 extends Control
+
+## Local debug switch for this script; the SDK master switch
+## (CheddaBoards.debug_logging = true) enables this output too.
+var debug_logging: bool = false
+
 
 # ============================================================
 # CONFIGURATION
@@ -60,7 +66,7 @@ func _ready():
 	# Connect to Achievements signals
 	Achievements.achievement_unlocked.connect(_on_achievement_unlocked)
 	
-	print("[AchievementNotification] Ready")
+	_log("[AchievementNotification] Ready")
 
 # ============================================================
 # ACHIEVEMENT UNLOCKED - Now with batch handling
@@ -308,3 +314,11 @@ func show_notification(achievement_name: String, description: String):
 func clear_queue():
 	"""Clear all pending notifications"""
 	queue.clear()
+
+
+func _log(message: String):
+	## Gated debug output — silent unless this scene's switch or the SDK
+	## master switch (CheddaBoards.debug_logging = true) is on.
+	if not (debug_logging or CheddaBoards.debug_logging):
+		return
+	print(message)

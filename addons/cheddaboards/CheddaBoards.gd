@@ -291,7 +291,7 @@ var _cached_profile: Dictionary = {}
 var _nickname_just_changed: bool = false
 var _nickname: String = ""
 
-# Rename correctness state (v2.2.8, ported from the Unity SDK fix):
+# Rename correctness state (v2.2.7, ported from the Unity SDK fix):
 # _player_exists_on_backend - true once ANY server op confirms the player
 #   (submit success or profile load). change_nickname gates on this, NOT on
 #   _cached_profile - the cache can stay empty long after the first submit

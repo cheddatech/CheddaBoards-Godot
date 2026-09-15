@@ -1,4 +1,5 @@
-# Leaderboard.gd v2.1.0
+# Leaderboard.gd v2.1.1
+# v2.1.1: debug output gated behind CheddaBoards.debug_logging master switch
 # Redesigned leaderboard showcasing CheddaBoards features
 # Tabs: All Time | Weekly | Daily with archive dropdown for timed scoreboards
 # https://github.com/cheddatech/CheddaBoards-Godot
@@ -44,6 +45,11 @@
 # ============================================================
 
 extends Control
+
+## Local debug switch for this script; the SDK master switch
+## (CheddaBoards.debug_logging = true) enables this output too.
+var debug_logging: bool = false
+
 
 # ============================================================
 # CONFIGURATION
@@ -255,7 +261,7 @@ func _ready():
 	
 	_setup_auto_refresh()
 	
-	print("[Leaderboard] v2.1.0 initialized (Mobile: %s, Scale: %.2f)" % [MobileUI.is_mobile, MobileUI.ui_scale])
+	_log("[Leaderboard] v2.1.1 initialized (Mobile: %s, Scale: %.2f)" % [MobileUI.is_mobile, MobileUI.ui_scale])
 
 # ============================================================
 # UI SCALING
@@ -503,7 +509,7 @@ func _load_archive_by_index(idx: int):
 	# to fetch specific archives by ID.
 	_set_loading(true)
 	status_label.text = "Loading previous period..."
-	print("[Leaderboard] Loading last archive for '%s'" % scoreboard_id)
+	_log("[Leaderboard] Loading last archive for '%s'" % scoreboard_id)
 	CheddaBoards.get_last_archived_scoreboard(scoreboard_id, LEADERBOARD_LIMIT)
 
 # ============================================================
@@ -526,7 +532,7 @@ func _load_leaderboard():
 	if viewing_archive:
 		_load_archive_by_index(selected_archive_index)
 	else:
-		print("[Leaderboard] Requesting scoreboard '%s'" % scoreboard_id)
+		_log("[Leaderboard] Requesting scoreboard '%s'" % scoreboard_id)
 		CheddaBoards.get_scoreboard(scoreboard_id, LEADERBOARD_LIMIT)
 		
 		if CheddaBoards.has_account():
@@ -560,7 +566,7 @@ func _setup_auto_refresh():
 	auto_refresh_timer.timeout.connect(_on_auto_refresh_tick)
 	add_child(auto_refresh_timer)
 	auto_refresh_timer.start()
-	print("[Leaderboard] Auto-refresh ON (every %.1fs)" % auto_refresh_timer.wait_time)
+	_log("[Leaderboard] Auto-refresh ON (every %.1fs)" % auto_refresh_timer.wait_time)
 
 func _on_auto_refresh_tick():
 	# Skip if a manual/initial load is already mid-flight, or if we're looking
@@ -646,7 +652,7 @@ func _on_scoreboard_rank_loaded(sb_id: String, rank: int, score: int, streak: in
 	_display_player_rank(rank, score, streak, total)
 
 func _on_scoreboard_error(reason: String):
-	print("[Leaderboard] Error: %s" % reason)
+	_log("[Leaderboard] Error: %s" % reason)
 	if is_silent_refresh:
 		# Transient blip during a background poll — keep the current board on
 		# screen and just try again on the next tick. No red error text.
@@ -662,12 +668,12 @@ func _on_scoreboard_error(reason: String):
 # ============================================================
 
 func _on_archived_scoreboard_loaded(archive_id: String, config: Dictionary, entries: Array):
-	print("[Leaderboard] Archive loaded: %s (%d entries)" % [archive_id, entries.size()])
+	_log("[Leaderboard] Archive loaded: %s (%d entries)" % [archive_id, entries.size()])
 	_update_title_for_archive(config)
 	_display_entries(entries)
 
 func _on_archive_error(reason: String):
-	print("[Leaderboard] Archive error: %s" % reason)
+	_log("[Leaderboard] Archive error: %s" % reason)
 	_clear_load_timeout()
 	_set_loading(false)
 	status_label.text = "No archived data available yet"
@@ -1065,3 +1071,11 @@ func _exit_tree():
 		auto_refresh_timer.stop()
 		auto_refresh_timer.queue_free()
 		auto_refresh_timer = null
+
+
+func _log(message: String):
+	## Gated debug output — silent unless this scene's switch or the SDK
+	## master switch (CheddaBoards.debug_logging = true) is on.
+	if not (debug_logging or CheddaBoards.debug_logging):
+		return
+	print(message)
