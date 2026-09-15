@@ -291,6 +291,24 @@ var _cached_profile: Dictionary = {}
 var _nickname_just_changed: bool = false
 var _nickname: String = ""
 
+# Rename correctness state (v2.2.8, ported from the Unity SDK fix):
+# _player_exists_on_backend - true once ANY server op confirms the player
+#   (submit success or profile load). change_nickname gates on this, NOT on
+#   _cached_profile - the cache can stay empty long after the first submit
+#   (fetch chained/failed), which used to send real players' renames down the
+#   local-only branch: nickname_changed fired, nothing was sent, the board
+#   stayed Guest. (Same race the template MainMenu papers over; fixed here at
+#   SDK level so drop-in integrations get it too.)
+# _pending_server_nickname - a name set locally before the player existed;
+#   re-synced to the server once a profile loads (capped retries).
+# _requested_nickname - the name sent in the last rename PUT, used as a
+#   fallback when a 2xx/ok response doesn't echo the nickname back (the old
+#   handler silently did NOTHING in that case).
+var _player_exists_on_backend: bool = false
+var _pending_server_nickname: String = ""
+var _pending_rename_attempts: int = 0
+var _requested_nickname: String = ""
+
 # ============================================================
 # PERFORMANCE OPTIMIZATION
 # ============================================================
@@ -541,11 +559,16 @@ func _emit_http_success(data) -> void:
 	match _current_endpoint:
 		"submit_score":
 			_is_submitting_score = false
+			_player_exists_on_backend = true   # submit creates/updates the player
+			# If a local-only rename is pending, the submit body just carried
+			# it (_nickname was set) - the profile fetch that follows confirms
+			# and clears _pending_server_nickname.
 			_log("Score submission successful: %d points, %d streak" % [_pending_score, _pending_streak])
 			score_submitted.emit(_pending_score, _pending_streak)
 			_flush_deferred_achievements()
 		
 		"submit_score_to_board":
+			_player_exists_on_backend = true
 			var sb_id = _current_meta.get("scoreboard_id", "")
 			var sb_score = _safe_int(_current_meta.get("score", 0))
 			var sb_streak = _safe_int(_current_meta.get("streak", 0))
@@ -572,9 +595,20 @@ func _emit_http_success(data) -> void:
 		
 		"change_nickname":
 			var new_nick = str(data.get("nickname", ""))
+			if new_nick == "" and not _requested_nickname.is_empty():
+				# 2xx + ok:true means the rename landed even if the response
+				# doesn't echo the name back. Prefer the echoed name when
+				# present (server may suffix on collision, e.g. Name_1);
+				# otherwise report what we asked for. The old handler
+				# silently did NOTHING here - no signal, no error, no refresh.
+				_log("Rename response had no nickname field - using requested name")
+				new_nick = _requested_nickname
+			_requested_nickname = ""
 			if new_nick != "":
 				_nickname = new_nick
 				_nickname_just_changed = true
+				_pending_server_nickname = ""
+				_pending_rename_attempts = 0
 				if not _cached_profile.is_empty():
 					_cached_profile["nickname"] = new_nick
 				nickname_changed.emit(new_nick)
@@ -582,9 +616,15 @@ func _emit_http_success(data) -> void:
 		
 		"change_nickname_anonymous":
 			var new_nick = str(data.get("nickname", ""))
+			if new_nick == "" and not _requested_nickname.is_empty():
+				_log("Rename response had no nickname field - using requested name")
+				new_nick = _requested_nickname
+			_requested_nickname = ""
 			if new_nick != "":
 				_nickname = new_nick
 				_nickname_just_changed = true
+				_pending_server_nickname = ""
+				_pending_rename_attempts = 0
 				if not _cached_profile.is_empty():
 					_cached_profile["nickname"] = new_nick
 				nickname_changed.emit(new_nick)
@@ -757,6 +797,7 @@ func _emit_http_failure(error: String) -> void:
 			_is_refreshing_profile = false
 			no_profile.emit()
 		"change_nickname", "change_nickname_anonymous":
+			_requested_nickname = ""
 			nickname_error.emit(error)
 		"unlock_achievement":
 			if _deferred_achievements_remaining > 0:
@@ -944,11 +985,29 @@ func _update_cached_profile(profile: Dictionary) -> void:
 	if profile.is_empty():
 		return
 
+	_player_exists_on_backend = true   # a profile loaded, so the player exists
+
 	# Preserve nickname from recent rename - backend may return stale data
 	if _nickname_just_changed and not _nickname.is_empty():
 		profile["nickname"] = _nickname
 		_log("Preserving renamed nickname '%s' over stale backend data" % _nickname)
 		_nickname_just_changed = false
+
+	# A name set locally BEFORE the player existed must win over the server's
+	# empty/old name, and now that a rename can land, push it. Capped so a
+	# persistently rejected name can't loop forever.
+	if not _pending_server_nickname.is_empty():
+		var server_nick: String = str(profile.get("nickname", profile.get("username", "")))
+		if server_nick == _pending_server_nickname:
+			# First submit carried it - all synced.
+			_pending_server_nickname = ""
+			_pending_rename_attempts = 0
+		else:
+			profile["nickname"] = _pending_server_nickname
+			if _pending_rename_attempts < 2:
+				_pending_rename_attempts += 1
+				_log("Re-syncing locally set nickname '%s' to backend (attempt %d)" % [_pending_server_nickname, _pending_rename_attempts])
+				change_nickname(_pending_server_nickname)
 
 	_cached_profile = profile
 
@@ -1317,15 +1376,22 @@ func change_nickname(new_nickname: String = "") -> void:
 			nickname_error.emit("Nickname can only contain letters, numbers, and underscores")
 			return
 	
-	# Anonymous players who haven't submitted a score yet don't exist on backend
-	if is_anonymous() and _cached_profile.is_empty():
+	# Anonymous players who have never touched the backend don't exist there
+	# yet, so a rename has nowhere to land - stash it locally. It rides the
+	# first submit (submit_score sends _nickname when set) and is re-synced
+	# from the profile path as a belt-and-braces. Gate on confirmed existence,
+	# never on _cached_profile (see the state var docs).
+	if is_anonymous() and not _player_exists_on_backend:
 		_nickname = new_nickname
-		_log("Nickname set locally (no backend profile yet): %s" % new_nickname)
+		_pending_server_nickname = new_nickname
+		_pending_rename_attempts = 0
+		_log("Nickname set locally (player not on backend yet): %s - will sync on first submit" % new_nickname)
 		nickname_changed.emit(new_nickname)
 		return
 	
 	if not _session_token.is_empty():
 		# Authenticated users - session token path
+		_requested_nickname = new_nickname
 		var body = {"nickname": new_nickname}
 		_make_http_request("/profile/nickname", HTTPClient.METHOD_PUT, body, "change_nickname")
 		_log("Nickname change requested (session) -> %s" % new_nickname)
@@ -1335,6 +1401,7 @@ func change_nickname(new_nickname: String = "") -> void:
 		if pid.is_empty():
 			nickname_error.emit("No player ID set")
 			return
+		_requested_nickname = new_nickname
 		var body = {"nickname": new_nickname}
 		var url = "/players/%s/nickname" % pid.uri_encode()
 		_make_http_request(url, HTTPClient.METHOD_PUT, body, "change_nickname_anonymous")
