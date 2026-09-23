@@ -9,6 +9,11 @@
 
 > **SDK 2.2.7** · Godot 4.6+ · Windows / Mac / Linux / Mobile / Web · MIT · Free tier · [Changelog](docs/CHANGELOG.md)
 
+<p align="center">
+  <a href="https://status.cheddatech.com"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fcheddatech%2Fstatus%2FHEAD%2Fapi%2Fapi%2Fuptime.json&label=API%20uptime" alt="API uptime"/></a>
+  <a href="https://status.cheddatech.com"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fcheddatech%2Fstatus%2FHEAD%2Fapi%2Fleaderboards-on-chain%2Fuptime.json&label=leaderboards%20uptime" alt="Leaderboards uptime"/></a>
+</p>
+
 > 📚 **Full documentation is now at [docs.cheddaboards.com](https://docs.cheddaboards.com)** — guides, REST API reference, and per-engine setup. This README covers the Godot template; the links below point to the docs site.
 
 <p align="center">
@@ -232,6 +237,7 @@ CheddaBoards-Godot/
 
 ## Support
 
+- **Service status:** [status.cheddatech.com](https://status.cheddatech.com) — check here first if scores stop submitting
 - **Bugs & feature requests:** [GitHub Issues](https://github.com/cheddatech/CheddaBoards-Godot/issues)
 - **Player & developer info:** [cheddaboards.com](https://cheddaboards.com)
 - **Studio:** [cheddatech.com](https://cheddatech.com)
