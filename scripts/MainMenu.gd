@@ -1,4 +1,11 @@
-# MainMenu.gd v2.1.9
+# MainMenu.gd v2.1.10
+# v2.1.10: device-code sign-in completes even if the popup was closed
+#          first. DeviceCodeLogin v1.4.0 treats Close as a soft dismiss
+#          (SDK keeps polling), so approval can arrive with the popup
+#          already freed and its signed_in lambda never runs. The
+#          upgrade path now finishes in _on_device_code_approved; plain
+#          sign-in was already handled by login_success. Requires SDK
+#          >= 2.3.0 and DeviceCodeLogin >= 1.4.0.
 # v2.1.9: boot banner routed through _log (was the last ungated print)
 # Main menu with authentication flow and profile display
 # - Login panel: PLAY NOW (with name entry), Leaderboard, and Sign In (device code)
@@ -295,8 +302,8 @@ var state_history: Array = []
 
 func _ready():
 	# --- CheddaBoards credentials (managed by Setup Wizard) ---
-	CheddaBoards.set_api_key("cb_your-game_xxxxxxxxxx")
-	CheddaBoards.set_game_id("your-game")
+	CheddaBoards.set_api_key("cb_my_game_xxxxxxxx")
+	CheddaBoards.set_game_id("my_game")
 	# --- end CheddaBoards credentials ---
 	# CheddaBoards credentials.
 	# Replace with your own from the developer dashboard at cheddaboards.com.
@@ -408,7 +415,7 @@ func _ready():
 	status_label.text = "Connecting..."
 	_enable_login_buttons(false)
 	
-	_log("[MainMenu] v2.1.9 initialized | Mobile: %s | UI Scale: %.2f" % [MobileUI.is_mobile, MobileUI.ui_scale])
+	_log("[MainMenu] v2.1.10 initialized | Mobile: %s | UI Scale: %.2f" % [MobileUI.is_mobile, MobileUI.ui_scale])
 	
 	# Check if SDK already ready
 	if CheddaBoards.is_ready():
@@ -1364,7 +1371,7 @@ func _on_sign_in_button_pressed():
 	_log("Sign In pressed - showing device code popup")
 	is_logging_in = true
 	
-	var popup = preload("res://scenes/DeviceCodeLogin.tscn").instantiate()
+	var popup = preload("res://addons/cheddaboards/ui/DeviceCodeLogin.tscn").instantiate()
 	add_child(popup)
 	popup.signed_in.connect(func(nickname):
 		_log("Device code popup: signed in as %s" % nickname)
@@ -1378,7 +1385,9 @@ func _on_sign_in_button_pressed():
 	popup.start_sign_in()
 
 func _on_cancel_sign_in_pressed():
-	"""Cancel device code login"""
+	"""Explicit hard-cancel of a device code login. This is the ONLY place
+	the menu abandons a pending code; closing the popup just hides it and
+	the SDK keeps polling in the background."""
 	_log("Cancel sign in pressed")
 	CheddaBoards.cancel_device_code()
 	is_logging_in = false
@@ -1392,6 +1401,18 @@ func _on_device_code_received(user_code: String, verification_url: String, qr_da
 func _on_device_code_approved(nickname: String):
 	"""Device code approved - player authenticated!"""
 	_log("Device code approved: %s" % nickname)
+	is_logging_in = false
+	# The popup's signed_in lambda only runs if the popup is still alive.
+	# Since DeviceCodeLogin v1.4.0 closing the popup no longer cancels the
+	# sign-in, so approval can land with the popup already freed. Finish
+	# the upgrade here regardless (login_success handles the plain
+	# sign-in case on its own).
+	if _is_upgrading:
+		_is_upgrading = false
+		_enable_upgrade_buttons(true)
+		_set_upgrade_status("")
+		_clear_anonymous_data()
+		_show_main_panel(CheddaBoards.get_cached_profile())
 
 func _on_device_code_expired():
 	"""Device code expired"""
@@ -1434,13 +1455,12 @@ func _on_upgrade_device_code_pressed():
 	_set_upgrade_status("Opening sign-in...")
 	_enable_upgrade_buttons(false)
 	
-	var popup = preload("res://scenes/DeviceCodeLogin.tscn").instantiate()
+	var popup = preload("res://addons/cheddaboards/ui/DeviceCodeLogin.tscn").instantiate()
 	add_child(popup)
 	popup.signed_in.connect(func(nickname):
+		# Panel transition is done in _on_device_code_approved so it also
+		# runs when the popup was closed before approval.
 		_log("Upgrade complete via device code: %s" % nickname)
-		_is_upgrading = false
-		_clear_anonymous_data()
-		_show_main_panel(CheddaBoards.get_cached_profile())
 	)
 	popup.cancelled.connect(func():
 		_log("Upgrade cancelled")

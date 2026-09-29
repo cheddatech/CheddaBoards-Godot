@@ -1,4 +1,4 @@
-# CheddaBoards.gd v2.2.7
+# CheddaBoards.gd v2.3.0
 # CheddaBoards integration for Godot 4.x
 # https://github.com/cheddatech/CheddaBoards-Godot
 # https://cheddaboards.com
@@ -9,6 +9,42 @@
 #   Player authenticates on their phone at cheddaboards.com/link
 # - Score submissions, play sessions, achievements: all via HTTP API
 #
+# v2.3.0 (minor bump: adds public API and changes two behaviours, see below):
+#   - Device code linking survives a page reload. On phones and
+#     home-screen web apps, tapping the link URL can reload the game
+#     when the player comes back, which wiped the pending code from
+#     memory. The game's login screen then called login_with_device_code()
+#     again, minted a fresh code, and the player looped forever: each
+#     approval landed on a code the SDK had already forgotten. The pending
+#     code (device_code, user_code, link URL, QR, expiry) is now saved to
+#     user://cheddaboards_pending_link.cfg when it arrives. On startup,
+#     if that file holds an unexpired code and there is no saved session,
+#     polling resumes on the SAME code, and a subsequent
+#     login_with_device_code() call re-emits device_code_received with the
+#     saved code instead of requesting a new one, so the UI shows the code
+#     the player already approved. The file is cleared on approval, expiry,
+#     invalid-code, cancel_device_code() and logout(). Pass
+#     login_with_device_code(true) to force a brand-new code.
+#   - New: has_pending_device_code() reports whether an unexpired code is
+#     waiting (restored or in progress) so login screens can skip straight
+#     to "waiting for approval" after a reload; get_device_verification_url()
+#     and get_device_code_seconds_remaining() let a popup re-show a
+#     restored code with its real remaining time.
+#   - Fixed: get_weekly_leaderboard() / get_alltime_leaderboard() requested
+#     "weekly-scoreboard" / "all-time-new", ids no game has, so they always
+#     returned empty. Now "weekly" / "all-time" (the dashboard defaults).
+#     If you were calling get_scoreboard("weekly") directly nothing changes.
+#   - Fixed: get_game_stats() requested /game/stats, which doesn't exist
+#     (request_failed on every call). Now fetches /game like get_game_info().
+#   - Fixed: a failed unlock_achievements_batch() (non-2xx) emitted nothing,
+#     so a game waiting on achievements_loaded hung. Now logs the server's
+#     error body and emits request_failed("unlock_achievement_batch", msg)
+#     plus achievements_loaded([]).
+#   - Docs: cancel_device_code() is for an explicit "cancel", not for
+#     closing the code popup. Closing the popup should just hide it and
+#     leave polling running, otherwise a player who dismisses the QR
+#     before their phone finishes ends up approved on the link page but
+#     still logged out in the game.
 # v2.2.7:
 #   - Submits no longer rename the player. All three submit paths
 #     (submit_score, submit_score_with_achievements, submit_score_to_board)
@@ -249,7 +285,7 @@ var debug_logging: bool = false
 
 ## HTTP API Configuration
 ## SDK version. Keep in sync with the header changelog.
-const VERSION = "2.2.7"
+const VERSION = "2.3.0"
 const API_BASE_URL = "https://api.cheddaboards.com"
 ## Direct canister reads (public board GETs served by the canister itself
 ## over the IC HTTP gateway). Same response shape as the proxy; used for
@@ -291,7 +327,7 @@ var _cached_profile: Dictionary = {}
 var _nickname_just_changed: bool = false
 var _nickname: String = ""
 
-# Rename correctness state (v2.2.7, ported from the Unity SDK fix):
+# Rename correctness state (v2.2.8, ported from the Unity SDK fix):
 # _player_exists_on_backend - true once ANY server op confirms the player
 #   (submit success or profile load). change_nickname gates on this, NOT on
 #   _cached_profile - the cache can stay empty long after the first submit
@@ -337,6 +373,10 @@ var _device_code_expires_at: float = 0.0
 var _is_polling_device_code: bool = false
 var _device_code_poll_in_flight: bool = false
 var _device_code_approved: bool = false
+# Link URL + QR of the current code, kept so a restored code can be
+# re-emitted to the UI after a reload without a new /auth/device/code call.
+var _device_verification_url: String = ""
+var _device_qr_data_url: String = ""
 # Fresh-account nickname preservation: when device-code linking CREATES a new
 # account (isNewUser) while the player was anonymous, the account is born with
 # a server-generated name ("Player_2") and migration then stamps it over the
@@ -374,6 +414,7 @@ var _last_batch_ids: Array = []
 
 const DEVICE_ID_PATH = "user://cheddaboards_device.cfg"
 const SESSION_PATH = "user://cheddaboards_session.cfg"
+const PENDING_LINK_PATH = "user://cheddaboards_pending_link.cfg"
 
 # ============================================================
 # INITIALIZATION
@@ -388,6 +429,11 @@ func _ready() -> void:
 	_setup_http_client()
 	_log("Initializing CheddaBoards v%s (HTTP API Mode)..." % VERSION)
 	_load_saved_session()
+	# Resume an interrupted device code link (page reload mid-link). Runs
+	# synchronously so a login screen that calls login_with_device_code()
+	# on sdk_ready already sees the saved code. The poll timer's first
+	# tick is one interval away, so scenes have time to connect signals.
+	_restore_pending_link()
 	_init_complete = true
 	call_deferred("_emit_sdk_ready")
 
@@ -768,9 +814,12 @@ func _emit_http_success(data) -> void:
 			_device_code_expires_at = Time.get_unix_time_from_system() + float(expires_in)
 			
 			var qr_data_url = str(data.get("qr_data_url", ""))
+			_device_verification_url = url_complete if url_complete != "" else url
+			_device_qr_data_url = qr_data_url
+			_save_pending_link()
 			
 			_log("Device code received: %s (expires in %ds)" % [_redact_code(uc), expires_in])
-			device_code_received.emit(uc, url_complete if url_complete != "" else url, qr_data_url)
+			device_code_received.emit(uc, _device_verification_url, qr_data_url)
 			_start_device_code_polling()
 		
 		"device_code_token":
@@ -1256,6 +1305,73 @@ func _clear_saved_session() -> void:
 			dir.remove(SESSION_PATH.trim_prefix("user://"))
 			_log("Saved session cleared")
 
+# ============================================================
+# PENDING DEVICE CODE PERSISTENCE (v2.3.0)
+# ============================================================
+# On phones / home-screen web apps the game can be reloaded while the
+# player is off approving the code in their browser. Without this the
+# code lived only in memory, the login screen minted a new one on
+# reload, and every approval hit a code the SDK had already dropped.
+# ============================================================
+
+func _save_pending_link() -> void:
+	if _device_code.is_empty():
+		return
+	var config = ConfigFile.new()
+	config.set_value("link", "device_code", _device_code)
+	config.set_value("link", "user_code", _device_user_code)
+	config.set_value("link", "verification_url", _device_verification_url)
+	config.set_value("link", "qr_data_url", _device_qr_data_url)
+	config.set_value("link", "expires_at", _device_code_expires_at)
+	config.set_value("link", "interval", _device_code_poll_interval)
+	config.set_value("link", "game_id", game_id)
+	var err = config.save(PENDING_LINK_PATH)
+	if err == OK:
+		_log("Pending device code saved (%s)" % _redact_code(_device_user_code))
+	else:
+		_log("WARNING: Failed to save pending device code (error %d)" % err)
+
+func _clear_pending_link() -> void:
+	if FileAccess.file_exists(PENDING_LINK_PATH):
+		var dir = DirAccess.open("user://")
+		if dir:
+			dir.remove(PENDING_LINK_PATH.trim_prefix("user://"))
+			_log("Pending device code cleared")
+
+func _restore_pending_link() -> void:
+	if not FileAccess.file_exists(PENDING_LINK_PATH):
+		return
+	# Already signed in (session restored) - a leftover code is stale.
+	if not _session_token.is_empty():
+		_clear_pending_link()
+		return
+	var config = ConfigFile.new()
+	if config.load(PENDING_LINK_PATH) != OK:
+		_clear_pending_link()
+		return
+	var dc = str(config.get_value("link", "device_code", ""))
+	var expires_at = float(config.get_value("link", "expires_at", 0.0))
+	var saved_game = str(config.get_value("link", "game_id", ""))
+	if dc.is_empty() or Time.get_unix_time_from_system() >= expires_at:
+		_log("Saved device code has expired - discarding")
+		_clear_pending_link()
+		return
+	if not game_id.is_empty() and not saved_game.is_empty() and saved_game != game_id:
+		_log("Saved device code belongs to another game - discarding")
+		_clear_pending_link()
+		return
+	_device_code = dc
+	_device_user_code = str(config.get_value("link", "user_code", ""))
+	_device_verification_url = str(config.get_value("link", "verification_url", ""))
+	_device_qr_data_url = str(config.get_value("link", "qr_data_url", ""))
+	_device_code_expires_at = expires_at
+	_device_code_poll_interval = max(1.0, float(config.get_value("link", "interval", 5.0)))
+	_log("Resuming device code link after reload: %s (%ds left)" % [
+		_redact_code(_device_user_code),
+		int(expires_at - Time.get_unix_time_from_system()),
+	])
+	_start_device_code_polling()
+
 func _expire_session() -> void:
 	"""Server rejected the stored session token - clear everything
 	and tell the game so it can return to its login screen."""
@@ -1335,6 +1451,7 @@ func logout() -> void:
 	_session_token = ""
 	_play_session_token = ""
 	_clear_saved_session()
+	cancel_device_code()
 	logout_success.emit()
 	_log("Logged out")
 
@@ -1430,7 +1547,13 @@ func change_nickname(new_nickname: String = "") -> void:
 ## Start device code login flow.
 ## Emits device_code_received with the code to show the player.
 ## Automatically polls for approval and emits device_code_approved on success.
-func login_with_device_code() -> void:
+##
+## If an unexpired code is already pending (in progress, or restored from
+## disk after a page reload), that code is re-emitted via
+## device_code_received and polling continues on it - no new code is
+## minted, so an approval the player already gave still lands. Pass
+## force_new = true to discard the pending code and request a fresh one.
+func login_with_device_code(force_new: bool = false) -> void:
 	if not _init_complete:
 		device_code_error.emit("CheddaBoards not ready")
 		return
@@ -1439,7 +1562,17 @@ func login_with_device_code() -> void:
 		device_code_error.emit("Game ID not set. Call set_game_id() first.")
 		return
 	
+	if not force_new and has_pending_device_code():
+		_log("Reusing pending device code: %s" % _redact_code(_device_user_code))
+		if not _is_polling_device_code:
+			_start_device_code_polling()
+		device_code_received.emit(_device_user_code, _device_verification_url, _device_qr_data_url)
+		# Someone may have approved it while we were reloading - check now.
+		call_deferred("_poll_device_code_token")
+		return
+	
 	_stop_device_code_polling()
+	_clear_device_code_state()
 	
 	_log("Requesting device code for game: %s" % game_id)
 	var body = {"gameId": game_id}
@@ -1451,16 +1584,57 @@ func login_with_device_code() -> void:
 		body["nickname"] = _nickname
 	_make_http_request("/auth/device/code", HTTPClient.METHOD_POST, body, "device_code_request")
 
-## Cancel an in-progress device code login.
+## Abandon an in-progress device code login. Stops polling, forgets the
+## code and deletes the pending-link file, so an approval the player gives
+## AFTER this call is never picked up (the link page will still say
+## "success" - it can't know the game gave up).
+##
+## Call this only when the player explicitly abandons the login ("Cancel",
+## "Use a different account"). Do NOT call it when they simply close the
+## code/QR popup: hide the popup and leave polling running, and
+## device_code_approved / login_success will still fire when their phone
+## finishes. Polling stops by itself on approval or expiry.
 func cancel_device_code() -> void:
+	var had_code = not _device_code.is_empty()
 	_stop_device_code_polling()
+	_clear_device_code_state()
+	if had_code:
+		_log("Device code login cancelled")
+
+## Check whether an unexpired device code is waiting for approval.
+## True both for a code requested this session and for one restored
+## from disk after a reload. Unlike is_device_code_pending() this does
+## not require polling to be active.
+func has_pending_device_code() -> bool:
+	if _device_code.is_empty():
+		return false
+	return Time.get_unix_time_from_system() < _device_code_expires_at
+
+## Drop all in-memory device code state and the on-disk pending file.
+func _clear_device_code_state() -> void:
 	_device_code = ""
 	_device_user_code = ""
-	_log("Device code login cancelled")
+	_device_verification_url = ""
+	_device_qr_data_url = ""
+	_device_code_expires_at = 0.0
+	_clear_pending_link()
 
 ## Get the current user code (for display purposes).
 func get_device_user_code() -> String:
 	return _device_user_code
+
+## Link URL for the current code (empty if none). Lets a popup re-show a
+## restored code without waiting for a new device_code_received.
+func get_device_verification_url() -> String:
+	return _device_verification_url
+
+## Seconds until the current device code expires (0 if none). A code
+## restored after a reload has LESS than the original 300s left, so UIs
+## should read this rather than assume a fresh 5 minutes.
+func get_device_code_seconds_remaining() -> int:
+	if _device_code.is_empty():
+		return 0
+	return max(0, int(_device_code_expires_at - Time.get_unix_time_from_system()))
 
 ## Check if a device code login is in progress.
 func is_device_code_pending() -> bool:
@@ -1522,8 +1696,7 @@ func _poll_device_code_token() -> void:
 	if Time.get_unix_time_from_system() >= _device_code_expires_at:
 		_log("Device code expired: %s" % _redact_code(_device_user_code))
 		_stop_device_code_polling()
-		_device_code = ""
-		_device_user_code = ""
+		_clear_device_code_state()
 		device_code_expired.emit()
 		return
 	
@@ -1576,8 +1749,7 @@ func _handle_device_code_poll_response(result: int, response_code: int, body: Pa
 	if response_code == 410:
 		_log("Device code expired (server confirmed)")
 		_stop_device_code_polling()
-		_device_code = ""
-		_device_user_code = ""
+		_clear_device_code_state()
 		device_code_expired.emit()
 		return
 	
@@ -1629,9 +1801,8 @@ func _handle_device_code_poll_response(result: int, response_code: int, body: Pa
 			_cached_profile = {"nickname": nickname}
 			profile_loaded.emit(nickname, 0, 0, [], 0)
 		
-		# Clear device code state
-		_device_code = ""
-		_device_user_code = ""
+		# Clear device code state (memory + on-disk pending file)
+		_clear_device_code_state()
 		
 		# Emit both signals so existing login flows work
 		device_code_approved.emit(nickname)
@@ -1650,8 +1821,7 @@ func _handle_device_code_poll_response(result: int, response_code: int, body: Pa
 			return
 		_log("Device code invalid or expired")
 		_stop_device_code_polling()
-		_device_code = ""
-		_device_user_code = ""
+		_clear_device_code_state()
 		device_code_error.emit("Invalid or expired code")
 		return
 	
@@ -1913,14 +2083,19 @@ func get_scoreboard_rank(scoreboard_id: String, for_game_id: String = "") -> voi
 	_make_http_request(url, HTTPClient.METHOD_GET, {}, "scoreboard_rank", {"scoreboard_id": scoreboard_id})
 	_log("Scoreboard rank requested for '%s'" % scoreboard_id)
 
+## Period board helpers. These use the scoreboard ids the dashboard creates:
+## "weekly" and "all-time" exist on every game by default; "daily" and
+## "monthly" only if you added them. Use get_scoreboard(id) for anything
+## else. (Before 2.3.0 these requested "weekly-scoreboard" and
+## "all-time-new", which no game has, so they always came back empty.)
 func get_weekly_leaderboard(limit: int = 100, for_game_id: String = "") -> void:
-	get_scoreboard("weekly-scoreboard", limit, for_game_id)
+	get_scoreboard("weekly", limit, for_game_id)
 
 func get_daily_leaderboard(limit: int = 100, for_game_id: String = "") -> void:
 	get_scoreboard("daily", limit, for_game_id)
 
 func get_alltime_leaderboard(limit: int = 100, for_game_id: String = "") -> void:
-	get_scoreboard("all-time-new", limit, for_game_id)
+	get_scoreboard("all-time", limit, for_game_id)
 
 func get_monthly_leaderboard(limit: int = 100, for_game_id: String = "") -> void:
 	get_scoreboard("monthly", limit, for_game_id)
@@ -2110,8 +2285,21 @@ func _truthy(v) -> bool:
 
 func _on_achievement_batch_completed(code: int, body: PackedByteArray) -> void:
 	if code < 200 or code >= 300:
-		_log("Batch achievement sync failed (HTTP %d)" % code)
+		var text = body.get_string_from_utf8()
+		var msg = "HTTP %d" % code
+		var j = JSON.new()
+		if j.parse(text) == OK and typeof(j.data) == TYPE_DICTIONARY:
+			msg = "%s: %s" % [msg, str(j.data.get("error", j.data.get("message", text)))]
+		elif text != "":
+			msg = "%s: %s" % [msg, text.left(200)]
+		_log("Batch achievement sync failed (%s)" % msg)
 		_last_batch_ids.clear()
+		# Surface it: before 2.3.0 a failed batch emitted nothing at all,
+		# so games waited forever. Emit request_failed so the game can
+		# react, and achievements_loaded([]) for parity with the
+		# non-batch failure path.
+		request_failed.emit("unlock_achievement_batch", msg)
+		achievements_loaded.emit([])
 		return
 	var json = JSON.new()
 	if json.parse(body.get_string_from_utf8()) != OK:
@@ -2217,8 +2405,12 @@ func track_event(event_type: String, metadata: Dictionary = {}) -> void:
 func get_game_info() -> void:
 	_make_http_request("/game", HTTPClient.METHOD_GET, {}, "game_info")
 
+## Game totals (totalPlayers, totalPlays) are part of GET /game; there is
+## no separate stats route. Kept for compatibility - identical to
+## get_game_info(). (Before 2.3.0 this requested /game/stats, which
+## doesn't exist, and failed with request_failed every time.)
 func get_game_stats() -> void:
-	_make_http_request("/game/stats", HTTPClient.METHOD_GET, {}, "game_stats")
+	_make_http_request("/game", HTTPClient.METHOD_GET, {}, "game_stats")
 
 func health_check() -> void:
 	_make_http_request("/health", HTTPClient.METHOD_GET, {}, "health")

@@ -5,6 +5,19 @@ All notable changes to CheddaBoards Godot 4 SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Template — 2026-09-29
+
+- SDK updated to 2.3.0. Device code linking survives a page reload, two
+  board helpers that never worked are fixed, failed achievement batches
+  surface an error. Full notes: SDK section below.
+- DeviceCodeLogin popup (v1.4.0) now ships inside the addon at
+  addons/cheddaboards/ui/. The template's own copy under scenes/ and
+  scripts/ is removed; MainMenu loads the addon one. Closing the popup
+  is a soft dismiss: the SDK keeps polling and the sign-in completes in
+  the background.
+- MainMenu 2.1.10: the device-code upgrade completes even if the popup
+  was closed before approval.
+  
 ## v2.2.7 — "Names That Stick" (2026-09-15)
 
 ### SDK (CheddaBoards.gd v2.2.7)

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="addons/cheddaboards/cheddaboards_logo_transparent.png" alt="CheddaBoards" width="160"/>
+  <img src="logo.png" alt="CheddaBoards" width="160"/>
 </p>
 
 # CheddaBoards — Godot 4 Template
@@ -7,7 +7,7 @@
 **A complete game template with leaderboards, achievements, and cross-platform auth built in.**
 **Download → Add your game → Export. That's it.**
 
-> **SDK 2.2.7** · Godot 4.6+ · Windows / Mac / Linux / Mobile / Web · MIT · Free tier · [Changelog](docs/CHANGELOG.md)
+> **SDK 2.3.0** · Godot 4.6+ · Windows / Mac / Linux / Mobile / Web · MIT · Free tier · [Changelog](docs/CHANGELOG.md)
 
 <p align="center">
   <a href="https://status.cheddatech.com"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fcheddatech%2Fstatus%2FHEAD%2Fapi%2Fapi%2Fuptime.json&label=API%20uptime" alt="API uptime"/></a>
@@ -75,7 +75,7 @@ Point the wrapper at your scene and that's the whole game-side integration — t
 | **Achievements** | Backend-synced, with popup notifications & offline cache |
 | **CheddaBoards SDK** | Core backend integration (also usable standalone) |
 
-**Status:** Native, Mobile, and Web are all ✅ stable. Every platform supports Google / Apple sign-in via Device Code Auth — no OAuth SDKs in your game — and sessions persist, so players sign in **once** and stay signed in across restarts. → [Device Code Login](https://docs.cheddaboards.com/concepts/device-code)
+**Status:** Native, Mobile, and Web are all ✅ stable. Every platform supports Google / Apple sign-in via Device Code Auth — no OAuth SDKs in your game — and sessions persist, so players sign in **once** and stay signed in across restarts. A sign-in interrupted by a page reload (phone tabs, home-screen web apps) resumes on the same code. The sign-in popup ships inside the addon (`addons/cheddaboards/ui/DeviceCodeLogin.tscn`), so it's the same one the Drop-in SDK uses. → [Device Code Login](https://docs.cheddaboards.com/concepts/device-code)
 
 <p align="center">
   <img src="screenshots/screenshot-device-code-auth.png" alt="Device Code Login — scan the QR on your phone, no OAuth SDKs in the game" width="45%"/>
@@ -183,9 +183,9 @@ Players get leaderboards, achievements, and anti-cheat — no further wiring.
 
 ```
 CheddaBoards-Godot/
-├── addons/cheddaboards/      # Core SDK + Setup Wizard (autoload)
+├── addons/cheddaboards/      # Core SDK + Setup Wizard (autoload) + ui/DeviceCodeLogin popup
 ├── autoloads/                # Achievements, MobileUI (autoloads)
-├── scenes/                   # Game wrapper, MainMenu, Leaderboard, Achievements, DeviceCodeLogin
+├── scenes/                   # Game wrapper, MainMenu, Leaderboard, Achievements
 ├── scripts/                  # Logic for the scenes above
 ├── example_game/             # CheddaClick — the example game
 ├── assets/fonts/
@@ -218,7 +218,7 @@ CheddaBoards-Godot/
 
 ## Prerequisites
 
-- **Godot 4.6+**
+- **Godot 4.6+** for the template (the SDK on its own runs on 4.3+)
 - A free **CheddaBoards account** — [cheddaboards.com](https://cheddaboards.com) — for your Game ID & API key
 
 > **Upgrading from v2.1 or earlier?** `profile_loaded` emits `play_count` as a 5th argument since v2.2.0 — a breaking change for 4-arg handlers. Full migration notes in the [Changelog](docs/CHANGELOG.md).
